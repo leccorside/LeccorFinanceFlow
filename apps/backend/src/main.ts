@@ -1,12 +1,23 @@
+import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module.js';
+import { EnvValidationError, loadEnv } from './config/env.js';
 
 async function bootstrap(): Promise<void> {
+  // Fail fast with a readable message before Nest starts wiring modules.
+  const env = loadEnv(process.env);
   const app = await NestFactory.create(AppModule);
-  const port = Number(process.env.BACKEND_PORT ?? 3000);
 
   app.setGlobalPrefix('api/v1');
-  await app.listen(port, '0.0.0.0');
+  app.enableShutdownHooks();
+  await app.listen(env.BACKEND_PORT, '0.0.0.0');
 }
 
-void bootstrap();
+bootstrap().catch((error: unknown) => {
+  if (error instanceof EnvValidationError) {
+    console.error(error.message);
+  } else {
+    console.error(error);
+  }
+  process.exit(1);
+});

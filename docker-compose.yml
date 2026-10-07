@@ -1,0 +1,102 @@
+# Official development environment.
+#   docker compose up --build          -> start everything
+#   docker compose up --build --watch  -> start with hot reload (syncs source into containers)
+# Defaults below mirror .env.example; override them in a local .env (never committed).
+
+name: leccor-finance-flow
+
+x-postgres-env: &postgres-env
+  POSTGRES_DB: ${POSTGRES_DB:-leccor_finance_flow}
+  POSTGRES_USER: ${POSTGRES_USER:-leccor}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-change-me-for-local-development}
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment: *postgres-env
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      target: development
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      NODE_ENV: development
+      BACKEND_PORT: 3000
+      DATABASE_URL: postgresql://${POSTGRES_USER:-leccor}:${POSTGRES_PASSWORD:-change-me-for-local-development}@postgres:5432/${POSTGRES_DB:-leccor_finance_flow}?schema=public
+    ports:
+      - '127.0.0.1:${BACKEND_PORT:-3000}:3000'
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      # Readiness, not liveness: healthy means the API reached PostgreSQL.
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/v1/health/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/backend/src
+          target: /app/apps/backend/src
+        - action: rebuild
+          path: ./apps/backend/package.json
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: development
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: development
+      API_PROXY_TARGET: http://backend:3000
+    ports:
+      - '127.0.0.1:${FRONTEND_PORT:-5173}:5173'
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '--spider', 'http://127.0.0.1:5173/']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 30s
+    develop:
+      watch:
+        - action: sync
+          path: ./apps/frontend/src
+          target: /app/apps/frontend/src
+        - action: sync
+          path: ./apps/frontend/index.html
+          target: /app/apps/frontend/index.html
+        - action: rebuild
+          path: ./apps/frontend/package.json
+        - action: rebuild
+          path: ./apps/frontend/vite.config.ts
+        - action: rebuild
+          path: ./pnpm-lock.yaml
+
+volumes:
+  postgres-data:

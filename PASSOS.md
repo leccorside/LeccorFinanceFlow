@@ -48,7 +48,7 @@
 
 **Sugestão de commit:** `feat: scaffold frontend backend and shared contracts`
 
-## [ ] PASSO 02 — Docker Compose e configuração validada
+## [x] PASSO 02 — Docker Compose e configuração validada
 
 **Objetivo:** tornar Docker o modo oficial de desenvolvimento.
 
@@ -60,7 +60,9 @@
 
 **Testes necessários:** build limpo, `docker compose up`, healthchecks e reinício.
 
-**Sugestão de commit:** `feat: add dockerized development environment`
+**Evidência (07/10/2026):** `docker compose build --no-cache` passou para backend e frontend; `docker compose up -d --wait` deixou `postgres`, `backend` e `frontend` em `healthy`; `GET /api/v1/health` → 200, `GET /api/v1/health/ready` → 200 `{"checks":{"database":"up"}}`, inclusive via proxy do Vite; com `postgres` parado, readiness → 503 `database:down` e liveness → 200, recuperando para 200 sem reiniciar o backend após `start`; linha gravada antes de `docker compose down` foi lida após novo `up` (tabela de prova removida em seguida); `DATABASE_URL`/`BACKEND_PORT` inválidos encerram com código 1 sem ecoar o segredo; `docker compose watch` sincronizou criação e remoção de arquivos nos dois apps; `pnpm quality` passou com 20 testes em 5 arquivos. Validação feita com `POSTGRES_PORT=55432` e `BACKEND_PORT=3001` porque 5432/3000 já estavam ocupadas na máquina.
+
+**Sugestão de commit:** `feat: adiciona ambiente de desenvolvimento com Docker`
 
 ## [ ] PASSO 03 — Prisma e modelo base de dados
 

@@ -4,7 +4,7 @@ Assistente financeiro pessoal com IA, Google Sheets e experiência conversaciona
 
 ## Estado atual
 
-Arquitetura e planejamento estão concluídos. O PASSO 01 também está concluído: o monorepo possui frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito e pipeline local de qualidade. Docker, banco e funcionalidades financeiras ainda não foram iniciados.
+Arquitetura e planejamento estão concluídos. PASSO 01 e PASSO 02 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade e ambiente oficial em Docker Compose (frontend, backend e PostgreSQL com healthchecks e volume persistente). Schema do banco, autenticação e funcionalidades financeiras ainda não foram iniciados.
 
 Documentos preparados:
 
@@ -29,25 +29,25 @@ A IA nunca acessará banco de dados ou planilhas diretamente. O fluxo obrigatór
 
 `usuário -> assistente -> tool call estruturado -> validação -> autorização -> regra financeira -> PostgreSQL -> sincronização Google Sheets -> resultado estruturado -> resposta`
 
-## Desenvolvimento local atual
+## Desenvolvimento (oficial: Docker Compose)
+
+```bash
+docker compose up --build --watch
+```
+
+O frontend fica em `http://localhost:5173` e o backend em `http://localhost:3000`. Healthchecks: `GET /api/v1/health` (liveness) e `GET /api/v1/health/ready` (readiness com PostgreSQL). Portas ocupadas podem ser trocadas no `.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`). Detalhes em `DOCUMENTACAO.md`.
+
+Validação de qualidade no host:
 
 ```bash
 pnpm install --frozen-lockfile
-pnpm dev
-```
-
-Validação completa:
-
-```bash
 pnpm quality
 ```
 
-O frontend usa `http://localhost:5173` e o backend `http://localhost:3000`. O healthcheck está em `GET /api/v1/health`.
-
 ## Próximo comando
 
-Para autorizar o início da implementação, use exatamente:
+Para autorizar o próximo passo, use:
 
-`INICIE O PASSO 2`
+`INICIE O PASSO 3`
 
-Até essa autorização, Docker, banco, migrations e autenticação não devem ser iniciados.
+Até essa autorização, Prisma, migrations e autenticação não devem ser iniciados.

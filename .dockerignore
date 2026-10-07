@@ -1,0 +1,22 @@
+# Build context is the repository root (pnpm workspace).
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+**/*.log
+.git
+.gitignore
+.idea
+.vscode
+.claude
+
+# Secrets never enter images.
+.env
+.env.*
+!.env.example
+
+# Docs and compose files are not needed inside images.
+*.md
+docker-compose*.yml
+**/Dockerfile
+.dockerignore

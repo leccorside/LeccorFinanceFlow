@@ -26,9 +26,58 @@ Limites obrigatórios:
 - sem cálculo monetário crítico em ponto flutuante;
 - sem formulários tradicionais para CRUD financeiro.
 
-## Instalação atual da fundação
+## Execução oficial com Docker Compose
 
-O PASSO 01 é executável localmente com Node.js 22.12 ou superior e pnpm 11.25 ou superior:
+Desde o PASSO 02, Docker Compose é o modo oficial de desenvolvimento. Pré-requisito: Docker Desktop com Docker Compose v2.24 ou superior.
+
+```bash
+# opcional: copiar e ajustar portas/senha locais
+cp .env.example .env
+
+docker compose up --build            # sobe postgres, backend e frontend
+docker compose up --build --watch    # idem, com hot reload (sincroniza o código nos containers)
+docker compose down                  # para tudo e preserva o volume do banco
+docker compose down -v               # para tudo e APAGA o volume do banco
+```
+
+Serviços:
+
+| Serviço    | Imagem/alvo                                    | Porta no host (padrão) | Healthcheck                                    |
+| ---------- | ---------------------------------------------- | ---------------------- | ---------------------------------------------- |
+| `postgres` | `postgres:17-alpine`                           | `127.0.0.1:5432`       | `pg_isready`                                   |
+| `backend`  | `apps/backend/Dockerfile`, alvo `development`  | `127.0.0.1:3000`       | `GET /api/v1/health/ready` (exige banco ativo) |
+| `frontend` | `apps/frontend/Dockerfile`, alvo `development` | `127.0.0.1:5173`       | `GET /` do Vite                                |
+
+Detalhes:
+
+- Ordem de inicialização garantida por healthchecks: `postgres` saudável → `backend` saudável → `frontend`.
+- O banco persiste no volume nomeado `leccor-finance-flow_postgres-data`; `down` sem `-v` não apaga dados.
+- As portas são publicadas somente em `127.0.0.1`. Se 5432/3000/5173 já estiverem ocupadas, defina `POSTGRES_PORT`, `BACKEND_PORT` ou `FRONTEND_PORT` no `.env`; dentro dos containers as portas são fixas.
+- O frontend encaminha `/api` para `http://backend:3000` via `API_PROXY_TARGET`.
+- Dentro do Compose, `DATABASE_URL` é montada a partir de `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_DB`; use senha com caracteres seguros para URL.
+- As imagens rodam como usuário `node`, sem `.env` copiado para dentro (`.dockerignore`).
+- `--watch` sincroniza `apps/*/src` e reconstrói a imagem quando `package.json`, `pnpm-lock.yaml` ou `vite.config.ts` mudam.
+
+### Healthchecks da API
+
+- `GET /api/v1/health` — liveness: o processo responde; não consulta dependências.
+- `GET /api/v1/health/ready` — readiness: executa `SELECT 1` no PostgreSQL. Retorna `200` com `{"status":"ok","checks":{"database":"up"}}` ou `503` com `{"status":"error","checks":{"database":"down"}}`.
+
+### Validação tipada de ambiente
+
+O backend valida o ambiente com Zod (`apps/backend/src/config/env.ts`) antes de iniciar o Nest. Variáveis validadas hoje:
+
+| Variável       | Regra                                         | Padrão        |
+| -------------- | --------------------------------------------- | ------------- |
+| `NODE_ENV`     | `development`, `test` ou `production`         | `development` |
+| `BACKEND_PORT` | inteiro entre 1 e 65535                       | `3000`        |
+| `DATABASE_URL` | URL `postgres://` ou `postgresql://` com host | obrigatória   |
+
+Configuração inválida encerra o processo com código 1 e uma mensagem que lista variável e regra violada, sem ecoar o valor recebido (evita vazar segredos). Novas variáveis entram no schema conforme os módulos que as usam forem implementados.
+
+## Execução local sem Docker (alternativa)
+
+Com Node.js 22.12 ou superior e pnpm 11.25 ou superior, e um PostgreSQL acessível em `DATABASE_URL`:
 
 ```bash
 pnpm install --frozen-lockfile
@@ -46,29 +95,9 @@ pnpm build
 pnpm quality
 ```
 
-O healthcheck do backend está disponível em `GET http://localhost:3000/api/v1/health`. O frontend usa `http://localhost:5173` e encaminha `/api` para o backend durante o desenvolvimento.
+Fora do Docker, o backend usa `http://localhost:3000` e o frontend `http://localhost:5173`, encaminhando `/api` para `API_PROXY_TARGET` (padrão `http://localhost:3000`). Sem `DATABASE_URL` válida o backend não inicia.
 
-Docker ainda não foi implementado; isso pertence exclusivamente ao PASSO 02.
-
-### Instalação futura em Docker
-
-Pré-requisitos futuros:
-
-- Docker Desktop com Docker Compose;
-- credenciais Google OAuth para desenvolvimento;
-- ao menos um provedor de IA configurado para testes manuais reais.
-
-Fluxo oficial planejado após o PASSO 02:
-
-```bash
-docker compose up --build
-```
-
-Serviços esperados:
-
-- `frontend`: aplicação Vite servida no ambiente Docker;
-- `backend`: API NestJS;
-- `postgres`: PostgreSQL com volume persistente.
+Pré-requisitos dos próximos passos: credenciais Google OAuth para desenvolvimento e ao menos um provedor de IA configurado para testes manuais reais.
 
 Migrações serão executadas de forma explícita e distinta entre desenvolvimento e produção. O backend não fará alterações destrutivas automáticas de schema ao subir em produção.
 
