@@ -1,0 +1,97 @@
+@import 'tailwindcss';
+
+:root {
+  color: #effaf4;
+  background: #07120d;
+  font-family:
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    'Segoe UI',
+    sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+  background:
+    radial-gradient(circle at 15% 20%, rgb(48 141 93 / 24%), transparent 32%),
+    radial-gradient(circle at 85% 80%, rgb(40 93 199 / 16%), transparent 35%), #07120d;
+}
+
+.foundation-card {
+  width: min(680px, 100%);
+  padding: clamp(28px, 6vw, 56px);
+  border: 1px solid rgb(164 226 190 / 16%);
+  border-radius: 28px;
+  background: rgb(13 31 22 / 82%);
+  box-shadow: 0 32px 80px rgb(0 0 0 / 28%);
+  backdrop-filter: blur(18px);
+}
+
+.eyebrow {
+  color: #7de2aa;
+  font-size: 0.75rem;
+  font-weight: 800;
+  letter-spacing: 0.18em;
+}
+
+h1 {
+  max-width: 14ch;
+  margin: 18px 0;
+  font-size: clamp(2.2rem, 7vw, 4.5rem);
+  line-height: 0.98;
+  letter-spacing: -0.055em;
+}
+
+p {
+  max-width: 58ch;
+  margin: 0;
+  color: #acc4b6;
+  font-size: clamp(1rem, 2vw, 1.12rem);
+  line-height: 1.7;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 32px;
+  color: #d7e9de;
+  font-size: 0.9rem;
+}
+
+.status-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #d9a441;
+  box-shadow: 0 0 0 5px rgb(217 164 65 / 12%);
+}
+
+.status-dot--online {
+  background: #5ce899;
+  box-shadow: 0 0 0 5px rgb(92 232 153 / 12%);
+}

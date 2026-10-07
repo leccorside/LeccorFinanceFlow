@@ -1,0 +1,36 @@
+{
+  "name": "leccor-finance-flow",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Assistente financeiro pessoal conversacional com IA e Google Sheets.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c blue,green \"pnpm --filter @leccor/backend dev\" \"pnpm --filter @leccor/frontend dev\"",
+    "build": "pnpm --filter @leccor/contracts build && pnpm --filter @leccor/backend build && pnpm --filter @leccor/frontend build",
+    "lint": "eslint .",
+    "typecheck": "pnpm --filter @leccor/contracts typecheck && pnpm --filter @leccor/backend typecheck && pnpm --filter @leccor/frontend typecheck",
+    "test": "pnpm --filter @leccor/contracts test && pnpm --filter @leccor/backend test && pnpm --filter @leccor/frontend test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "quality": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+  },
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=11.25.0"
+  },
+  "packageManager": "pnpm@11.25.0",
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "concurrently": "^9.2.1",
+    "eslint": "^10.12.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "eslint-plugin-react-refresh": "^0.5.7",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.9",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.71.1"
+  }
+}
