@@ -219,9 +219,48 @@ model User {
   reports               Report[]
   actionHistory         ActionHistory[]
   updatedSettings       SystemSetting[]
+  sessions              UserSession[]
 
   @@index([status])
   @@map("users")
+}
+
+/// Application session (not Google tokens). Tokens are opaque random values sent
+/// in HttpOnly cookies; only their SHA-256 hashes are stored.
+model UserSession {
+  id                       String    @id @default(uuid(7)) @db.Uuid
+  userId                   String    @map("user_id") @db.Uuid
+  accessTokenHash          String    @unique @map("access_token_hash") @db.Char(64)
+  accessExpiresAt          DateTime  @map("access_expires_at") @db.Timestamptz(3)
+  refreshTokenHash         String    @unique @map("refresh_token_hash") @db.Char(64)
+  refreshExpiresAt         DateTime  @map("refresh_expires_at") @db.Timestamptz(3)
+  /// Last rotated-out refresh token; presenting it again means token theft/replay.
+  previousRefreshTokenHash String?   @unique @map("previous_refresh_token_hash") @db.Char(64)
+  lastUsedAt               DateTime  @default(now()) @map("last_used_at") @db.Timestamptz(3)
+  revokedAt                DateTime? @map("revoked_at") @db.Timestamptz(3)
+  revokedReason            String?   @map("revoked_reason") @db.VarChar(50)
+  createdAt                DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, revokedAt])
+  @@map("user_sessions")
+}
+
+/// Pending Google login: single-use, short-lived. Deleted when consumed.
+model AuthLoginAttempt {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  stateHash    String   @unique @map("state_hash") @db.Char(64)
+  nonce        String   @db.VarChar(128)
+  /// PKCE verifier; useless without the authorization code and lives at most a few minutes.
+  codeVerifier String   @map("code_verifier") @db.VarChar(128)
+  /// Validated relative path to return to after login.
+  redirectPath String   @default("/") @map("redirect_path") @db.VarChar(512)
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz(3)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([expiresAt])
+  @@map("auth_login_attempts")
 }
 
 model Role {

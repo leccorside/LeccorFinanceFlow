@@ -80,7 +80,7 @@
 
 **Sugestão de commit:** `feat: modela domínio financeiro com prisma`
 
-## [ ] PASSO 04 — Autenticação Google e sessão segura
+## [x] PASSO 04 — Autenticação Google e sessão segura
 
 **Objetivo:** permitir login Google e sessão própria sem expor tokens.
 
@@ -92,7 +92,9 @@
 
 **Testes necessários:** state/nonce inválidos, replay, expiração, logout, bloqueio e sessão válida.
 
-**Sugestão de commit:** `feat: implement secure google authentication`
+**Evidência (08/10/2026):** módulos `auth` e `users`, migration `20261008192955_auth_sessions` (`user_sessions`, `auth_login_attempts`, com `down.sql`). Backend com 62 testes unitários: adapter real `openid-client` contra um Google simulado rejeita nonce, audience, issuer, assinatura, expiração e state inválidos. Mais 21 testes de integração HTTP com Postgres real (50 no total), cobrindo login completo, cookies `HttpOnly`/`SameSite`/`Path`, PKCE e nonce coerentes, replay do callback, state ausente/trocado sem consumir a tentativa, tentativa expirada, falha e cancelamento no Google, e-mail não verificado, usuário bloqueado (sem sessão e com sessão cortada na hora), vínculo por e-mail sem roubo de conta, open redirect neutralizado, expiração do acesso, rotação do refresh, reuso do refresh revogando a sessão, logout idempotente e 503 sem configuração. Um teste de mutação (remover a checagem do cookie de state) foi detectado por 2 testes. No Docker: migration aplicada; login sem credenciais → 503, `/me` → 401; com credenciais fictícias, 302 para `accounts.google.com` com PKCE S256, `state`/`nonce` e só `openid email profile`; 62 + 50 testes passam dentro do container. `pnpm quality` passou por completo.
+
+**Sugestão de commit:** `feat: implementa autenticação google e sessão segura`
 
 ## [ ] PASSO 05 — RBAC, ownership e proteção de API
 

@@ -79,11 +79,17 @@ docker compose exec backend pnpm --filter @leccor/backend test:integration
 
 O backend valida o ambiente com Zod (`apps/backend/src/config/env.ts`) antes de iniciar o Nest. Variáveis validadas hoje:
 
-| Variável       | Regra                                         | Padrão        |
-| -------------- | --------------------------------------------- | ------------- |
-| `NODE_ENV`     | `development`, `test` ou `production`         | `development` |
-| `BACKEND_PORT` | inteiro entre 1 e 65535                       | `3000`        |
-| `DATABASE_URL` | URL `postgres://` ou `postgresql://` com host | obrigatória   |
+| Variável                                    | Regra                                              | Padrão                                              |
+| ------------------------------------------- | -------------------------------------------------- | --------------------------------------------------- |
+| `NODE_ENV`                                  | `development`, `test` ou `production`              | `development`                                       |
+| `BACKEND_PORT`                              | inteiro entre 1 e 65535                            | `3000`                                              |
+| `DATABASE_URL`                              | URL `postgres://` ou `postgresql://` com host      | obrigatória                                         |
+| `FRONTEND_URL`                              | URL http(s); destino dos redirects pós-login       | `http://localhost:5173`                             |
+| `ACCESS_TOKEN_TTL`                          | duração `<n>s/m/h/d`                               | `15m`                                               |
+| `REFRESH_TOKEN_TTL`                         | duração, maior que `ACCESS_TOKEN_TTL`              | `30d`                                               |
+| `COOKIE_SECURE`                             | `true`/`false`                                     | `true` em produção, `false` fora dela               |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | os dois ou nenhum; vazios = login Google desligado | —                                                   |
+| `GOOGLE_REDIRECT_URI`                       | URL http(s) registrada no Google Cloud             | `http://localhost:5173/api/v1/auth/google/callback` |
 
 Configuração inválida encerra o processo com código 1 e uma mensagem que lista variável e regra violada, sem ecoar o valor recebido (evita vazar segredos). Novas variáveis entram no schema conforme os módulos que as usam forem implementados.
 
@@ -197,9 +203,51 @@ O Prisma Client é gerado em `apps/backend/src/generated/prisma` (fora do Git).
 
 `test/integration/*.int-spec.ts` criam um banco `leccor_test_*` por arquivo, aplicam as migrations, executam e removem o banco. Cobrem: seed idempotente, precisão `Decimal`, cada CHECK, isolamento entre usuários, exclusão em cascata do usuário, ausência de drift entre migrations e `schema.prisma`, e reversão completa com reaplicação.
 
-## Google OAuth
+## Autenticação (login Google e sessão)
 
-O login e a conexão com Sheets serão tratados pelo backend usando Authorization Code com state, nonce e PKCE. O consentimento para Drive/Sheets será incremental. Tokens Google permanecerão criptografados no banco e nunca serão entregues ao React.
+Implementada no PASSO 04 (`apps/backend/src/auth`, `apps/backend/src/users`).
+
+### Configurar o Google Cloud (desenvolvimento)
+
+1. No Google Cloud Console, crie um cliente OAuth do tipo **Aplicativo da Web**.
+2. Em "URIs de redirecionamento autorizados", cadastre exatamente `http://localhost:5173/api/v1/auth/google/callback`. Se trocar `FRONTEND_PORT`, ajuste a URI e `GOOGLE_REDIRECT_URI`.
+3. Coloque `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env` e recrie o backend (`docker compose up -d --build backend`).
+4. Acesse `http://localhost:5173/api/v1/auth/google/login` para entrar. Após o login, `http://localhost:5173/api/v1/auth/me` mostra o usuário.
+
+Sem essas duas variáveis o backend sobe normalmente e `GET /auth/google/login` responde `503 oauth_not_configured`.
+
+### Endpoints
+
+| Método e rota                                       | Uso                                                                                                                                                          |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/v1/auth/google/login?redirectTo=/caminho` | Inicia o login: grava a tentativa e redireciona (302) ao Google com `state`, `nonce` e PKCE S256. `redirectTo` aceita só caminhos relativos do frontend.     |
+| `GET /api/v1/auth/google/callback`                  | Retorno do Google. Sempre redireciona ao frontend: sucesso → `FRONTEND_URL + redirectTo` com cookies de sessão; falha → `FRONTEND_URL/login?error=<código>`. |
+| `POST /api/v1/auth/refresh`                         | Gira os dois tokens usando o cookie de refresh. `204` ou `401 {code}` (limpa os cookies).                                                                    |
+| `POST /api/v1/auth/logout`                          | Revoga a sessão atual e limpa os cookies. Idempotente (`204`).                                                                                               |
+| `GET /api/v1/auth/me`                               | Usuário atual (id, e-mail, status, papéis, perfil básico). `401` sem sessão válida. Nunca inclui tokens.                                                     |
+
+Códigos de erro do login (`/login?error=`): `access_denied`, `invalid_state`, `expired_state`, `provider_error`, `email_not_verified`, `account_blocked`, `account_conflict`, `oauth_not_configured`.
+
+### Como funciona
+
+- **Login**: Authorization Code + PKCE (S256) + `state` + `nonce`, via `openid-client` com metadados estáticos do Google (sem discovery na inicialização). O ID token tem `iss`, `aud`, `exp`, `nonce` **e assinatura** (JWKS do Google) validados. Escopos de login: só `openid email profile`; Drive/Sheets virão por consentimento separado (PASSO 07). Os tokens Google recebidos no login são descartados.
+- **Tentativa de login** (`auth_login_attempts`): guarda o hash do `state`, o `nonce` e o `code_verifier` por até 10 minutos. O `state` também vai num cookie `HttpOnly` (`lff_oauth_state`), e o callback exige que os dois coincidam (proteção contra login CSRF). A tentativa é apagada ao ser usada, então um callback repetido é rejeitado; tentativas expiradas são limpas sempre que um novo login começa (sem jobs).
+- **Usuário**: procurado pelo `sub` do Google; se não existir, por e-mail normalizado, vinculando a conta somente se ela ainda não tiver outra conta Google (senão `account_conflict`). Contas novas recebem o papel `USER` e perfil com nome e foto do Google. E-mail não verificado é recusado. Usuário `BLOCKED` não recebe sessão.
+- **Sessão própria** (`user_sessions`): tokens opacos aleatórios de 256 bits; o banco guarda só o SHA-256 deles.
+
+| Cookie            | Conteúdo                               | Atributos                                                                  |
+| ----------------- | -------------------------------------- | -------------------------------------------------------------------------- |
+| `lff_session`     | token de acesso (15 min)               | `HttpOnly`, `SameSite=Lax`, `Path=/api`, `Secure` conforme `COOKIE_SECURE` |
+| `lff_refresh`     | token de refresh (30 dias, rotativo)   | `HttpOnly`, `SameSite=Strict`, `Path=/api/v1/auth`                         |
+| `lff_oauth_state` | `state` do login em andamento (10 min) | `HttpOnly`, `SameSite=Lax`, `Path=/api/v1/auth/google`                     |
+
+- **Renovação**: cada refresh troca os dois tokens. Apresentar de novo um refresh token já trocado é tratado como roubo e **revoga a sessão inteira** (`refresh_reuse`).
+- **Bloqueio e revogação imediatos**: cada requisição autenticada consulta a sessão e o status do usuário; bloquear o usuário corta a sessão na próxima chamada (`user_blocked`).
+- **Guard**: `SessionAuthGuard` + `@CurrentUser()` protegem rotas. Papéis e ownership (RBAC) são aplicados no PASSO 05, assim como CSRF explícito e rate limit; até lá, `POST /refresh` e `/logout` contam com `SameSite`.
+
+## Google OAuth (conexão com Sheets)
+
+A conexão com Sheets será tratada pelo backend usando Authorization Code com state e PKCE, separada do login. O consentimento para Drive/Sheets será incremental. Tokens Google permanecerão criptografados no banco e nunca serão entregues ao React.
 
 Estados tratados:
 

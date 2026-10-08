@@ -14,11 +14,108 @@ const postgresUrl = z
     }
   }, 'must be a postgres:// or postgresql:// URL with a host');
 
-const envSchema = z.object({
-  NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
-  BACKEND_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-  DATABASE_URL: postgresUrl,
-});
+const httpUrl = z.string().refine((value) => {
+  try {
+    return ['http:', 'https:'].includes(new URL(value).protocol);
+  } catch {
+    return false;
+  }
+}, 'must be an http(s) URL');
+
+const DURATION_UNITS_MS = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 } as const;
+
+/** Parses "90s", "15m", "12h" or "30d" into milliseconds. */
+export function parseDurationMs(value: string): number | null {
+  const match = /^(\d+)([smhd])$/.exec(value.trim());
+  if (!match) {
+    return null;
+  }
+  const amount = Number(match[1]);
+  const unit = match[2] as keyof typeof DURATION_UNITS_MS;
+  return amount > 0 ? amount * DURATION_UNITS_MS[unit] : null;
+}
+
+const duration = (fallback: string) =>
+  z
+    .string()
+    .default(fallback)
+    .transform((value, ctx) => {
+      const ms = parseDurationMs(value);
+      if (ms === null) {
+        ctx.addIssue({
+          code: 'custom',
+          message: 'must be a duration like 15m, 12h or 30d',
+        });
+        return z.NEVER;
+      }
+      return ms;
+    });
+
+const optionalNonEmpty = z
+  .string()
+  .optional()
+  .transform((value) => (value && value.trim() !== '' ? value.trim() : undefined));
+
+const envSchema = z
+  .object({
+    NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
+    BACKEND_PORT: z.coerce.number().int().min(1).max(65535).default(3000),
+    DATABASE_URL: postgresUrl,
+    FRONTEND_URL: httpUrl.default('http://localhost:5173'),
+    ACCESS_TOKEN_TTL: duration('15m'),
+    REFRESH_TOKEN_TTL: duration('30d'),
+    /** Defaults to true in production. Browsers accept Secure cookies on http://localhost. */
+    COOKIE_SECURE: z.enum(['true', 'false']).optional(),
+    GOOGLE_CLIENT_ID: optionalNonEmpty,
+    GOOGLE_CLIENT_SECRET: optionalNonEmpty,
+    /** Must match a redirect URI registered in Google Cloud; through the frontend origin by default. */
+    GOOGLE_REDIRECT_URI: optionalNonEmpty.pipe(
+      httpUrl.default('http://localhost:5173/api/v1/auth/google/callback'),
+    ),
+  })
+  .superRefine((env, ctx) => {
+    // Client ID and secret decide whether Google login is enabled; both or neither.
+    if (
+      (env.GOOGLE_CLIENT_ID === undefined) !==
+      (env.GOOGLE_CLIENT_SECRET === undefined)
+    ) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['GOOGLE_CLIENT_ID'],
+        message: 'GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET must be set together',
+      });
+    }
+    if (env.REFRESH_TOKEN_TTL <= env.ACCESS_TOKEN_TTL) {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['REFRESH_TOKEN_TTL'],
+        message: 'must be longer than ACCESS_TOKEN_TTL',
+      });
+    }
+  })
+  .transform(
+    ({
+      COOKIE_SECURE,
+      GOOGLE_CLIENT_ID,
+      GOOGLE_CLIENT_SECRET,
+      GOOGLE_REDIRECT_URI,
+      ...env
+    }) => ({
+      ...env,
+      COOKIE_SECURE:
+        COOKIE_SECURE === undefined
+          ? env.NODE_ENV === 'production'
+          : COOKIE_SECURE === 'true',
+      GOOGLE_OAUTH:
+        GOOGLE_CLIENT_ID && GOOGLE_CLIENT_SECRET
+          ? {
+              clientId: GOOGLE_CLIENT_ID,
+              clientSecret: GOOGLE_CLIENT_SECRET,
+              redirectUri: GOOGLE_REDIRECT_URI,
+            }
+          : null,
+    }),
+  );
 
 export type AppEnv = z.infer<typeof envSchema>;
 

@@ -21,7 +21,8 @@ RUN pnpm install --frozen-lockfile --filter "leccor-finance-flow" --filter "@lec
 
 FROM deps AS development
 ENV NODE_ENV=development
-COPY tsconfig.base.json ./
+# .env.example has no secrets; a unit test checks it boots the backend as-is.
+COPY tsconfig.base.json .env.example ./
 # Owned by `node` so `docker compose watch` can sync files into the container.
 COPY --chown=node:node apps/backend apps/backend
 RUN chown -R node:node apps/backend/src/generated \
