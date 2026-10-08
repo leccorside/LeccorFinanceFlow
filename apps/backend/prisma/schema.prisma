@@ -236,6 +236,9 @@ model UserSession {
   refreshExpiresAt         DateTime  @map("refresh_expires_at") @db.Timestamptz(3)
   /// Last rotated-out refresh token; presenting it again means token theft/replay.
   previousRefreshTokenHash String?   @unique @map("previous_refresh_token_hash") @db.Char(64)
+  /// Synchronizer CSRF token. Stored in clear on purpose: it is useless without the
+  /// session cookie, and a stable per-session value works across browser tabs.
+  csrfToken                String    @map("csrf_token") @db.Char(43)
   lastUsedAt               DateTime  @default(now()) @map("last_used_at") @db.Timestamptz(3)
   revokedAt                DateTime? @map("revoked_at") @db.Timestamptz(3)
   revokedReason            String?   @map("revoked_reason") @db.VarChar(50)

@@ -1,11 +1,13 @@
-import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
+import { configureApp } from '../src/common/security/configure-app.js';
+import { loadEnv } from '../src/config/env.js';
 import { PrismaService } from '../src/database/prisma.service.js';
 
 describe('Health endpoints', () => {
-  let app: INestApplication;
+  let app: NestExpressApplication;
   let databaseUp = true;
 
   beforeAll(async () => {
@@ -18,8 +20,8 @@ describe('Health endpoints', () => {
       .useValue({ isReachable: async () => databaseUp })
       .compile();
 
-    app = moduleRef.createNestApplication();
-    app.setGlobalPrefix('api/v1');
+    app = moduleRef.createNestApplication<NestExpressApplication>();
+    configureApp(app, loadEnv(process.env));
     await app.init();
   });
 

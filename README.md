@@ -4,7 +4,9 @@ Assistente financeiro pessoal com IA, Google Sheets e experiência conversaciona
 
 ## Estado atual
 
-Arquitetura e planejamento estão concluídos. PASSOS 01 a 04 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade, ambiente oficial em Docker Compose, modelo relacional completo com Prisma e login com Google (OAuth com PKCE/state/nonce) com sessão própria em cookies HttpOnly, renovável e revogável. RBAC, perfil e funcionalidades financeiras ainda não foram iniciados.
+Arquitetura e planejamento estão concluídos. PASSOS 01 a 05 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade, ambiente oficial em Docker Compose, modelo relacional completo com Prisma, login com Google (OAuth com PKCE/state/nonce) com sessão própria em cookies HttpOnly, e proteção da API (autenticação default-deny, RBAC ADMIN/USER, ownership sem IDOR, DTOs estritos, CSRF, CORS, headers de segurança, rate limit e contrato único de erros). Perfil e funcionalidades financeiras ainda não foram iniciados.
+
+O primeiro administrador é definido por `ADMIN_EMAILS` no `.env`.
 
 Para habilitar o login, configure `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env` (passo a passo em `DOCUMENTACAO.md`, seção "Autenticação").
 
@@ -57,6 +59,6 @@ pnpm quality
 
 Para autorizar o próximo passo, use:
 
-`INICIE O PASSO 5`
+`INICIE O PASSO 6`
 
-Até essa autorização, RBAC, policies de ownership, CSRF e rate limit não devem ser iniciados.
+Até essa autorização, perfil, preferências e internacionalização não devem ser iniciados.

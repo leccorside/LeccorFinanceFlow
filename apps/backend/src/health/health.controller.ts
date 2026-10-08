@@ -1,4 +1,5 @@
-import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Inject, Res } from '@nestjs/common';
+import { Public } from '../common/security/decorators.js';
 import { PrismaService } from '../database/prisma.service.js';
 
 export interface HealthResponse {
@@ -14,6 +15,11 @@ export interface ReadinessResponse {
   };
 }
 
+interface StatusResponse {
+  status(code: number): unknown;
+}
+
+@Public()
 @Controller('health')
 export class HealthController {
   constructor(@Inject(PrismaService) private readonly database: PrismaService) {}
@@ -27,20 +33,22 @@ export class HealthController {
     };
   }
 
-  /** Readiness: the API can serve requests that need PostgreSQL. */
+  /**
+   * Readiness: the API can serve requests that need PostgreSQL. Sets 503 directly
+   * (instead of throwing) so this body keeps its own shape, not the error contract.
+   */
   @Get('ready')
-  async getReadiness(): Promise<ReadinessResponse> {
+  async getReadiness(
+    @Res({ passthrough: true }) response: StatusResponse,
+  ): Promise<ReadinessResponse> {
     const databaseUp = await this.database.isReachable();
-    const response: ReadinessResponse = {
+    if (!databaseUp) {
+      response.status(503);
+    }
+    return {
       status: databaseUp ? 'ok' : 'error',
       service: 'leccor-finance-flow-api',
       checks: { database: databaseUp ? 'up' : 'down' },
     };
-
-    if (!databaseUp) {
-      throw new ServiceUnavailableException(response);
-    }
-
-    return response;
   }
 }

@@ -1,86 +1,28 @@
-import type { INestApplication } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import request from 'supertest';
-import { AppModule } from '../../src/app.module.js';
-import {
-  type AuthorizationRequest,
-  type CodeExchange,
-  GOOGLE_IDENTITY_PROVIDER,
-  type GoogleIdentity,
-  type GoogleIdentityProvider,
-} from '../../src/auth/google-identity.provider.js';
 import { hashToken, pkceChallenge } from '../../src/auth/tokens.js';
 import {
   createDisposableDatabase,
   type DisposableDatabase,
 } from './disposable-database.js';
-
-const FRONTEND = 'http://localhost:5173';
-const REDIRECT_URI = 'http://localhost:5173/api/v1/auth/google/callback';
-
-class FakeGoogle implements GoogleIdentityProvider {
-  identity: GoogleIdentity = defaultIdentity();
-  failExchange = false;
-  lastAuthorization?: AuthorizationRequest;
-  lastExchange?: CodeExchange;
-
-  buildAuthorizationUrl(authorization: AuthorizationRequest): URL {
-    this.lastAuthorization = authorization;
-    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
-    url.searchParams.set('state', authorization.state);
-    url.searchParams.set('nonce', authorization.nonce);
-    url.searchParams.set('code_challenge', authorization.codeChallenge);
-    url.searchParams.set('code_challenge_method', 'S256');
-    return url;
-  }
-
-  async exchangeCode(exchange: CodeExchange): Promise<GoogleIdentity> {
-    this.lastExchange = exchange;
-    if (this.failExchange) {
-      throw new Error('token endpoint failure');
-    }
-    return this.identity;
-  }
-}
-
-function defaultIdentity(): GoogleIdentity {
-  return {
-    subject: 'google-sub-ana',
-    email: '  Ana.Silva@Example.com ',
-    emailVerified: true,
-    givenName: 'Ana',
-    familyName: 'Silva',
-    picture: 'https://lh3.googleusercontent.com/a/ana',
-  };
-}
+import {
+  createTestApp,
+  defaultIdentity,
+  FakeGoogle,
+  FRONTEND,
+  setCookies,
+  testEnv,
+} from './support.js';
 
 let db: DisposableDatabase;
-let app: INestApplication;
+let app: NestExpressApplication;
 let google: FakeGoogle;
 
-async function createApp(
-  provider: GoogleIdentityProvider | null,
-): Promise<INestApplication> {
-  const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
-    .overrideProvider(GOOGLE_IDENTITY_PROVIDER)
-    .useValue(provider)
-    .compile();
-  const nest = moduleRef.createNestApplication();
-  nest.setGlobalPrefix('api/v1');
-  await nest.init();
-  return nest;
-}
+const createApp = createTestApp;
 
 beforeAll(async () => {
   db = await createDisposableDatabase();
-  Object.assign(process.env, {
-    NODE_ENV: 'test',
-    DATABASE_URL: db.url,
-    FRONTEND_URL: FRONTEND,
-    GOOGLE_CLIENT_ID: 'client-id',
-    GOOGLE_CLIENT_SECRET: 'client-secret',
-    GOOGLE_REDIRECT_URI: REDIRECT_URI,
-  });
+  testEnv(db.url);
   google = new FakeGoogle();
   app = await createApp(google);
 });
@@ -96,29 +38,6 @@ beforeEach(() => {
 });
 
 const http = () => request(app.getHttpServer());
-
-interface SetCookie {
-  value: string;
-  attributes: string;
-}
-
-function setCookies(response: request.Response): Record<string, SetCookie> {
-  const header = response.headers['set-cookie'] as unknown;
-  const list = Array.isArray(header) ? (header as string[]) : [];
-  return Object.fromEntries(
-    list.map((line) => {
-      const [pair = '', ...attributes] = line.split(';');
-      const separator = pair.indexOf('=');
-      return [
-        pair.slice(0, separator),
-        {
-          value: decodeURIComponent(pair.slice(separator + 1)),
-          attributes: attributes.join(';'),
-        },
-      ];
-    }),
-  );
-}
 
 async function startLogin(redirectTo?: string) {
   const response = await http()

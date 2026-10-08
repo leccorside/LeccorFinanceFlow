@@ -79,17 +79,24 @@ docker compose exec backend pnpm --filter @leccor/backend test:integration
 
 O backend valida o ambiente com Zod (`apps/backend/src/config/env.ts`) antes de iniciar o Nest. Variáveis validadas hoje:
 
-| Variável                                    | Regra                                              | Padrão                                              |
-| ------------------------------------------- | -------------------------------------------------- | --------------------------------------------------- |
-| `NODE_ENV`                                  | `development`, `test` ou `production`              | `development`                                       |
-| `BACKEND_PORT`                              | inteiro entre 1 e 65535                            | `3000`                                              |
-| `DATABASE_URL`                              | URL `postgres://` ou `postgresql://` com host      | obrigatória                                         |
-| `FRONTEND_URL`                              | URL http(s); destino dos redirects pós-login       | `http://localhost:5173`                             |
-| `ACCESS_TOKEN_TTL`                          | duração `<n>s/m/h/d`                               | `15m`                                               |
-| `REFRESH_TOKEN_TTL`                         | duração, maior que `ACCESS_TOKEN_TTL`              | `30d`                                               |
-| `COOKIE_SECURE`                             | `true`/`false`                                     | `true` em produção, `false` fora dela               |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | os dois ou nenhum; vazios = login Google desligado | —                                                   |
-| `GOOGLE_REDIRECT_URI`                       | URL http(s) registrada no Google Cloud             | `http://localhost:5173/api/v1/auth/google/callback` |
+| Variável                                    | Regra                                                                           | Padrão                                              |
+| ------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `NODE_ENV`                                  | `development`, `test` ou `production`                                           | `development`                                       |
+| `BACKEND_PORT`                              | inteiro entre 1 e 65535                                                         | `3000`                                              |
+| `DATABASE_URL`                              | URL `postgres://` ou `postgresql://` com host                                   | obrigatória                                         |
+| `FRONTEND_URL`                              | URL http(s); destino dos redirects pós-login                                    | `http://localhost:5173`                             |
+| `ACCESS_TOKEN_TTL`                          | duração `<n>s/m/h/d`                                                            | `15m`                                               |
+| `REFRESH_TOKEN_TTL`                         | duração, maior que `ACCESS_TOKEN_TTL`                                           | `30d`                                               |
+| `COOKIE_SECURE`                             | `true`/`false`                                                                  | `true` em produção, `false` fora dela               |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` | os dois ou nenhum; vazios = login Google desligado                              | —                                                   |
+| `GOOGLE_REDIRECT_URI`                       | URL http(s) registrada no Google Cloud                                          | `http://localhost:5173/api/v1/auth/google/callback` |
+| `CORS_ALLOWED_ORIGINS`                      | lista de URLs http(s) separadas por vírgula; somadas à origem de `FRONTEND_URL` | vazio                                               |
+| `RATE_LIMIT_TTL_SECONDS`                    | inteiro ≥ 1 (janela dos limites)                                                | `60`                                                |
+| `RATE_LIMIT_MAX_REQUESTS`                   | inteiro ≥ 1, por IP e janela, em toda a API                                     | `100`                                               |
+| `AUTH_RATE_LIMIT_MAX_REQUESTS`              | inteiro ≥ 1, por IP e janela, nas rotas `/auth`                                 | `20`                                                |
+| `MAX_JSON_BODY_SIZE`                        | `<n>b`, `<n>kb` ou `<n>mb`                                                      | `1mb`                                               |
+| `TRUST_PROXY`                               | `false`, `true`, número de saltos ou lista do Express                           | `false`                                             |
+| `ADMIN_EMAILS`                              | e-mails separados por vírgula (normalizados)                                    | vazio                                               |
 
 Configuração inválida encerra o processo com código 1 e uma mensagem que lista variável e regra violada, sem ecoar o valor recebido (evita vazar segredos). Novas variáveis entram no schema conforme os módulos que as usam forem implementados.
 
@@ -138,21 +145,21 @@ Grupos de configuração:
 
 Prefixo: `/api/v1`.
 
-| Grupo           | Exemplos de responsabilidade                               |
-| --------------- | ---------------------------------------------------------- |
-| `/auth`         | login, callback, refresh, logout e sessão                  |
-| `/profile`      | leitura e preferências do titular                          |
-| `/google`       | conectar, status, reconectar e desconectar                 |
-| `/spreadsheets` | criar, listar, selecionar, sincronizar e excluir           |
-| `/transactions` | consultas e operações autorizadas usadas pelas ferramentas |
-| `/accounts`     | consulta e ferramentas de contas/cartões                   |
-| `/categories`   | categorias padrão e personalizadas                         |
-| `/investments`  | consulta e ferramentas de investimentos                    |
-| `/assistant`    | conversas, mensagens, confirmações e undo                  |
-| `/voice`        | transcrição, síntese e vozes disponíveis                   |
-| `/reports`      | geração e download autenticado                             |
-| `/dashboard`    | agregações por período                                     |
-| `/admin/*`      | usuários, provedores, modelos e configurações              |
+| Grupo           | Exemplos de responsabilidade                                 |
+| --------------- | ------------------------------------------------------------ |
+| `/auth`         | login, callback, refresh, logout, sessão (`me`) e token CSRF |
+| `/profile`      | leitura e preferências do titular                            |
+| `/google`       | conectar, status, reconectar e desconectar                   |
+| `/spreadsheets` | criar, listar, selecionar, sincronizar e excluir             |
+| `/transactions` | consultas e operações autorizadas usadas pelas ferramentas   |
+| `/accounts`     | consulta e ferramentas de contas/cartões                     |
+| `/categories`   | categorias padrão e personalizadas                           |
+| `/investments`  | consulta e ferramentas de investimentos                      |
+| `/assistant`    | conversas, mensagens, confirmações e undo                    |
+| `/voice`        | transcrição, síntese e vozes disponíveis                     |
+| `/reports`      | geração e download autenticado                               |
+| `/dashboard`    | agregações por período                                       |
+| `/admin/*`      | usuários, provedores, modelos e configurações                |
 
 Controladores não concentrarão regra de negócio. DTOs validam formato; serviços de domínio validam invariantes; guards/policies validam papel e propriedade.
 
@@ -243,7 +250,9 @@ Códigos de erro do login (`/login?error=`): `access_denied`, `invalid_state`, `
 
 - **Renovação**: cada refresh troca os dois tokens. Apresentar de novo um refresh token já trocado é tratado como roubo e **revoga a sessão inteira** (`refresh_reuse`).
 - **Bloqueio e revogação imediatos**: cada requisição autenticada consulta a sessão e o status do usuário; bloquear o usuário corta a sessão na próxima chamada (`user_blocked`).
-- **Guard**: `SessionAuthGuard` + `@CurrentUser()` protegem rotas. Papéis e ownership (RBAC) são aplicados no PASSO 05, assim como CSRF explícito e rate limit; até lá, `POST /refresh` e `/logout` contam com `SameSite`.
+- **Guard**: `SessionAuthGuard` é global (default-deny) e `@CurrentUser()` entrega o usuário da sessão. Papéis, CSRF e rate limit: ver "Segurança da API".
+- **Token CSRF**: `GET /api/v1/auth/csrf` (exige sessão) devolve `{ csrfToken, headerName: "X-CSRF-Token" }`. O token é fixo durante a sessão (sobrevive ao refresh e vale para todas as abas).
+- **Primeiro administrador**: e-mails listados em `ADMIN_EMAILS` recebem o papel `ADMIN` a cada login (comparação sem diferenciar maiúsculas). Remover o e-mail da lista não rebaixa ninguém; rebaixamento será ação explícita do painel admin (PASSO 20).
 
 ## Google OAuth (conexão com Sheets)
 
@@ -308,9 +317,24 @@ Controles mínimos:
 
 ## Segurança
 
+### Segurança da API (PASSO 05)
+
+Implementada em `apps/backend/src/common` e aplicada a toda requisição, nesta ordem:
+
+1. **Middlewares HTTP** (`configureApp`, usado por `main.ts` e pelos testes): `X-Request-Id` gerado pelo servidor (ids enviados pelo cliente são ignorados), headers de segurança (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, CSP `default-src 'none'`, COOP/CORP, `Permissions-Policy`, `Cache-Control: no-store`, HSTS quando `COOKIE_SECURE`), sem `X-Powered-By`, limite de corpo `MAX_JSON_BODY_SIZE` (acima disso, `413`) e CORS restrito a `FRONTEND_URL` + `CORS_ALLOWED_ORIGINS`, com credenciais e apenas os headers `Content-Type` e `X-CSRF-Token`.
+2. **Rate limit** (`RateLimitGuard`): orçamento global por IP (`RATE_LIMIT_MAX_REQUESTS` por `RATE_LIMIT_TTL_SECONDS`) em todas as rotas, mais um orçamento próprio das rotas `/auth` (`AUTH_RATE_LIMIT_MAX_REQUESTS`) e buckets por rota com `@RateLimit({ name, limit, windowMs })`. Excedido: `429 rate_limited` com `Retry-After`. Contadores em memória do processo (uma instância; zeram ao reiniciar). Atrás de proxy, configure `TRUST_PROXY` para o IP real ser usado; pelo proxy do Vite em desenvolvimento, todo o tráfego do navegador compartilha o IP do container do frontend.
+3. **Autenticação default-deny** (`SessionAuthGuard` global): toda rota exige sessão válida de usuário `ACTIVE`, exceto as marcadas com `@Public()` (hoje: `/health`, `/health/ready`, `/auth/google/login`, `/auth/google/callback`, `/auth/refresh`, `/auth/logout`). Sem sessão: `401 unauthenticated`.
+4. **CSRF** (`CsrfGuard`), para `POST`/`PUT`/`PATCH`/`DELETE`: se a requisição trouxer `Origin` (ou `Referer`), a origem precisa estar na lista permitida, inclusive em rotas públicas (origem `null` nunca é aceita); em rotas autenticadas, o header `X-CSRF-Token` precisa ser igual ao token da sessão (`GET /auth/csrf`). Falha: `403 csrf_failed`. `GET`/`HEAD`/`OPTIONS` não exigem token e não devem alterar estado.
+5. **Papéis** (`RolesGuard`): `@Roles('ADMIN')` exige o papel; sem ele, `403 forbidden`. Funcionalidades administrativas ficam em rotas `/admin/...` explícitas.
+6. **Validação de entrada**: cada parâmetro usa `@Body(validate(schema))`, `@Param('id', uuidParam)` etc. com Zod. DTOs são criados com `dto({...})` (objeto _strict_): campos desconhecidos como `ownerId`, `id`, `role` ou `status` são **rejeitados** com `400 validation_failed`, nunca ignorados em silêncio. Os detalhes trazem caminho, regra e mensagem, nunca o valor recebido.
+7. **Ownership**: ver abaixo.
+8. **Erros** (`ApiExceptionFilter`): toda falha responde `{ code, message, details, requestId, timestamp }`. Erros 5xx nunca expõem mensagem original, stack ou detalhes do driver. Erros conhecidos do Prisma: registro inexistente → `404 not_found`, unicidade/FK → `409 conflict`. JSON malformado → `400 bad_request`. Nada é gravado em log (decisão de arquitetura).
+
 ### Autorização e IDOR
 
-Toda consulta usa o `userId` autenticado como parte do filtro. Buscar por um ID global e verificar depois não será o padrão. Admin também passa por policies explícitas; não existe bypass implícito.
+Toda consulta usa o usuário autenticado como parte do filtro: `findFirst({ where: { id, ...ownedBy(user) } })`, `updateMany`/`deleteMany` com o mesmo escopo, e `ResourceNotFoundException` quando nada corresponde. Buscar por um ID global e verificar depois não é permitido. Um ID de outro usuário recebe exatamente a mesma resposta de um ID inexistente (`404 not_found`), sem revelar que o recurso existe. O `ownerId` sempre vem da sessão, nunca do payload. Admin também passa por policies explícitas; não existe bypass implícito nas rotas de usuário. Os triggers de ownership do banco (PASSO 03) são a segunda linha de defesa.
+
+Para o frontend (a partir do PASSO 16): buscar o token em `GET /auth/csrf` após o login, mantê-lo em memória e enviá-lo em `X-CSRF-Token` em toda escrita; ao receber `401`, tentar `POST /auth/refresh` uma vez.
 
 ### Segredos
 

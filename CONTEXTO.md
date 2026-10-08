@@ -2,7 +2,7 @@
 
 ## Estado em 08/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 04 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 05 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -49,6 +49,30 @@ Autenticação implementada no PASSO 04:
 - migration `20261008192955_auth_sessions`: tabelas `user_sessions` e `auth_login_attempts` + CHECKs + `down.sql`;
 - env: `FRONTEND_URL`, `ACCESS_TOKEN_TTL`, `REFRESH_TOKEN_TTL`, `COOKIE_SECURE`, `GOOGLE_CLIENT_ID/SECRET/REDIRECT_URI` (saída tipada `GOOGLE_OAUTH | null`); `JWT_*` e `SESSION_SECRET` removidos do `.env.example`;
 - testes: `http.spec`, `google-identity.provider.spec` (openid-client real + Google simulado com `jose`), `env.spec` (inclui o `.env.example` real) e `test/integration/auth.int-spec.ts` (fluxo HTTP completo com Postgres).
+
+Proteção da API implementada no PASSO 05:
+
+- `src/common/errors`: `ApiException`, `ResourceNotFoundException`, `ApiExceptionFilter` (contrato `{code, message, details, requestId, timestamp}`);
+- `src/common/validation`: `validate(schema)`, `dto({...})` (Zod strict) e `uuidParam`;
+- `src/common/security`: decorators `@Public`, `@Roles`, `@RateLimit`; guards `RateLimitGuard`, `CsrfGuard`, `RolesGuard` (+ `SessionAuthGuard` global); `RateLimiter` em memória; `ownedBy(user)`; middlewares de request id e headers; `configureApp` (prefixo, trust proxy, limite de corpo, CORS) usado por `main.ts` e pelos testes; `SecurityModule` registra guards e filtro;
+- `GET /auth/csrf`; coluna `user_sessions.csrf_token` (migration `20261008200737_session_csrf_token`, que encerra sessões antigas);
+- `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
+- readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
+- testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+## Decisões do PASSO 05
+
+- **Default-deny global** com `@Public()` explícito; a lista de rotas públicas está documentada e deve continuar curta.
+- **Ordem dos guards**: rate limit → autenticação → CSRF → papéis. O rate limit vem antes para cortar abusos antes de qualquer consulta ao banco.
+- **ADMIN sem bypass**: nas rotas de usuário o ADMIN só vê os próprios recursos; funcionalidades administrativas terão rotas `/admin` com `@Roles('ADMIN')`.
+- **Ownership no filtro da consulta** (`ownedBy`), com 404 idêntico para recurso alheio e inexistente. `ownerId` nunca vem do payload.
+- **Validação por parâmetro (não pipe global)**: tsx/Vitest (esbuild) não emitem metadados de tipo, então um pipe global baseado em metatype não funcionaria. `dto()` usa objeto strict: campo extra gera 400 em vez de ser ignorado.
+- **CSRF por synchronizer token** guardado na sessão, em texto puro (inútil sem o cookie) e estável por sessão (multiaba, sobrevive ao refresh), mais checagem de `Origin`/`Referer` em toda escrita, inclusive pública. Rotas públicas de escrita (`refresh`/`logout`) não exigem token: o refresh tem cookie `SameSite=Strict`, e sem cookies o logout não tem efeito.
+- **Rate limit próprio em memória** (sem `@nestjs/throttler` nem Redis): janela fixa por IP; os buckets vencidos são varridos periodicamente. Limitação: vale por instância e zera ao reiniciar; com várias instâncias seria preciso um store compartilhado.
+- **Headers de segurança próprios** (sem helmet), para uma API JSON. A CSP do frontend fica para o PASSO 21.
+- **Erros 5xx nunca vazam a mensagem original**; Prisma P2025 → 404, P2002/P2003 → 409; erros de middleware com `status` + `type` (body-parser) → seu 4xx.
+- **Módulo de sondagem só nos testes**: valida a infraestrutura sem criar rotas de domínio antes do PASSO 09.
+- **`ADMIN_EMAILS` só concede**: remover da lista não rebaixa (ação explícita no PASSO 20).
 
 ## Decisões do PASSO 04
 
@@ -103,6 +127,8 @@ Autenticação implementada no PASSO 04:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 05: com o filtro global, uma exceção 503 lançada pelo readiness viraria o contrato de erro e quebraria o corpo do healthcheck; por isso o readiness define o status via `@Res({ passthrough: true })`.
+- PASSO 05: testes que criam recursos com nome repetido batem na unicidade (`owner_id, type, name`) e recebem 409; usar nomes únicos por teste.
 - Comandos `docker compose run ... -w /app/...` pelo Git Bash precisam de `MSYS_NO_PATHCONV=1`, senão o caminho vira `C:/Program Files/Git/app/...`. O PowerShell 5.1 corrompe aspas aninhadas em `sh -c`; para esses casos, usar Bash.
 
 ## Decisões aprovadas pelo planejamento
@@ -133,15 +159,27 @@ Autenticação implementada no PASSO 04:
 
 ## Próxima ação
 
-O PASSO 04 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 05 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 5`
+`INICIE O PASSO 6`
 
-Quando autorizado, executar apenas o PASSO 05 de `PASSOS.md`: RBAC, ownership e proteção de API. Não antecipar perfil (PASSO 06).
+Quando autorizado, executar apenas o PASSO 06 de `PASSOS.md`: perfil, preferências e internacionalização base. Não antecipar a conexão Google/Sheets (PASSO 07).
+
+Regras para todo módulo novo (a partir do PASSO 06):
+
+- rotas são autenticadas por padrão; só usar `@Public()` com justificativa;
+- todo parâmetro de entrada passa por `validate(...)`/`uuidParam`, com DTOs criados por `dto({...})`;
+- recursos do usuário são consultados com `ownedBy(user)` no `where` e respondem `ResourceNotFoundException` quando nada corresponde;
+- `ownerId` sempre vem da sessão; escritas exigem `X-CSRF-Token` (já garantido pelo guard);
+- erros esperados usam `ApiException(status, code, message?, details?)`;
+- testes de integração usam `test/integration/support.ts` (`createTestApp`, `loginAs`).
 
 Pendências conhecidas para passos futuros:
 
-- PASSO 05: como nasce o primeiro ADMIN (hoje todo login cria só `USER`); guard global com rotas públicas explícitas (`/health*`, `/auth/google/*`, `/auth/refresh`, `/auth/logout`); CSRF para `POST` autenticados por cookie; rate limit em `/auth/*`; filtro de erros com o contrato `{code, message, details, requestId, timestamp}`; ao bloquear um usuário, chamar `AuthService.revokeAllSessions`.
+- PASSO 16: o cliente HTTP do frontend deve buscar o token em `GET /auth/csrf`, enviá-lo em `X-CSRF-Token` e tentar `POST /auth/refresh` uma vez ao receber 401.
+- PASSO 14/17: usar `@RateLimit` com `ASSISTANT_RATE_LIMIT_MAX_REQUESTS`/`VOICE_RATE_LIMIT_MAX_REQUESTS` (já no `.env.example`, ainda não validados no `env.ts`), de preferência por usuário.
+- PASSO 20: ao bloquear um usuário, chamar `AuthService.revokeAllSessions`; promoção e rebaixamento de admins.
+- Rate limit pelo proxy do Vite: todo o tráfego do navegador chega com o IP do container do frontend (um único bucket); em produção, configurar `TRUST_PROXY` atrás do proxy reverso.
 - Login real com Google ainda não foi testado ponta a ponta (sem credenciais). Ao configurar, confirmar que o `iss` do ID token é `https://accounts.google.com` (o Google às vezes usa `accounts.google.com` sem esquema em outros fluxos).
 - Avaliar expiração absoluta da sessão (hoje o refresh é deslizante) e uma tela de "sessões ativas".
 - PASSO 09: tratar exclusão de conta/categoria/planilha com movimentações (as FKs `NO ACTION` bloqueiam) e derivar "vencido" de `due_on`.
@@ -150,7 +188,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSO 01 (`5f4756e`), PASSO 02 (`6324d5d`) e PASSO 03 (`32de508`) commitados; o PASSO 04 aguarda commit manual do usuário.
+- PASSO 01 (`5f4756e`), PASSO 02 (`6324d5d`), PASSO 03 (`32de508`) e PASSO 04 (`33279f6`) commitados; o PASSO 05 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -194,3 +232,10 @@ Pendências conhecidas para passos futuros:
 - Mutação: remover a checagem do cookie de state fez 2 testes falharem (revertido).
 - Docker: migration `20261008192955_auth_sessions` aplicada via `db:deploy`; sem credenciais, login → 503, `/me` → 401, logout → 204, callback forjado → 302 `/login?error=oauth_not_configured`; com credenciais fictícias, 302 para `accounts.google.com` com `code_challenge_method=S256`, `state`/`nonce` de 43 caracteres, `scope=openid email profile` e cookie `lff_oauth_state` `HttpOnly; SameSite=Lax; Path=/api/v1/auth/google; Max-Age=600`.
 - `pnpm quality` passou por completo no host (Prettier, ESLint, typecheck, testes dos 3 workspaces e builds).
+
+## Evidências do PASSO 05
+
+- Backend: 81 testes unitários e 82 de integração (32 novos de políticas) passam no host e no container; nenhum banco `leccor_test_*` restante.
+- Mutações no `RolesGuard` (ignorar papel) e no `CsrfGuard` (ignorar token) foram detectadas (2 falhas) e revertidas.
+- Docker: migration `20261008200737_session_csrf_token` aplicada; via proxy do Vite, os headers `nosniff`/`DENY`/CSP/`no-referrer` e `X-Request-Id` chegam ao cliente; `GET /auth/csrf` sem sessão → 401 no contrato; `POST /auth/logout` com `Origin: https://evil.example` → 403 `csrf_failed`; preflight CORS com `ACAO` só para `http://localhost:5173`; corpo de 1,1 MB → 413 `payload_too_large`.
+- `pnpm quality` passou por completo no host.

@@ -8,8 +8,8 @@ import {
   Res,
   ServiceUnavailableException,
   UnauthorizedException,
-  UseGuards,
 } from '@nestjs/common';
+import { Public, RateLimit } from '../common/security/decorators.js';
 import { APP_ENV, type AppEnv } from '../config/env.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { AuthError } from './auth.errors.js';
@@ -28,7 +28,7 @@ import {
   queryString,
   readCookie,
 } from './http.js';
-import { CurrentUser, SessionAuthGuard } from './session-auth.guard.js';
+import { CurrentUser } from './session-auth.guard.js';
 
 export interface MeResponse {
   id: string;
@@ -45,6 +45,14 @@ export interface MeResponse {
   } | null;
 }
 
+export interface CsrfResponse {
+  csrfToken: string;
+  /** Header the token must be sent in, on every POST/PUT/PATCH/DELETE. */
+  headerName: string;
+}
+
+/** Brute-force/abuse budget for every auth route (AUTH_RATE_LIMIT_MAX_REQUESTS per IP). */
+@RateLimit({ policy: 'auth' })
 @Controller('auth')
 export class AuthController {
   constructor(
@@ -54,6 +62,7 @@ export class AuthController {
   ) {}
 
   /** Starts the Google login: 302 to Google with state, nonce and PKCE (S256). */
+  @Public()
   @Get('google/login')
   async googleLogin(
     @Req() request: HttpRequest,
@@ -81,6 +90,7 @@ export class AuthController {
    * Google redirects the browser here. Always answers with a redirect to the
    * frontend: on success with session cookies, on failure with `/login?error=<code>`.
    */
+  @Public()
   @Get('google/callback')
   async googleCallback(
     @Req() request: HttpRequest,
@@ -122,7 +132,11 @@ export class AuthController {
     }
   }
 
-  /** Rotates the session tokens using the refresh cookie. */
+  /**
+   * Rotates the session tokens using the refresh cookie. Public (the access token may be
+   * expired); protected by the SameSite=Strict refresh cookie and the origin check.
+   */
+  @Public()
   @Post('refresh')
   @HttpCode(204)
   async refresh(
@@ -140,6 +154,7 @@ export class AuthController {
   }
 
   /** Revokes the current session (if any) and clears cookies. Idempotent. */
+  @Public()
   @Post('logout')
   @HttpCode(204)
   async logout(
@@ -154,9 +169,17 @@ export class AuthController {
     this.clear(response, 'refresh');
   }
 
+  /**
+   * CSRF token of the current session. The SPA keeps it in memory and sends it in
+   * `X-CSRF-Token` on state-changing requests. Stable for the session (all tabs).
+   */
+  @Get('csrf')
+  csrf(@CurrentUser() user: AuthenticatedUser): CsrfResponse {
+    return { csrfToken: user.csrfToken, headerName: 'X-CSRF-Token' };
+  }
+
   /** Current user. Never includes tokens or Google credentials. */
   @Get('me')
-  @UseGuards(SessionAuthGuard)
   async me(@CurrentUser() user: AuthenticatedUser): Promise<MeResponse> {
     const profile = await this.prisma.userProfile.findUnique({
       where: { userId: user.id },

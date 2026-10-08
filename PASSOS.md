@@ -96,7 +96,7 @@
 
 **Sugestão de commit:** `feat: implementa autenticação google e sessão segura`
 
-## [ ] PASSO 05 — RBAC, ownership e proteção de API
+## [x] PASSO 05 — RBAC, ownership e proteção de API
 
 **Objetivo:** estabelecer autorização central antes de expor dados financeiros.
 
@@ -108,7 +108,22 @@
 
 **Testes necessários:** matriz de permissões, IDs de outro usuário, payload extra, CSRF e limites.
 
-**Sugestão de commit:** `feat: enforce rbac and resource ownership`
+**Evidência (08/10/2026):** infraestrutura em `src/common` (errors, validation, security), migration `20261008200737_session_csrf_token` com `down.sql`. Backend com 81 testes unitários (incluem rate limiter com relógio falso, filtro de erros, pipe Zod e origem) e 82 de integração; os 32 novos de `policy.int-spec.ts` usam um módulo de sondagem só de teste sobre a infraestrutura real. Cobrem:
+
+- matriz anônimo/USER/ADMIN em 6 rotas e bootstrap de ADMIN por `ADMIN_EMAILS`;
+- ID de outro usuário respondendo igual a ID inexistente, sem alterar nada, e ADMIN sem bypass;
+- UUID inválido;
+- campos extras `ownerId`/`id`/`role`/`isArchived` rejeitados sem persistir;
+- valores inválidos sem eco, `413` acima do limite e JSON malformado;
+- CSRF sem token, com token errado, com token de outro usuário e com token correto; token estável após refresh;
+- origens `evil`/`null`/`Referer` estranho barradas, inclusive no logout público;
+- contrato de erro com `X-Request-Id`, sem vazamento em 500, e unicidade → 409;
+- headers de segurança, CORS permitido e negado;
+- rate limit por rota, global e de `/auth`, com `429` e `Retry-After`.
+
+Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Docker, migration aplicada; via proxy do Vite, os headers de segurança chegam ao cliente; `401` no `/auth/csrf` sem sessão; `403 csrf_failed` para `Origin` estranha; preflight CORS aceito só para a origem do frontend; `413` com 1,1 MB. Testes 81 + 82 passam dentro do container e `pnpm quality` passou por completo.
+
+**Sugestão de commit:** `feat: aplica rbac, ownership e proteção da api`
 
 ## [ ] PASSO 06 — Perfil, preferências e internacionalização base
 

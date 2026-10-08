@@ -25,6 +25,13 @@ describe('loadEnv', () => {
       REFRESH_TOKEN_TTL: 30 * 86_400_000,
       COOKIE_SECURE: false,
       GOOGLE_OAUTH: null,
+      ALLOWED_ORIGINS: ['http://localhost:5173'],
+      RATE_LIMIT_TTL_SECONDS: 60,
+      RATE_LIMIT_MAX_REQUESTS: 100,
+      AUTH_RATE_LIMIT_MAX_REQUESTS: 20,
+      MAX_JSON_BODY_SIZE: '1mb',
+      TRUST_PROXY: false,
+      ADMIN_EMAILS: [],
     });
     expect(Object.isFrozen(env)).toBe(true);
   });
@@ -149,6 +156,59 @@ describe('loadEnv', () => {
       expect((error as Error).message).not.toContain('super-secret-password');
       expect((error as Error).message).not.toContain('top-secret-google');
     }
+  });
+});
+
+describe('security settings', () => {
+  it('merges FRONTEND_URL and CORS_ALLOWED_ORIGINS into deduplicated origins', () => {
+    const env = loadEnv({
+      DATABASE_URL: validDatabaseUrl,
+      FRONTEND_URL: 'https://app.example.com/some/path',
+      CORS_ALLOWED_ORIGINS: ' https://app.example.com , https://admin.example.com/ ,',
+    });
+    expect(env.ALLOWED_ORIGINS).toEqual([
+      'https://app.example.com',
+      'https://admin.example.com',
+    ]);
+  });
+
+  it('rejects a non-URL CORS origin', () => {
+    expect(() =>
+      loadEnv({ DATABASE_URL: validDatabaseUrl, CORS_ALLOWED_ORIGINS: 'evil' }),
+    ).toThrow(/CORS_ALLOWED_ORIGINS/);
+  });
+
+  it('normalizes ADMIN_EMAILS and rejects invalid entries', () => {
+    expect(
+      loadEnv({
+        DATABASE_URL: validDatabaseUrl,
+        ADMIN_EMAILS: 'A@Example.com, b@example.com',
+      }).ADMIN_EMAILS,
+    ).toEqual(['a@example.com', 'b@example.com']);
+    expect(() =>
+      loadEnv({ DATABASE_URL: validDatabaseUrl, ADMIN_EMAILS: 'not-an-email' }),
+    ).toThrow(/ADMIN_EMAILS/);
+  });
+
+  it.each([
+    [undefined, false],
+    ['false', false],
+    ['true', true],
+    ['1', 1],
+    ['loopback, uniquelocal', 'loopback, uniquelocal'],
+  ])('parses TRUST_PROXY=%j', (value, expected) => {
+    const source: Record<string, string> = { DATABASE_URL: validDatabaseUrl };
+    if (value !== undefined) source.TRUST_PROXY = value;
+    expect(loadEnv(source).TRUST_PROXY).toBe(expected);
+  });
+
+  it('validates body size and rate limits', () => {
+    expect(() =>
+      loadEnv({ DATABASE_URL: validDatabaseUrl, MAX_JSON_BODY_SIZE: '1gb' }),
+    ).toThrow(/MAX_JSON_BODY_SIZE/);
+    expect(() =>
+      loadEnv({ DATABASE_URL: validDatabaseUrl, RATE_LIMIT_MAX_REQUESTS: '0' }),
+    ).toThrow(/RATE_LIMIT_MAX_REQUESTS/);
   });
 });
 

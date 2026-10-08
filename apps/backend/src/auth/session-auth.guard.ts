@@ -2,32 +2,36 @@ import {
   type CanActivate,
   createParamDecorator,
   type ExecutionContext,
+  HttpStatus,
   Inject,
   Injectable,
-  UnauthorizedException,
 } from '@nestjs/common';
-import { type AuthenticatedUser, AuthService } from './auth.service.js';
-import { type HttpRequest, readCookie } from './http.js';
-
-type AuthenticatedRequest = HttpRequest & { auth?: AuthenticatedUser };
+import { Reflector } from '@nestjs/core';
+import { ApiException } from '../common/errors/api-error.js';
+import { isPublic, type SecuredRequest } from '../common/security/guards.js';
+import { AuthService, type AuthenticatedUser } from './auth.service.js';
+import { readCookie } from './http.js';
 
 /**
- * Requires a valid application session (access-token cookie) of an ACTIVE user.
- * Role/ownership policies are layered on top in PASSO 05.
+ * Global default-deny: every route requires a valid application session of an ACTIVE
+ * user, unless marked @Public(). Registered as APP_GUARD by SecurityModule.
  */
 @Injectable()
 export class SessionAuthGuard implements CanActivate {
-  constructor(@Inject(AuthService) private readonly auth: AuthService) {}
+  constructor(
+    @Inject(AuthService) private readonly auth: AuthService,
+    @Inject(Reflector) private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
-    const user = await this.auth.authenticate(readCookie(request, 'session'));
+    if (isPublic(this.reflector, context)) {
+      return true;
+    }
 
+    const request = context.switchToHttp().getRequest<SecuredRequest>();
+    const user = await this.auth.authenticate(readCookie(request, 'session'));
     if (!user) {
-      throw new UnauthorizedException({
-        code: 'unauthenticated',
-        message: 'Sessão inválida ou expirada.',
-      });
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'unauthenticated');
     }
 
     request.auth = user;
@@ -35,15 +39,12 @@ export class SessionAuthGuard implements CanActivate {
   }
 }
 
-/** The user resolved by SessionAuthGuard. Only valid on guarded routes. */
+/** The user resolved by SessionAuthGuard. Only valid on non-public routes. */
 export const CurrentUser = createParamDecorator(
   (_data: unknown, context: ExecutionContext): AuthenticatedUser => {
-    const request = context.switchToHttp().getRequest<AuthenticatedRequest>();
+    const request = context.switchToHttp().getRequest<SecuredRequest>();
     if (!request.auth) {
-      throw new UnauthorizedException({
-        code: 'unauthenticated',
-        message: 'Sessão inválida ou expirada.',
-      });
+      throw new ApiException(HttpStatus.UNAUTHORIZED, 'unauthenticated');
     }
     return request.auth;
   },

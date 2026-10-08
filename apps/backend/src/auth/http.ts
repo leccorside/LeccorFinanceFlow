@@ -1,11 +1,16 @@
 /**
- * Minimal structural types for the Express request/response features used by auth,
- * plus cookie helpers. Avoids depending on @types/express directly.
+ * Minimal structural types for the Express request/response features used by auth
+ * and the security layer, plus cookie helpers. Avoids depending on @types/express.
  */
 
 export interface HttpRequest {
   headers: Record<string, string | string[] | undefined>;
   query: Record<string, unknown>;
+  method?: string;
+  /** Client address as resolved by Express (honors TRUST_PROXY). */
+  ip?: string;
+  /** Set by the request-id middleware; ephemeral, never stored. */
+  requestId?: string;
 }
 
 export interface CookieOptions {
@@ -20,6 +25,13 @@ export interface HttpResponse {
   cookie(name: string, value: string, options: CookieOptions): unknown;
   clearCookie(name: string, options: Omit<CookieOptions, 'maxAge'>): unknown;
   redirect(status: number, url: string): unknown;
+  setHeader(name: string, value: string | number): unknown;
+  status(code: number): unknown;
+}
+
+export function headerValue(request: HttpRequest, name: string): string | undefined {
+  const value = request.headers[name.toLowerCase()];
+  return Array.isArray(value) ? value[0] : value;
 }
 
 export const COOKIE = {

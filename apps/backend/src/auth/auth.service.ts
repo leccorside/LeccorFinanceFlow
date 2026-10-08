@@ -46,6 +46,8 @@ export interface AuthenticatedUser {
   status: UserStatus;
   roles: RoleName[];
   sessionId: string;
+  /** Internal: compared by CsrfGuard, returned only by GET /auth/csrf. Never serialize. */
+  csrfToken: string;
 }
 
 @Injectable()
@@ -181,6 +183,7 @@ export class AuthService {
       status: session.user.status,
       roles: session.user.roles.map(({ role }) => role.name),
       sessionId: session.id,
+      csrfToken: session.csrfToken,
     };
   }
 
@@ -278,6 +281,8 @@ export class AuthService {
         accessExpiresAt: tokens.accessExpiresAt,
         refreshTokenHash: hashToken(tokens.refreshToken),
         refreshExpiresAt: tokens.refreshExpiresAt,
+        // Stable for the session's lifetime (survives refresh) so every tab shares it.
+        csrfToken: generateToken(),
       },
     });
     return tokens;
