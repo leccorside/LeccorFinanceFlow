@@ -64,7 +64,7 @@
 
 **Sugestão de commit:** `feat: adiciona ambiente de desenvolvimento com Docker`
 
-## [ ] PASSO 03 — Prisma e modelo base de dados
+## [x] PASSO 03 — Prisma e modelo base de dados
 
 **Objetivo:** implementar o schema relacional completo e a primeira migration.
 
@@ -76,7 +76,9 @@
 
 **Testes necessários:** integração Prisma/PostgreSQL, constraints, Decimal e isolamento básico por proprietário.
 
-**Sugestão de commit:** `feat: model financial domain with prisma`
+**Evidência (08/10/2026):** Prisma 7.10 com 20 tabelas, 23 enums e migration `20261008185149_init` (SQL gerado + CHECKs, índice parcial e triggers de ownership) com `down.sql`; 29 testes de integração passam no host e dentro do container `backend`, cada arquivo em banco descartável removido ao fim (nenhum `leccor_test_*` restante): migration aplica do zero, não há drift contra `schema.prisma`, `down.sql` remove tudo e permite reaplicar, seed idempotente, `Decimal` exato (`123456789012345.4234` somado sem erro), CHECKs rejeitam inconsistências, triggers barram referências a dados de outro usuário e troca de `owner_id`, exclusão do usuário apaga só os dados dele. No Docker: `db:deploy` aplicou a migration, `db:seed` rodou 2× resultando em 2 papéis e 14 categorias, readiness 200 via Prisma, dados mantidos após `down`/`up`. Lint, typecheck, build e 18 testes do backend passam. A suíte do frontend (inalterada) passa isolada, mas excedeu o tempo de inicialização do worker dentro de `pnpm quality` por lentidão do disco USB desta máquina.
+
+**Sugestão de commit:** `feat: modela domínio financeiro com prisma`
 
 ## [ ] PASSO 04 — Autenticação Google e sessão segura
 

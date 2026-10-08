@@ -3,6 +3,8 @@
 **/dist
 **/coverage
 **/*.tsbuildinfo
+# Prisma Client is generated inside the image (backend postinstall).
+apps/backend/src/generated
 **/*.log
 .git
 .gitignore

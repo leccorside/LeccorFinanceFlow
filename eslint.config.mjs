@@ -10,6 +10,7 @@ export default tseslint.config(
       '**/dist/**',
       '**/coverage/**',
       '**/node_modules/**',
+      'apps/backend/src/generated/**',
       '*.config.js',
       'PROMPT.md',
     ],

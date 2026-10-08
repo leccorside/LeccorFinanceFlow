@@ -1,8 +1,8 @@
 # Contexto do projeto
 
-## Estado em 07/10/2026
+## Estado em 08/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 e 02 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01, 02 e 03 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -32,9 +32,34 @@ Ambiente Docker implementado no PASSO 02:
 - backend: `ConfigModule` global com `loadEnv` (Zod) validando `NODE_ENV`, `BACKEND_PORT`, `DATABASE_URL`; `DatabaseModule` com pool `pg` mínimo; `GET /api/v1/health/ready` (200/503);
 - frontend: proxy `/api` lê `API_PROXY_TARGET` (Compose usa `http://backend:3000`).
 
+Modelo de dados implementado no PASSO 03:
+
+- Prisma 7.10 fixado (`prisma`, `@prisma/client`, `@prisma/adapter-pg`); gerador `prisma-client` ESM com saída em `apps/backend/src/generated/prisma` (gitignored, gerado no `postinstall`); `apps/backend/prisma.config.ts` com schema, migrations e seed;
+- `schema.prisma` com 20 tabelas e 23 enums cobrindo identidade, finanças, conversa/IA, relatórios e `ActionHistory`;
+- migration `20261008185149_init` = SQL gerado + seção manual (CHECKs, índice único parcial de planilha ativa, triggers de ownership e `owner_id` imutável) + `down.sql`;
+- `PrismaService` (estende `PrismaClient` com adapter pg) substituiu o `DatabaseService`; readiness faz `SELECT 1` via Prisma;
+- seed idempotente em `src/database/seed.ts` (+ dados em `seed-data.ts`): papéis `ADMIN`/`USER` e 14 categorias de sistema com `system_key`;
+- testes de integração (`test/integration`, `pnpm test:integration`) em bancos descartáveis criados via `TEST_DATABASE_URL`;
+- Dockerfile do backend: `openssl`, schema copiado antes do install, client gerado na imagem; Compose: `TEST_DATABASE_URL` no backend e rebuild ao mudar `apps/backend/prisma`.
+
+## Decisões do PASSO 03
+
+- **Prisma 7.10.0 estável, não o `latest`**: o dist-tag `latest` do pacote `prisma` apontava para `8.0.0-rc.21`. Todas as peças Prisma ficam fixadas na mesma versão exata.
+- **Regras no banco via SQL manual na migration**: o Prisma não modela CHECK, índice parcial nem trigger, e o teste de drift confirma que ele não tenta removê-los. Toda migration futura com SQL manual precisa de `down.sql` correspondente e de manter `match schema.prisma (no drift)` verde.
+- **Ownership por trigger, não por FK composta**: o Prisma exige relação obrigatória quando a FK composta inclui um campo obrigatório (`owner_id`), o que inviabiliza referências opcionais. A função `app_assert_same_owner` faz a checagem; categorias do sistema (`owner_id` nulo) são referenciáveis por todos.
+- **`NO ACTION` em vez de `RESTRICT` nas FKs internas ao usuário**: `RESTRICT` é verificado na hora e quebraria a cascata ao excluir o usuário (conta apagada antes da transação). `NO ACTION` só verifica no fim do comando. Apenas `user_roles → roles` mantém `RESTRICT`.
+- **Categoria única por transação (folha)**: Categoria/Subcategoria saem da árvore, evitando inconsistência entre dois campos.
+- **`Installment` = compra original; parcelas são `Transaction`** com número único por compra.
+- **Status `OVERDUE` não é armazenado**: atraso é derivado de `due_on` + `status = PENDING` (evita dado que envelhece).
+- **UUID v7 gerado pelo Prisma** (`uuid(7)`), não pelo banco: o PostgreSQL 17 não tem `uuidv7()`. Inserts SQL manuais precisam informar o ID.
+- **Migrations explícitas**: o container não roda `migrate deploy` ao subir; usar `db:deploy`/`db:seed` (documentado).
+- **`down.sql` remove o registro em `_prisma_migrations`**: `migrate resolve --rolled-back` só aceita migrations com falha no Prisma 7.
+- **`pg` ficou como devDependency** só para o helper de testes (criar/remover bancos); em runtime, quem usa `pg` é o `@prisma/adapter-pg`.
+- **Escopo**: não foi semeado `AIProvider` (pertence ao PASSO 12) nem criado nenhum módulo de domínio/API.
+
 ## Decisões do PASSO 02
 
-- **`pg` em vez de Prisma para o readiness**: o critério exigia conexão real ao Postgres, mas o schema/Prisma é do PASSO 03. O `DatabaseService` só faz `SELECT 1`; no PASSO 03 avaliar trocar o ping por `PrismaClient.$queryRaw` e remover `pg` se ficar redundante.
+- **`pg` em vez de Prisma para o readiness** (substituído no PASSO 03 pelo `PrismaService`).
 - **Injeção explícita com `@Inject(Token)` em todo construtor Nest**: `tsx` (dev) e Vitest usam esbuild, que não emite `emitDecoratorMetadata`; injeção só por tipo quebra nesses ambientes. Manter esse padrão nos próximos módulos.
 - **Liveness separado de readiness**: `/health` não toca dependências; `/health/ready` é o que o Compose usa como healthcheck.
 - **Validação de ambiente incremental**: o schema só contém variáveis já usadas. Cada passo adiciona as suas (OAuth, criptografia, IA etc.) ao `env.ts` com testes.
@@ -48,6 +73,11 @@ Ambiente Docker implementado no PASSO 02:
 - Portas 5432 (Postgres local) e 3000 (container `open-webui`) já estão ocupadas nesta máquina; usar `POSTGRES_PORT`/`BACKEND_PORT` alternativas no `.env`.
 - `docker compose run backend` com env inválido não termina porque `tsx watch` mantém o watcher aberto; para testar fail-fast, executar `tsx src/main.ts` diretamente no container.
 - Container com usuário `node`: código copiado com `--chown=node:node` e `node_modules` do app com dono `node`, senão o sync do `compose watch` e o cache do Vite falham por permissão.
+- **Disco D: é USB e muito lento** (escrita de arquivos pequenos ~10× mais lenta que o SSD C:). Efeitos: `pnpm add prisma` ficou parado por longos períodos importando pacotes (parecia travado; com `--offline` e sem timeout concluiu); o primeiro import a frio do Prisma Client levou ~88 s (timeouts do Vitest do backend aumentados para 120 s); a suíte do frontend leva ~130 s a frio e estoura o tempo de inicialização do worker dentro de `pnpm quality`, embora passe isolada. Dentro do Docker (disco do WSL) tudo é rápido: instalar e gerar o client leva ~17 s. Se possível, mover o projeto para o SSD.
+- Se `pnpm install` for interrompido, sobram diretórios `*_tmp_*` em `node_modules/.pnpm`; removê-los antes de tentar de novo.
+- pnpm 11 bloqueia build scripts não aprovados (`ERR_PNPM_IGNORED_BUILDS`) e escreve placeholders `set this to true or false` em `allowBuilds`; `prisma` e `@prisma/engines` foram liberados explicitamente em `pnpm-workspace.yaml`.
+- `prisma migrate diff` sem datasource configurado devolve saída vazia com código 0 (o schema engine exige `--datasource` e o erro é engolido). Para diffs offline, exportar um `DATABASE_URL` fictício.
+- **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 
 ## Decisões aprovadas pelo planejamento
 
@@ -77,16 +107,24 @@ Ambiente Docker implementado no PASSO 02:
 
 ## Próxima ação
 
-O PASSO 02 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 03 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 3`
+`INICIE O PASSO 4`
 
-Quando autorizado, executar apenas o PASSO 03 de `PASSOS.md`: Prisma e modelo base de dados. Não antecipar autenticação.
+Quando autorizado, executar apenas o PASSO 04 de `PASSOS.md`: autenticação Google e sessão segura. Não antecipar RBAC completo (PASSO 05) nem perfil (PASSO 06).
+
+Pendências conhecidas para passos futuros:
+
+- PASSO 04: preencher `User.googleSubject`, `lastLoginAt` e atribuir o papel `USER` no primeiro login; e-mail sempre normalizado (`lower(trim)`), senão o CHECK rejeita.
+- PASSO 09: tratar exclusão de conta/categoria/planilha com movimentações (as FKs `NO ACTION` bloqueiam) e derivar "vencido" de `due_on`.
+- PASSO 12: semear `AIProvider` quando a administração de provedores existir.
+- Avaliar mover o projeto do disco USB para o SSD (ver erros conhecidos).
 
 ## Observações operacionais
 
-- O PASSO 01 foi commitado (`5f4756e`); o PASSO 02 aguarda commit manual do usuário.
-- Ainda não existem Prisma, migrations ou imagem de produção.
+- PASSO 01 commitado (`5f4756e`), PASSO 02 commitado (`6324d5d`); o PASSO 03 aguarda commit manual do usuário.
+- Ainda não existe imagem de produção.
+- Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
 - O `.env.example` continua sendo um contrato preliminar e deve ser ajustado conforme adapters reais forem implementados.
 - A documentação deve ser atualizada com evidências reais, não com suposições de conclusão.
@@ -111,3 +149,12 @@ Quando autorizado, executar apenas o PASSO 03 de `PASSOS.md`: Prisma e modelo ba
 - `docker compose watch`: criação/remoção sincronizadas em backend e frontend.
 - `pnpm quality`: passou; 20 testes em 5 arquivos (backend 18, contracts 1, frontend 1).
 - Stack derrubada ao final com `docker compose down` (volume `leccor-finance-flow_postgres-data` mantido).
+
+## Evidências do PASSO 03
+
+- `prisma validate`: schema válido; `prisma generate` ok no host e na imagem.
+- `pnpm test:integration`: 29 testes em 2 arquivos passam no host (Postgres do Compose em `127.0.0.1:55432`) e dentro do container `backend`; nenhum banco `leccor_test_*` restante.
+- Migration: aplica do zero, sem drift contra `schema.prisma`, `down.sql` remove tabelas/enums/funções e o registro da migration, reaplicação ok.
+- Docker: `docker compose build --no-cache backend` ok; `db:deploy` aplicou `20261008185149_init`; `db:seed` 2× → 2 papéis e 14 categorias; `db:status` "up to date"; readiness 200; dados mantidos após `down`/`up`.
+- Host: `pnpm install --frozen-lockfile --offline` ok; Prettier, ESLint, typecheck e build ok; backend 18 testes e contracts 1 teste ok.
+- Frontend (não alterado): 1 teste passa isolado (131 s a frio); dentro de `pnpm quality` o worker do Vitest excedeu o tempo de inicialização por causa do disco lento, e por isso a pipeline completa terminou com código 1 nesta máquina.

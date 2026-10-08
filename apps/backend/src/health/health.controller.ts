@@ -1,5 +1,5 @@
 import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
-import { DatabaseService } from '../database/database.service.js';
+import { PrismaService } from '../database/prisma.service.js';
 
 export interface HealthResponse {
   status: 'ok';
@@ -16,7 +16,7 @@ export interface ReadinessResponse {
 
 @Controller('health')
 export class HealthController {
-  constructor(@Inject(DatabaseService) private readonly database: DatabaseService) {}
+  constructor(@Inject(PrismaService) private readonly database: PrismaService) {}
 
   /** Liveness: the process answers HTTP. Does not touch dependencies. */
   @Get()

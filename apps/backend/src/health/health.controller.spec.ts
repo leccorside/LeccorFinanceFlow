@@ -1,6 +1,6 @@
 import { ServiceUnavailableException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { DatabaseService } from '../database/database.service.js';
+import { PrismaService } from '../database/prisma.service.js';
 import { HealthController } from './health.controller.js';
 
 async function createController(databaseUp: boolean): Promise<HealthController> {
@@ -8,7 +8,7 @@ async function createController(databaseUp: boolean): Promise<HealthController> 
     controllers: [HealthController],
     providers: [
       {
-        provide: DatabaseService,
+        provide: PrismaService,
         useValue: { isReachable: async () => databaseUp },
       },
     ],

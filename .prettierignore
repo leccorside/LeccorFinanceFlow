@@ -4,3 +4,5 @@ coverage
 package-lock.json
 pnpm-lock.yaml
 PROMPT.md
+apps/backend/src/generated
+apps/backend/prisma/migrations

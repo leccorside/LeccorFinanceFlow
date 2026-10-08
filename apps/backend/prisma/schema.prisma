@@ -1,0 +1,691 @@
+// Leccor Finance Flow — relational model.
+// Conventions:
+// - UUID primary keys (the same ID is used for the matching Google Sheets row).
+// - Money: Decimal(19,4). Investment quantity: Decimal(28,10). Never float.
+// - Dates without time (occurrence, due, paid) use @db.Date; instants use timestamptz.
+// - snake_case tables/columns via @@map/@map.
+// - Owner consistency across relations (e.g. a transaction cannot point to another
+//   user's account) and CHECK constraints live in raw SQL inside the migration,
+//   because Prisma does not model them. See migrations/*/migration.sql.
+
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum UserStatus {
+  ACTIVE
+  BLOCKED
+}
+
+enum RoleName {
+  ADMIN
+  USER
+}
+
+enum AppLocale {
+  pt_BR
+  en_US
+  es_ES
+}
+
+enum VoiceGender {
+  FEMALE
+  MALE
+}
+
+enum GoogleConnectionStatus {
+  ACTIVE
+  NEEDS_REAUTH
+  REVOKED
+}
+
+enum SpreadsheetStatus {
+  PENDING_CREATION
+  ACTIVE
+  ERROR
+  ARCHIVED
+}
+
+enum SyncStatus {
+  SYNCED
+  PENDING_SYNC
+  CONFLICT
+}
+
+enum FinancialAccountType {
+  CHECKING
+  SAVINGS
+  WALLET
+  CASH
+  DIGITAL
+  CREDIT_CARD
+  INVESTMENT
+  OTHER
+}
+
+enum CategoryKind {
+  INCOME
+  EXPENSE
+  INVESTMENT
+  GENERAL
+}
+
+enum TransactionType {
+  INCOME
+  EXPENSE
+  INVESTMENT
+  TRANSFER
+}
+
+enum TransactionStatus {
+  PENDING
+  COMPLETED
+  CANCELED
+}
+
+enum PaymentMethod {
+  CASH
+  PIX
+  DEBIT_CARD
+  CREDIT_CARD
+  BANK_TRANSFER
+  BANK_SLIP
+  DIRECT_DEBIT
+  OTHER
+}
+
+enum RecurrenceFrequency {
+  WEEKLY
+  BIWEEKLY
+  MONTHLY
+  YEARLY
+  CUSTOM
+}
+
+enum RecurrenceIntervalUnit {
+  DAY
+  WEEK
+  MONTH
+  YEAR
+}
+
+enum InvestmentClass {
+  STOCK
+  REIT
+  ETF
+  CRYPTO
+  TREASURY
+  CDB
+  LCI_LCA
+  FUND
+  PENSION
+  OTHER
+}
+
+enum ConversationMessageRole {
+  USER
+  ASSISTANT
+  TOOL
+}
+
+enum AIProviderType {
+  OPENAI
+  GEMINI
+  ANTHROPIC
+}
+
+enum AIPurpose {
+  CHAT
+  FINANCIAL_INTERPRETATION
+  ANALYSIS
+}
+
+enum ReportType {
+  MONTHLY
+  ANNUAL
+  INCOME
+  EXPENSES
+  CATEGORIES
+  INVESTMENTS
+  ACCOUNTS
+  CASH_FLOW
+  CONSOLIDATED
+}
+
+enum ReportFormat {
+  PDF
+  XLSX
+}
+
+enum ReportStatus {
+  GENERATING
+  READY
+  FAILED
+  EXPIRED
+}
+
+enum ActionEntityType {
+  TRANSACTION
+  FINANCIAL_ACCOUNT
+  CATEGORY
+  INVESTMENT
+  RECURRING_TRANSACTION
+  INSTALLMENT
+  SPREADSHEET
+  USER_PROFILE
+  VOICE_PREFERENCE
+}
+
+enum ActionKind {
+  CREATE
+  UPDATE
+  DELETE
+}
+
+// ─────────────────────── Identity and access ───────────────────────
+
+model User {
+  id           String     @id @default(uuid(7)) @db.Uuid
+  /// Always stored lower-cased and trimmed (CHECK constraint).
+  email        String     @unique
+  /// Google `sub` claim; immutable identity key for login.
+  googleSubject String?   @unique @map("google_subject")
+  status       UserStatus @default(ACTIVE)
+  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  roles                 UserRole[]
+  profile               UserProfile?
+  voicePreference       VoicePreference?
+  googleConnection      GoogleConnection?
+  spreadsheets          Spreadsheet[]
+  financialAccounts     FinancialAccount[]
+  categories            Category[]
+  transactions          Transaction[]
+  investments           Investment[]
+  recurringTransactions RecurringTransaction[]
+  installments          Installment[]
+  conversations         Conversation[]
+  reports               Report[]
+  actionHistory         ActionHistory[]
+  updatedSettings       SystemSetting[]
+
+  @@index([status])
+  @@map("users")
+}
+
+model Role {
+  id          String   @id @default(uuid(7)) @db.Uuid
+  name        RoleName @unique
+  description String
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  users UserRole[]
+
+  @@map("roles")
+}
+
+model UserRole {
+  userId     String   @map("user_id") @db.Uuid
+  roleId     String   @map("role_id") @db.Uuid
+  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role Role @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+model UserProfile {
+  userId      String    @id @map("user_id") @db.Uuid
+  firstName   String?   @map("first_name") @db.VarChar(100)
+  lastName    String?   @map("last_name") @db.VarChar(100)
+  photoUrl    String?   @map("photo_url") @db.VarChar(2048)
+  phone       String?   @db.VarChar(32)
+  locale      AppLocale @default(pt_BR)
+  /// ISO 4217 code, upper-case (CHECK constraint).
+  currency    String    @default("BRL") @db.Char(3)
+  /// IANA time zone name.
+  timeZone    String    @default("America/Sao_Paulo") @map("time_zone") @db.VarChar(64)
+  preferences Json      @default("{}")
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_profiles")
+}
+
+model VoicePreference {
+  userId       String      @id @map("user_id") @db.Uuid
+  gender       VoiceGender @default(FEMALE)
+  /// Provider-specific voice; null means "default voice for gender/locale".
+  provider     String?     @db.VarChar(50)
+  voiceId      String?     @map("voice_id") @db.VarChar(100)
+  locale       AppLocale?
+  /// 0.50–2.00 (CHECK constraint).
+  speakingRate Decimal     @default(1.00) @map("speaking_rate") @db.Decimal(3, 2)
+  autoSpeak    Boolean     @default(true) @map("auto_speak")
+  updatedAt    DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("voice_preferences")
+}
+
+model GoogleConnection {
+  id                    String                 @id @default(uuid(7)) @db.Uuid
+  userId                String                 @unique @map("user_id") @db.Uuid
+  googleSubject         String                 @map("google_subject")
+  googleEmail           String                 @map("google_email")
+  grantedScopes         String[]               @map("granted_scopes")
+  /// AES-256-GCM ciphertext; never returned to clients.
+  accessTokenEncrypted  String?                @map("access_token_encrypted")
+  refreshTokenEncrypted String?                @map("refresh_token_encrypted")
+  encryptionKeyVersion  String?                @map("encryption_key_version") @db.VarChar(16)
+  accessTokenExpiresAt  DateTime?              @map("access_token_expires_at") @db.Timestamptz(3)
+  status                GoogleConnectionStatus @default(ACTIVE)
+  lastRefreshedAt       DateTime?              @map("last_refreshed_at") @db.Timestamptz(3)
+  revokedAt             DateTime?              @map("revoked_at") @db.Timestamptz(3)
+  createdAt             DateTime               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt             DateTime               @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("google_connections")
+}
+
+model SystemSetting {
+  key                  String   @id @db.VarChar(100)
+  /// Non-secret value. Exactly one of value / encryptedValue is set (CHECK constraint).
+  value                Json?
+  encryptedValue       String?  @map("encrypted_value")
+  encryptionKeyVersion String?  @map("encryption_key_version") @db.VarChar(16)
+  description          String?
+  updatedById          String?  @map("updated_by_id") @db.Uuid
+  createdAt            DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  updatedBy User? @relation(fields: [updatedById], references: [id], onDelete: SetNull)
+
+  @@map("system_settings")
+}
+
+// ──────────────────────────── Finance ────────────────────────────
+
+model Spreadsheet {
+  id                  String            @id @default(uuid(7)) @db.Uuid
+  ownerId             String            @map("owner_id") @db.Uuid
+  /// Null until the Google file is created.
+  googleSpreadsheetId String?           @unique @map("google_spreadsheet_id")
+  name                String            @db.VarChar(150)
+  status              SpreadsheetStatus @default(PENDING_CREATION)
+  /// At most one active spreadsheet per owner (partial unique index).
+  isActive            Boolean           @default(false) @map("is_active")
+  schemaVersion       Int               @default(1) @map("schema_version")
+  syncCheckpoint      Json?             @map("sync_checkpoint")
+  lastSyncedAt        DateTime?         @map("last_synced_at") @db.Timestamptz(3)
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner                 User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  transactions          Transaction[]
+  recurringTransactions RecurringTransaction[]
+  installments          Installment[]
+  conversations         Conversation[]
+  reports               Report[]
+
+  @@unique([ownerId, name])
+  @@map("spreadsheets")
+}
+
+model FinancialAccount {
+  id             String               @id @default(uuid(7)) @db.Uuid
+  ownerId        String               @map("owner_id") @db.Uuid
+  type           FinancialAccountType
+  name           String               @db.VarChar(100)
+  institution    String?              @db.VarChar(100)
+  currency       String               @default("BRL") @db.Char(3)
+  initialBalance Decimal              @default(0) @map("initial_balance") @db.Decimal(19, 4)
+  /// Credit card only (CHECK constraint).
+  creditLimit    Decimal?             @map("credit_limit") @db.Decimal(19, 4)
+  closingDay     Int?                 @map("closing_day") @db.SmallInt
+  dueDay         Int?                 @map("due_day") @db.SmallInt
+  lastFourDigits String?              @map("last_four_digits") @db.Char(4)
+  isArchived     Boolean              @default(false) @map("is_archived")
+  syncStatus     SyncStatus           @default(PENDING_SYNC) @map("sync_status")
+  syncError      String?              @map("sync_error") @db.VarChar(500)
+  version        Int                  @default(1)
+  createdAt      DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner                 User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  transactions          Transaction[]          @relation("TransactionAccount")
+  incomingTransfers     Transaction[]          @relation("TransactionTransferAccount")
+  investments           Investment[]
+  recurringTransactions RecurringTransaction[]
+  installments          Installment[]
+
+  @@unique([ownerId, type, name])
+  @@map("financial_accounts")
+}
+
+model Category {
+  id         String       @id @default(uuid(7)) @db.Uuid
+  /// Null for system categories shared by every user.
+  ownerId    String?      @map("owner_id") @db.Uuid
+  /// Stable key for system categories (i18n + idempotent seed). Set iff ownerId is null.
+  systemKey  String?      @unique @map("system_key") @db.VarChar(50)
+  parentId   String?      @map("parent_id") @db.Uuid
+  kind       CategoryKind
+  name       String       @db.VarChar(100)
+  color      String?      @db.Char(7)
+  icon       String?      @db.VarChar(50)
+  isArchived Boolean      @default(false) @map("is_archived")
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime     @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner                 User?                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  parent                Category?              @relation("CategoryTree", fields: [parentId], references: [id], onDelete: NoAction)
+  children              Category[]             @relation("CategoryTree")
+  transactions          Transaction[]
+  recurringTransactions RecurringTransaction[]
+  installments          Installment[]
+
+  @@index([ownerId, kind])
+  @@index([parentId])
+  @@map("categories")
+}
+
+model Transaction {
+  id                     String            @id @default(uuid(7)) @db.Uuid
+  ownerId                String            @map("owner_id") @db.Uuid
+  spreadsheetId          String?           @map("spreadsheet_id") @db.Uuid
+  type                   TransactionType
+  status                 TransactionStatus @default(PENDING)
+  description            String            @db.VarChar(255)
+  /// Always positive; direction comes from `type` (CHECK constraint).
+  amount                 Decimal           @db.Decimal(19, 4)
+  currency               String            @default("BRL") @db.Char(3)
+  occurredOn             DateTime          @map("occurred_on") @db.Date
+  dueOn                  DateTime?         @map("due_on") @db.Date
+  /// Required when status = COMPLETED (CHECK constraint).
+  paidOn                 DateTime?         @map("paid_on") @db.Date
+  paymentMethod          PaymentMethod?    @map("payment_method")
+  accountId              String?           @map("account_id") @db.Uuid
+  /// Destination account; set iff type = TRANSFER (CHECK constraint).
+  transferAccountId      String?           @map("transfer_account_id") @db.Uuid
+  /// Leaf category; the parent is the "Categoria" and the leaf the "Subcategoria".
+  categoryId             String?           @map("category_id") @db.Uuid
+  investmentId           String?           @map("investment_id") @db.Uuid
+  installmentId          String?           @map("installment_id") @db.Uuid
+  installmentNumber      Int?              @map("installment_number") @db.SmallInt
+  recurringTransactionId String?           @map("recurring_transaction_id") @db.Uuid
+  /// Occurrence date this row materializes; unique per recurrence (idempotency).
+  recurrenceOccurrenceOn DateTime?         @map("recurrence_occurrence_on") @db.Date
+  notes                  String?           @db.VarChar(1000)
+  tags                   String[]          @default([])
+  syncStatus             SyncStatus        @default(PENDING_SYNC) @map("sync_status")
+  syncError              String?           @map("sync_error") @db.VarChar(500)
+  version                Int               @default(1)
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner                User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  spreadsheet          Spreadsheet?          @relation(fields: [spreadsheetId], references: [id], onDelete: NoAction)
+  account              FinancialAccount?     @relation("TransactionAccount", fields: [accountId], references: [id], onDelete: NoAction)
+  transferAccount      FinancialAccount?     @relation("TransactionTransferAccount", fields: [transferAccountId], references: [id], onDelete: NoAction)
+  category             Category?             @relation(fields: [categoryId], references: [id], onDelete: NoAction)
+  investment           Investment?           @relation(fields: [investmentId], references: [id], onDelete: NoAction)
+  installment          Installment?          @relation(fields: [installmentId], references: [id], onDelete: Cascade)
+  recurringTransaction RecurringTransaction? @relation(fields: [recurringTransactionId], references: [id], onDelete: SetNull)
+
+  @@unique([installmentId, installmentNumber])
+  @@unique([recurringTransactionId, recurrenceOccurrenceOn])
+  @@index([ownerId, occurredOn])
+  @@index([spreadsheetId, occurredOn])
+  @@index([ownerId, status, dueOn])
+  @@index([ownerId, categoryId, occurredOn])
+  @@index([ownerId, syncStatus])
+  @@index([accountId])
+  @@index([transferAccountId])
+  @@index([categoryId])
+  @@index([investmentId])
+  @@map("transactions")
+}
+
+model Investment {
+  id          String          @id @default(uuid(7)) @db.Uuid
+  ownerId     String          @map("owner_id") @db.Uuid
+  accountId   String?         @map("account_id") @db.Uuid
+  assetClass  InvestmentClass @map("asset_class")
+  name        String          @db.VarChar(150)
+  symbol      String?         @db.VarChar(30)
+  quantity    Decimal         @default(0) @db.Decimal(28, 10)
+  totalCost   Decimal         @default(0) @map("total_cost") @db.Decimal(19, 4)
+  currency    String          @default("BRL") @db.Char(3)
+  notes       String?         @db.VarChar(1000)
+  syncStatus  SyncStatus      @default(PENDING_SYNC) @map("sync_status")
+  syncError   String?         @map("sync_error") @db.VarChar(500)
+  version     Int             @default(1)
+  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner        User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  account      FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: NoAction)
+  transactions Transaction[]
+
+  @@index([ownerId, assetClass])
+  @@index([accountId])
+  @@map("investments")
+}
+
+model RecurringTransaction {
+  id                 String                  @id @default(uuid(7)) @db.Uuid
+  ownerId            String                  @map("owner_id") @db.Uuid
+  spreadsheetId      String?                 @map("spreadsheet_id") @db.Uuid
+  accountId          String?                 @map("account_id") @db.Uuid
+  categoryId         String?                 @map("category_id") @db.Uuid
+  type               TransactionType
+  description        String                  @db.VarChar(255)
+  amount             Decimal                 @db.Decimal(19, 4)
+  currency           String                  @default("BRL") @db.Char(3)
+  paymentMethod      PaymentMethod?          @map("payment_method")
+  frequency          RecurrenceFrequency
+  /// CUSTOM only: every `intervalCount` `intervalUnit`s (CHECK constraint).
+  intervalCount      Int                     @default(1) @map("interval_count") @db.SmallInt
+  intervalUnit       RecurrenceIntervalUnit? @map("interval_unit")
+  dayOfMonth         Int?                    @map("day_of_month") @db.SmallInt
+  startOn            DateTime                @map("start_on") @db.Date
+  endOn              DateTime?               @map("end_on") @db.Date
+  nextOccurrenceOn   DateTime                @map("next_occurrence_on") @db.Date
+  lastMaterializedOn DateTime?               @map("last_materialized_on") @db.Date
+  isActive           Boolean                 @default(true) @map("is_active")
+  version            Int                     @default(1)
+  createdAt          DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt          DateTime                @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner        User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  spreadsheet  Spreadsheet?      @relation(fields: [spreadsheetId], references: [id], onDelete: NoAction)
+  account      FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: NoAction)
+  category     Category?         @relation(fields: [categoryId], references: [id], onDelete: NoAction)
+  transactions Transaction[]
+
+  @@index([ownerId, isActive, nextOccurrenceOn])
+  @@index([spreadsheetId])
+  @@index([accountId])
+  @@index([categoryId])
+  @@map("recurring_transactions")
+}
+
+/// The original installment purchase. Each parcel is a Transaction with
+/// installmentId + installmentNumber.
+model Installment {
+  id               String   @id @default(uuid(7)) @db.Uuid
+  ownerId          String   @map("owner_id") @db.Uuid
+  spreadsheetId    String?  @map("spreadsheet_id") @db.Uuid
+  accountId        String?  @map("account_id") @db.Uuid
+  categoryId       String?  @map("category_id") @db.Uuid
+  description      String   @db.VarChar(255)
+  totalAmount      Decimal  @map("total_amount") @db.Decimal(19, 4)
+  currency         String   @default("BRL") @db.Char(3)
+  installmentCount Int      @map("installment_count") @db.SmallInt
+  purchasedOn      DateTime @map("purchased_on") @db.Date
+  firstDueOn       DateTime @map("first_due_on") @db.Date
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner        User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  spreadsheet  Spreadsheet?      @relation(fields: [spreadsheetId], references: [id], onDelete: NoAction)
+  account      FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: NoAction)
+  category     Category?         @relation(fields: [categoryId], references: [id], onDelete: NoAction)
+  transactions Transaction[]
+
+  @@index([ownerId, purchasedOn])
+  @@index([spreadsheetId])
+  @@index([accountId])
+  @@index([categoryId])
+  @@map("installments")
+}
+
+// ───────────────────── Conversation, AI and reports ─────────────────────
+
+model Conversation {
+  id             String    @id @default(uuid(7)) @db.Uuid
+  ownerId        String    @map("owner_id") @db.Uuid
+  spreadsheetId  String?   @map("spreadsheet_id") @db.Uuid
+  title          String?   @db.VarChar(150)
+  locale         AppLocale @default(pt_BR)
+  /// Structured context (period, category in focus…); never raw instructions.
+  contextSummary Json?     @map("context_summary")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  owner         User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  spreadsheet   Spreadsheet?          @relation(fields: [spreadsheetId], references: [id], onDelete: SetNull)
+  messages      ConversationMessage[]
+  actionHistory ActionHistory[]
+
+  @@index([ownerId, updatedAt])
+  @@index([spreadsheetId])
+  @@map("conversations")
+}
+
+model ConversationMessage {
+  id              String                  @id @default(uuid(7)) @db.Uuid
+  conversationId  String                  @map("conversation_id") @db.Uuid
+  role            ConversationMessageRole
+  content         String
+  toolName        String?                 @map("tool_name") @db.VarChar(100)
+  /// Structured tool call/result payload.
+  toolPayload     Json?                   @map("tool_payload")
+  actionHistoryId String?                 @map("action_history_id") @db.Uuid
+  /// Provider that produced an ASSISTANT message (functional data, not a log).
+  provider        AIProviderType?
+  createdAt       DateTime                @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  conversation  Conversation   @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  actionHistory ActionHistory? @relation(fields: [actionHistoryId], references: [id], onDelete: SetNull)
+
+  @@index([conversationId, createdAt])
+  @@index([actionHistoryId])
+  @@map("conversation_messages")
+}
+
+model AIProvider {
+  id           String         @id @default(uuid(7)) @db.Uuid
+  type         AIProviderType @unique
+  displayName  String         @map("display_name") @db.VarChar(100)
+  isActive     Boolean        @default(false) @map("is_active")
+  capabilities AIPurpose[]
+  createdAt    DateTime       @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt    DateTime       @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  configurations AIConfiguration[]
+
+  @@map("ai_providers")
+}
+
+model AIConfiguration {
+  id                   String    @id @default(uuid(7)) @db.Uuid
+  providerId           String    @map("provider_id") @db.Uuid
+  purpose              AIPurpose
+  model                String    @db.VarChar(100)
+  /// 1 = tried first. Unique per purpose.
+  priority             Int       @db.SmallInt
+  isActive             Boolean   @default(true) @map("is_active")
+  /// AES-256-GCM ciphertext; never returned to clients.
+  apiKeyEncrypted      String?   @map("api_key_encrypted")
+  encryptionKeyVersion String?   @map("encryption_key_version") @db.VarChar(16)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  provider AIProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
+
+  @@unique([providerId, purpose])
+  @@unique([purpose, priority])
+  @@map("ai_configurations")
+}
+
+model Report {
+  id            String       @id @default(uuid(7)) @db.Uuid
+  ownerId       String       @map("owner_id") @db.Uuid
+  spreadsheetId String?      @map("spreadsheet_id") @db.Uuid
+  type          ReportType
+  format        ReportFormat
+  periodStart   DateTime     @map("period_start") @db.Date
+  periodEnd     DateTime     @map("period_end") @db.Date
+  status        ReportStatus @default(GENERATING)
+  fileName      String?      @map("file_name") @db.VarChar(255)
+  /// Server-side temporary location; never exposed directly.
+  storageKey    String?      @map("storage_key") @db.VarChar(500)
+  errorMessage  String?      @map("error_message") @db.VarChar(500)
+  expiresAt     DateTime     @map("expires_at") @db.Timestamptz(3)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  owner       User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  spreadsheet Spreadsheet? @relation(fields: [spreadsheetId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, createdAt])
+  @@index([status, expiresAt])
+  @@index([spreadsheetId])
+  @@map("reports")
+}
+
+/// Functional history for undo and user-facing audit. Not a technical log.
+model ActionHistory {
+  id             String           @id @default(uuid(7)) @db.Uuid
+  ownerId        String           @map("owner_id") @db.Uuid
+  conversationId String?          @map("conversation_id") @db.Uuid
+  entityType     ActionEntityType @map("entity_type")
+  entityId       String           @map("entity_id") @db.Uuid
+  action         ActionKind
+  /// Minimal snapshots. CREATE has no before; DELETE has no after (CHECK constraint).
+  beforeState    Json?            @map("before_state")
+  afterState     Json?            @map("after_state")
+  isReversible   Boolean          @default(true) @map("is_reversible")
+  revertedAt     DateTime?        @map("reverted_at") @db.Timestamptz(3)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  owner        User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  conversation Conversation?         @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+  messages     ConversationMessage[]
+
+  @@index([ownerId, createdAt])
+  @@index([entityType, entityId])
+  @@index([conversationId])
+  @@map("action_history")
+}

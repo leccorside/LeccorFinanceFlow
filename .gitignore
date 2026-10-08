@@ -1,6 +1,8 @@
 node_modules/
 dist/
 coverage/
+# Prisma Client is generated on install (`prisma generate`).
+apps/backend/src/generated/
 .env
 .env.*
 !.env.example

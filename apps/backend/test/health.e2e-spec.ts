@@ -2,7 +2,7 @@ import type { INestApplication } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AppModule } from '../src/app.module.js';
-import { DatabaseService } from '../src/database/database.service.js';
+import { PrismaService } from '../src/database/prisma.service.js';
 
 describe('Health endpoints', () => {
   let app: INestApplication;
@@ -14,7 +14,7 @@ describe('Health endpoints', () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
     })
-      .overrideProvider(DatabaseService)
+      .overrideProvider(PrismaService)
       .useValue({ isReachable: async () => databaseUp })
       .compile();
 

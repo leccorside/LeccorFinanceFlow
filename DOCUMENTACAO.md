@@ -56,12 +56,24 @@ Detalhes:
 - O frontend encaminha `/api` para `http://backend:3000` via `API_PROXY_TARGET`.
 - Dentro do Compose, `DATABASE_URL` é montada a partir de `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_DB`; use senha com caracteres seguros para URL.
 - As imagens rodam como usuário `node`, sem `.env` copiado para dentro (`.dockerignore`).
-- `--watch` sincroniza `apps/*/src` e reconstrói a imagem quando `package.json`, `pnpm-lock.yaml` ou `vite.config.ts` mudam.
+- `--watch` sincroniza `apps/*/src` e reconstrói a imagem quando `package.json`, `pnpm-lock.yaml`, `vite.config.ts` ou `apps/backend/prisma/` mudam.
+- O Prisma Client é gerado dentro da imagem (postinstall do backend); a versão gerada no host não é copiada.
+
+### Banco: migrations e seed no Docker
+
+Migrations não rodam automaticamente ao subir o backend; são aplicadas de forma explícita:
+
+```bash
+docker compose exec backend pnpm --filter @leccor/backend db:deploy   # aplica migrations pendentes
+docker compose exec backend pnpm --filter @leccor/backend db:seed     # papéis e categorias padrão (idempotente)
+docker compose exec backend pnpm --filter @leccor/backend db:status   # estado das migrations
+docker compose exec backend pnpm --filter @leccor/backend test:integration
+```
 
 ### Healthchecks da API
 
 - `GET /api/v1/health` — liveness: o processo responde; não consulta dependências.
-- `GET /api/v1/health/ready` — readiness: executa `SELECT 1` no PostgreSQL. Retorna `200` com `{"status":"ok","checks":{"database":"up"}}` ou `503` com `{"status":"error","checks":{"database":"down"}}`.
+- `GET /api/v1/health/ready` — readiness: executa `SELECT 1` no PostgreSQL via Prisma. Retorna `200` com `{"status":"ok","checks":{"database":"up"}}` ou `503` com `{"status":"error","checks":{"database":"down"}}`.
 
 ### Validação tipada de ambiente
 
@@ -140,16 +152,50 @@ Controladores não concentrarão regra de negócio. DTOs validam formato; servi�
 
 ## Banco de dados
 
-O Prisma modelará as entidades exigidas no prompt: `User`, `Role`, `UserProfile`, `GoogleConnection`, `Spreadsheet`, `FinancialAccount`, `Transaction`, `Category`, `Investment`, `RecurringTransaction`, `Installment`, `Conversation`, `ConversationMessage`, `AIProvider`, `AIConfiguration`, `VoicePreference`, `Report`, `SystemSetting` e `ActionHistory`.
+Implementado no PASSO 03 com Prisma 7.10 (`apps/backend/prisma/schema.prisma`, gerador `prisma-client` em ESM, driver adapter `@prisma/adapter-pg`, configuração em `apps/backend/prisma.config.ts`).
 
-Decisões:
+Entidades (tabelas em snake_case): `User`, `Role`, `UserRole` (N:N), `UserProfile`, `VoicePreference`, `GoogleConnection`, `SystemSetting`, `Spreadsheet`, `FinancialAccount`, `Category`, `Transaction`, `Investment`, `RecurringTransaction`, `Installment`, `Conversation`, `ConversationMessage`, `AIProvider`, `AIConfiguration`, `Report` e `ActionHistory`.
 
-- UUID para identificadores.
-- UTC no banco; apresentação no fuso do perfil.
-- valores em `Decimal`, com código ISO de moeda.
-- unicidade e índices compostos por proprietário/contexto.
-- integridade referencial e deleção explícita.
-- `ActionHistory` guarda somente informação funcional necessária para auditoria do usuário e desfazer.
+### Tipos e convenções
+
+- IDs UUID v7 gerados pelo Prisma (ordenáveis no tempo); o mesmo ID irá para a linha do Sheets.
+- Dinheiro em `Decimal(19,4)`; quantidade de investimento em `Decimal(28,10)`; nunca `float`.
+- Datas de calendário (ocorrência, vencimento, pagamento, períodos) em `date`; instantes em `timestamptz(3)` UTC.
+- Moeda: código ISO 4217 em `char(3)` maiúsculo.
+- Entidades sincronizáveis guardam `sync_status` (`SYNCED`, `PENDING_SYNC`, `CONFLICT`), `sync_error` sanitizado e `version`.
+- Categorias do sistema têm `owner_id` nulo e `system_key` estável (usado para i18n e seed); categorias do usuário têm `owner_id` e não têm `system_key`.
+- `Category` usa árvore (`parent_id`): a transação aponta para a categoria folha; a raiz é a "Categoria" e a folha a "Subcategoria".
+- `Installment` é a compra original; cada parcela é uma `Transaction` com `installment_id` + `installment_number` (únicos juntos).
+- Recorrências materializadas guardam `recurrence_occurrence_on`, único por recorrência (idempotência sem fila).
+- Tokens Google e API keys só existem como texto cifrado (`*_encrypted` + `encryption_key_version`).
+
+### Regras garantidas no próprio banco
+
+Escritas à mão no fim de `migration.sql` (o Prisma não modela CHECK, índice parcial nem trigger):
+
+- CHECKs: valores positivos, moeda ISO, e-mail normalizado, `COMPLETED` exige `paid_on`, transferência exige conta de destino diferente da origem, campos de cartão só em `CREDIT_CARD`, dias 1–31, recorrência `CUSTOM` exige unidade, datas coerentes, prioridade de IA ≥ 1, formato dos snapshots do `ActionHistory` por ação, segredo cifrado exige versão da chave.
+- Índice único parcial: no máximo uma planilha ativa por usuário.
+- Isolamento por proprietário: triggers impedem que uma linha referencie conta, categoria, planilha, investimento, parcelamento, recorrência ou conversa de outro usuário (categorias do sistema são permitidas), e tornam `owner_id` imutável. É uma defesa em profundidade; a autorização principal continua na API (PASSO 05).
+- Excluir o usuário remove em cascata todos os seus dados. Dentro do mesmo usuário, as FKs usam `NO ACTION`: não é possível apagar uma conta, categoria ou planilha que ainda tem movimentações (exclusão explícita, tratada nos passos de domínio).
+
+### Migrations, reversão e seed
+
+| Script (backend)        | Ação                                                        |
+| ----------------------- | ----------------------------------------------------------- |
+| `pnpm db:migrate`       | `prisma migrate dev` (cria migrations em desenvolvimento)   |
+| `pnpm db:deploy`        | `prisma migrate deploy` (aplica pendentes; usado no Docker) |
+| `pnpm db:seed`          | papéis `ADMIN`/`USER` e 14 categorias padrão, por upsert    |
+| `pnpm db:status`        | estado das migrations                                       |
+| `pnpm prisma:generate`  | regenera o client (também roda no `postinstall`)            |
+| `pnpm test:integration` | testes em bancos descartáveis (exige `TEST_DATABASE_URL`)   |
+
+Cada migration tem um `down.sql` ao lado do `migration.sql`. Para reverter (apaga todos os dados): `prisma db execute --file prisma/migrations/<nome>/down.sql`; o próprio arquivo remove o registro em `_prisma_migrations`, e `db:deploy` reaplica depois. Ao criar novas migrations com SQL manual, escrever também o `down.sql` e manter o teste de drift verde.
+
+O Prisma Client é gerado em `apps/backend/src/generated/prisma` (fora do Git).
+
+### Testes de integração
+
+`test/integration/*.int-spec.ts` criam um banco `leccor_test_*` por arquivo, aplicam as migrations, executam e removem o banco. Cobrem: seed idempotente, precisão `Decimal`, cada CHECK, isolamento entre usuários, exclusão em cascata do usuário, ausência de drift entre migrations e `schema.prisma`, e reversão completa com reaplicação.
 
 ## Google OAuth
 

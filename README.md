@@ -4,7 +4,7 @@ Assistente financeiro pessoal com IA, Google Sheets e experiência conversaciona
 
 ## Estado atual
 
-Arquitetura e planejamento estão concluídos. PASSO 01 e PASSO 02 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade e ambiente oficial em Docker Compose (frontend, backend e PostgreSQL com healthchecks e volume persistente). Schema do banco, autenticação e funcionalidades financeiras ainda não foram iniciados.
+Arquitetura e planejamento estão concluídos. PASSOS 01 a 03 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade, ambiente oficial em Docker Compose e modelo relacional completo com Prisma (migration reversível, constraints e isolamento por proprietário no banco, seed de papéis e categorias). Autenticação e funcionalidades financeiras ainda não foram iniciadas.
 
 Documentos preparados:
 
@@ -35,6 +35,13 @@ A IA nunca acessará banco de dados ou planilhas diretamente. O fluxo obrigatór
 docker compose up --build --watch
 ```
 
+Na primeira execução (e após novas migrations), aplique o schema e o seed:
+
+```bash
+docker compose exec backend pnpm --filter @leccor/backend db:deploy
+docker compose exec backend pnpm --filter @leccor/backend db:seed
+```
+
 O frontend fica em `http://localhost:5173` e o backend em `http://localhost:3000`. Healthchecks: `GET /api/v1/health` (liveness) e `GET /api/v1/health/ready` (readiness com PostgreSQL). Portas ocupadas podem ser trocadas no `.env` (`FRONTEND_PORT`, `BACKEND_PORT`, `POSTGRES_PORT`). Detalhes em `DOCUMENTACAO.md`.
 
 Validação de qualidade no host:
@@ -48,6 +55,6 @@ pnpm quality
 
 Para autorizar o próximo passo, use:
 
-`INICIE O PASSO 3`
+`INICIE O PASSO 4`
 
-Até essa autorização, Prisma, migrations e autenticação não devem ser iniciados.
+Até essa autorização, autenticação Google e sessão não devem ser iniciadas.
