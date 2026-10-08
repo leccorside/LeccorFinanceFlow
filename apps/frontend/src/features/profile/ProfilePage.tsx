@@ -19,6 +19,7 @@ import {
 import { useSearchParams } from 'react-router-dom';
 import { GoogleConnectionCard } from './GoogleConnectionCard';
 import { returnMessageKey } from './google-return';
+import { SpreadsheetsCard } from './SpreadsheetsCard';
 import {
   diffProfile,
   fieldErrorsFrom,
@@ -70,6 +71,7 @@ export function ProfilePage() {
       }}
     >
       <GoogleConnectionCard returnMessage={googleMessage} />
+      <SpreadsheetsCard />
     </ProfileForm>
   );
 }

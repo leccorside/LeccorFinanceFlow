@@ -20,6 +20,11 @@ vi.mock('../../services/google', () => ({
   googleConnectUrl: () => '/api/v1/google/connect?redirectTo=%2Fprofile',
 }));
 
+vi.mock('../../services/spreadsheets', () => ({
+  listSpreadsheets: vi.fn().mockResolvedValue([]),
+  createSpreadsheet: vi.fn(),
+}));
+
 vi.mock('../../services/profile', () => ({
   getProfile: vi.fn(),
   updateProfile: vi.fn(),

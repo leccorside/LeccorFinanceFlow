@@ -189,7 +189,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: protege o ciclo de vida da conexão com o google sheets`
 
-## [ ] PASSO 08 — Criação e formatação do Google Sheets
+## [x] PASSO 08 — Criação e formatação do Google Sheets
 
 **Objetivo:** criar a planilha financeira profissional pelas APIs oficiais.
 
@@ -201,7 +201,36 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** adapter fake, payloads Google, idempotência, token expirado e smoke real opt-in.
 
-**Sugestão de commit:** `feat: create formatted financial spreadsheets`
+**Evidência (08/10/2026):**
+
+- **Backend**: módulo `spreadsheets`:
+  - cliente REST Drive/Sheets via `fetch`;
+  - template declarativo em 3 idiomas;
+  - construtor puro de `batchUpdate`;
+  - serviço com trava, recuperação por `appProperties` e retentativa em 401;
+  - migration `20261008220911_spreadsheet_setup` com `down.sql`.
+- **Unitários**: 155 (34 de planilha), cobrindo:
+  - payloads Google: 10 abas na ordem, aba padrão removida, metadados de planilha/aba/coluna, cabeçalhos traduzidos, colunas técnicas ocultas e protegidas, formatos de moeda/data, listas, filtros, cores, fórmulas e gráfico;
+  - repetição sem criar nem duplicar nada;
+  - aba renomeada pelo usuário e abas do usuário preservadas;
+  - en-US/es-ES e padrões de moeda (BRL, USD, EUR, JPY);
+  - cliente HTTP: URLs, corpo, `appProperties` e mapeamento de erros sem vazar o corpo da resposta.
+- **Integração**: 134 (17 de planilha) com fake em memória do Drive/Sheets (lote atômico, exige aba existente, recusa duplicatas). Cobrem:
+  - criação no Drive com o token do usuário e idioma/moeda/fuso do perfil;
+  - segunda planilha não ativa;
+  - repetição convergente com 1 arquivo;
+  - recuperação após queda;
+  - arquivo apagado recriado;
+  - trava concorrente e trava vencida;
+  - sem conexão, token expirado renovado, 401 com retentativa, acesso revogado;
+  - indisponibilidade com nova tentativa sem duplicar; permissão negada; reparo com falha mantém `ACTIVE`;
+  - ownership, CSRF, validação e falta de configuração (503).
+- **Smoke real opcional**: `pnpm test:google` (pulado sem `RUN_GOOGLE_INTEGRATION_TESTS=true`).
+- **Frontend**: card "Planilha financeira" no perfil. 63 testes.
+- **Mutações detectadas**: metadados sempre recriados (idempotência) e busca por `appProperties` desligada (recuperação).
+- **Docker**: migration aplicada; revelou que, sem chave de criptografia, a criação respondia 500. Corrigido para `503 google_connection_unavailable`, com teste. CSRF 403, payload inválido 400; suítes nos containers (155 + 133 + 63, antes do teste novo) e `pnpm quality` completo.
+
+**Sugestão de commit:** `feat: cria planilhas financeiras formatadas`
 
 ## [ ] PASSO 09 — Domínio financeiro e consultas
 

@@ -390,6 +390,12 @@ model Spreadsheet {
   /// At most one active spreadsheet per owner (partial unique index).
   isActive            Boolean           @default(false) @map("is_active")
   schemaVersion       Int               @default(1) @map("schema_version")
+  /// Language of tab names, headers and list values (fixed at creation; sync relies on it).
+  locale              AppLocale         @default(pt_BR)
+  /// Claim for the (slow, external) setup: prevents two concurrent setups of the same row.
+  setupStartedAt      DateTime?         @map("setup_started_at") @db.Timestamptz(3)
+  /// Sanitized code of the last setup failure (no Google payloads).
+  lastErrorCode       String?           @map("last_error_code") @db.VarChar(50)
   syncCheckpoint      Json?             @map("sync_checkpoint")
   lastSyncedAt        DateTime?         @map("last_synced_at") @db.Timestamptz(3)
   createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)

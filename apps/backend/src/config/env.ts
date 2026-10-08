@@ -117,6 +117,8 @@ const envSchema = z
     RATE_LIMIT_MAX_REQUESTS: positiveInt(100, 1_000_000),
     /** Per client IP and window, on /auth routes (login, callback, refresh, logout, csrf). */
     AUTH_RATE_LIMIT_MAX_REQUESTS: positiveInt(20, 1_000_000),
+    /** Per client IP and window, on spreadsheet creation/repair (several Google calls each). */
+    SPREADSHEET_RATE_LIMIT_MAX_REQUESTS: positiveInt(10, 1_000_000),
     MAX_JSON_BODY_SIZE: z
       .string()
       .regex(/^\d+(b|kb|mb)$/i, 'must look like 512kb or 1mb')

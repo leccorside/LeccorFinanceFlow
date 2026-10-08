@@ -2,7 +2,7 @@
 
 ## Estado em 08/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 07 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 08 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,30 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Planilha financeira implementada no PASSO 08:
+
+- `src/spreadsheets/google-workspace.client.ts`: `GoogleWorkspaceClient` (token `GOOGLE_WORKSPACE_CLIENT`) e `HttpGoogleWorkspaceClient` (Drive `files.list`/`files.create` e Sheets `get`/`batchUpdate` via `fetch`, erros em `GoogleApiError` por tipo); snapshot mínimo da planilha;
+- `spreadsheet-template.ts`: 10 abas com chaves estáveis, colunas, formatos, listas e textos pt-BR/en-US/es-ES (`TEXTS`); listas na mesma ordem dos enums do domínio (posição = valor);
+- `spreadsheet-setup.ts`: `buildSetupPlan(snapshot, options)` puro e idempotente; ids de aba determinísticos (`1000 + posição`), gráfico `9001`, metadados `lff.*`;
+- `spreadsheets.service.ts`/`controller`/`module`: `GET /spreadsheets`, `GET /spreadsheets/:id`, `POST /spreadsheets` (ensure), trava `setup_started_at`, `appProperties.lffSpreadsheetId`, recriação se o arquivo sumir, retentativa em 401 (`GoogleConnectionService.invalidateAccessToken`), primeira planilha vira ativa;
+- migration `20261008220911_spreadsheet_setup` (`locale`, `setup_started_at`, `last_error_code` + CHECKs) e política de rate limit `spreadsheets` (`SPREADSHEET_RATE_LIMIT_MAX_REQUESTS`);
+- testes: `spreadsheet-setup.spec`, `google-workspace.client.spec`, `test/integration/fake-workspace.ts` (Drive/Sheets em memória), `spreadsheets.int-spec`, smoke real opcional `test/google-real` (`pnpm test:google`);
+- frontend: `services/spreadsheets.ts`, `SpreadsheetsCard` + `spreadsheet-errors.ts` no perfil, 23 chaves i18n por idioma.
+
+## Decisões do PASSO 08
+
+- **Sem o pacote `googleapis`**: 4 endpoints REST com `fetch` tipado (o disco é lento e o pacote é enorme); o fake em memória cobre a semântica relevante.
+- **Arquivo criado via Drive com `appProperties`** + id salvo imediatamente: base da idempotência e da recuperação pós-queda (`drive.file` permite listar só os arquivos do app).
+- **Setup por diferença (snapshot → requests)**: itens aditivos só se faltarem; o resto é regravado. Regras condicionais são apagadas e recriadas. Títulos de abas existentes nunca são alterados (respeita renomeação). A aba padrão só é removida na primeira montagem.
+- **Idioma da planilha fixo na criação** (`spreadsheets.locale`): nomes de abas, cabeçalhos e valores de listas ficam nesse idioma; a sincronização vai usá-lo para traduzir valores. Mudar o idioma do perfil depois não reescreve a planilha.
+- **Developer metadata por aba e coluna**: a sincronização não depende de nomes nem de posições.
+- **Orçamento e Metas são abas de planejamento só da planilha** (não há entidades no banco); Receitas/Despesas/Dashboard/Resumo são fórmulas sobre Movimentações.
+- **Resumo mensal determinístico** (12 linhas, colunas fixas) em vez de QUERY com pivot, para o gráfico ser confiável.
+- **Proteções "warning only"**: o dono sempre pode editar (não dá para bloquear o dono), mas recebe aviso nas colunas técnicas, cabeçalhos e áreas geradas.
+- **Fórmulas em notação canônica** (inglês e vírgula); confirmação no Google real só pelo smoke opcional (risco documentado).
+- **Reparo com falha mantém `ACTIVE`**, exceto quando o arquivo sumiu (aí a linha volta a `PENDING_CREATION`; uma CHECK exige arquivo em planilhas `ACTIVE`).
+- **Botão no perfil** em vez de comando por chat: o assistente (PASSO 13/14) vai chamar o mesmo `SpreadsheetsService.ensure`.
 
 Conexão Google e cofre implementados no PASSO 07:
 
@@ -167,6 +191,10 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 08: limpar o id do arquivo apagado no Drive violava a CHECK "planilha `ACTIVE` exige arquivo" (pego pelo teste de integração). Corrigido: a linha volta a `PENDING_CREATION` até ser recriada.
+- PASSO 08: o limite de taxa fixo (10/min) da criação de planilhas barrava os próprios testes; virou a política configurável `SPREADSHEET_RATE_LIMIT_MAX_REQUESTS`.
+- PASSO 08: **bug real visto só no Docker**: sem chave de criptografia, `POST /spreadsheets` respondia 500, porque `getAccessToken` deixava escapar um erro interno do fluxo OAuth. Os testes sempre tinham chave. Corrigido para `503 google_connection_unavailable`, com teste sem chave.
+- PASSO 08: num smoke manual, um `SELECT` com coluna ambígua abortou o `psql` antes do `DELETE`, deixando o usuário sintético no banco; removido depois. Em limpezas, usar comandos `-c` separados.
 - PASSO 07: a primeira versão da rotação abortava inteira ao encontrar uma credencial indecifrável (pega pelo teste de integração, que reaproveita a credencial corrompida de outro teste). Corrigido: a credencial é pulada e contada, e o script sai com código 1. Em `getAccessToken`, falha de decifragem virou `409 google_reauth_required` em vez de 500.
 - PASSO 07: o `%{redirect_url}` do curl veio vazio nos testes manuais; para conferir redirecionamentos, ler o header `Location` (`curl -D -`).
 - PASSO 06: o script `typecheck` do frontend rodava `tsc --noEmit` sobre um `tsconfig.json` com `"files": []` e não verificava nada desde o PASSO 01 (só o `build` checava). Corrigido.
@@ -205,11 +233,18 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 07 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 08 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 8`
+`INICIE O PASSO 9`
 
-Quando autorizado, executar apenas o PASSO 08 de `PASSOS.md`: criação e formatação do Google Sheets. Usar `GoogleConnectionService.getAccessToken(userId)` (única fonte de token) e tratar `google_not_connected`/`google_reauth_required`/`google_unavailable`. Não antecipar o domínio financeiro (PASSO 09) nem a sincronização (PASSO 11).
+Quando autorizado, executar apenas o PASSO 09 de `PASSOS.md`: domínio financeiro (contas, categorias, transações, consultas e ActionHistory). Não escrever na planilha ainda (a sincronização é o PASSO 11): as entidades nascem com `sync_status = PENDING_SYNC`.
+
+Pendências ligadas ao PASSO 08:
+
+- PASSO 11: mapear colunas por `lff.column` (developer metadata) e valores de listas por posição em `TEXTS[spreadsheet.locale].lists`; preencher `record_id`/`record_version`/`synced_at`.
+- Rodar o smoke real (`pnpm test:google`) assim que houver uma conta de teste, para confirmar fórmulas, padrões de moeda e o gráfico no Google.
+- Importar planilhas que o usuário já tem exigiria o Google Picker (o escopo `drive.file` não enxerga outros arquivos): fora do escopo atual.
+- Gráficos adicionais (por categoria) e aplicação de `TEMPLATE_VERSION` mais nova a planilhas antigas (migração de template) ficam para depois.
 
 Regras para todo módulo novo:
 
@@ -241,7 +276,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`) e 06 (`9e9c872`) commitados; o PASSO 07 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`) e 07 (`ab50b00`) commitados; o PASSO 08 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -306,4 +341,13 @@ Pendências conhecidas para passos futuros:
 - Frontend: 56 testes (6 novos do card de conexão, nos 3 idiomas) passam no host e no container.
 - Mutações detectadas: AAD do cofre desligado e callback sem exigir o mesmo usuário.
 - Docker: migration aplicada; `GET /google/connection` sem tokens; `connect` anônimo → `/login?redirectTo=%2Fprofile`; sem configuração → `/profile?googleError=google_connection_unavailable`; `DELETE` 403 sem CSRF e 200 com; consentimento real (backend avulso com credenciais fictícias) com `scope=openid email .../drive.file`, `access_type=offline`, `prompt=consent`, `include_granted_scopes=true`, PKCE S256 e `login_hint`; `credentials:rotate` executado (código 0).
+- `pnpm quality` passou por completo.
+
+## Evidências do PASSO 08
+
+- Backend: 155 testes unitários (34 de planilha) e 134 de integração (17 de planilha) passam; suítes também verdes nos containers (155 + 133 + 63, antes do teste de configuração ausente); nenhum banco de teste restante.
+- Frontend: 63 testes (5 novos do card de planilha, em 3 idiomas).
+- Mutações detectadas: metadados de aba sempre recriados (idempotência) e busca por `appProperties` desligada (recuperação pós-queda).
+- Docker: migration `20261008220911_spreadsheet_setup` aplicada; `POST /spreadsheets` sem chave → `503 google_connection_unavailable` (planilha `ERROR` com `last_error_code`); sem CSRF 403; com `ownerId` 400.
+- Smoke real `pnpm test:google` presente e pulado por padrão (sem conta de teste).
 - `pnpm quality` passou por completo.

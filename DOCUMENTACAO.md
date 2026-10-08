@@ -94,6 +94,7 @@ O backend valida o ambiente com Zod (`apps/backend/src/config/env.ts`) antes de 
 | `RATE_LIMIT_TTL_SECONDS`                    | inteiro ≥ 1 (janela dos limites)                                                | `60`                                                |
 | `RATE_LIMIT_MAX_REQUESTS`                   | inteiro ≥ 1, por IP e janela, em toda a API                                     | `100`                                               |
 | `AUTH_RATE_LIMIT_MAX_REQUESTS`              | inteiro ≥ 1, por IP e janela, nas rotas `/auth`                                 | `20`                                                |
+| `SPREADSHEET_RATE_LIMIT_MAX_REQUESTS`       | inteiro ≥ 1, por IP e janela, na criação/reparo de planilhas                    | `10`                                                |
 | `MAX_JSON_BODY_SIZE`                        | `<n>b`, `<n>kb` ou `<n>mb`                                                      | `1mb`                                               |
 | `TRUST_PROXY`                               | `false`, `true`, número de saltos ou lista do Express                           | `false`                                             |
 | `ADMIN_EMAILS`                              | e-mails separados por vírgula (normalizados)                                    | vazio                                               |
@@ -196,15 +197,16 @@ Escritas à mão no fim de `migration.sql` (o Prisma não modela CHECK, índice 
 
 ### Migrations, reversão e seed
 
-| Script (backend)          | Ação                                                        |
-| ------------------------- | ----------------------------------------------------------- |
-| `pnpm db:migrate`         | `prisma migrate dev` (cria migrations em desenvolvimento)   |
-| `pnpm db:deploy`          | `prisma migrate deploy` (aplica pendentes; usado no Docker) |
-| `pnpm db:seed`            | papéis `ADMIN`/`USER` e 14 categorias padrão, por upsert    |
-| `pnpm db:status`          | estado das migrations                                       |
-| `pnpm prisma:generate`    | regenera o client (também roda no `postinstall`)            |
-| `pnpm test:integration`   | testes em bancos descartáveis (exige `TEST_DATABASE_URL`)   |
-| `pnpm credentials:rotate` | recriptografa as credenciais guardadas com a chave ativa    |
+| Script (backend)          | Ação                                                            |
+| ------------------------- | --------------------------------------------------------------- |
+| `pnpm db:migrate`         | `prisma migrate dev` (cria migrations em desenvolvimento)       |
+| `pnpm db:deploy`          | `prisma migrate deploy` (aplica pendentes; usado no Docker)     |
+| `pnpm db:seed`            | papéis `ADMIN`/`USER` e 14 categorias padrão, por upsert        |
+| `pnpm db:status`          | estado das migrations                                           |
+| `pnpm prisma:generate`    | regenera o client (também roda no `postinstall`)                |
+| `pnpm test:integration`   | testes em bancos descartáveis (exige `TEST_DATABASE_URL`)       |
+| `pnpm credentials:rotate` | recriptografa as credenciais guardadas com a chave ativa        |
+| `pnpm test:google`        | smoke opcional contra o Google real (ver "Planilha financeira") |
 
 Cada migration tem um `down.sql` ao lado do `migration.sql`. Para reverter (apaga todos os dados): `prisma db execute --file prisma/migrations/<nome>/down.sql`; o próprio arquivo remove o registro em `_prisma_migrations`, e `db:deploy` reaplica depois. Ao criar novas migrations com SQL manual, escrever também o `down.sql` e manter o teste de drift verde.
 
@@ -375,9 +377,62 @@ Revoga no Google (melhor esforço) e apaga os tokens locais em qualquer caso (`s
   3. rode `docker compose exec backend pnpm --filter @leccor/backend credentials:rotate`;
   4. quando o relatório indicar `0 unreadable`, a `V1` pode ser removida. Credenciais indecifráveis são puladas, nunca apagadas, e o script termina com código 1.
 
-## Google Sheets
+## Planilha financeira no Google Sheets (PASSO 08)
 
-O serviço usará APIs oficiais do Google para criar e formatar a planilha. O arquivo terá abas financeiras, IDs imutáveis por registro, versão e timestamp técnico oculto.
+Implementada em `apps/backend/src/spreadsheets`.
+
+### Rotas da planilha
+
+| Método e rota                                     | Uso                                                                                                                                                                                                                       |
+| ------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/spreadsheets`                        | Planilhas do usuário (não arquivadas): nome, estado (`PENDING_CREATION`, `ACTIVE`, `ERROR`), se está em uso (`isActive`), idioma, link e último código de erro.                                                           |
+| `GET /api/v1/spreadsheets/:id`                    | Uma planilha do usuário (`404` para id de outro usuário).                                                                                                                                                                 |
+| `POST /api/v1/spreadsheets` `{ "name"?: string }` | Cria, conclui ou repara a planilha com esse nome; sem nome usa "Controle Financeiro — {nome}" no idioma do perfil. Exige `X-CSRF-Token` e conexão Google ativa. Limite: `SPREADSHEET_RATE_LIMIT_MAX_REQUESTS` por janela. |
+
+Erros: `google_not_connected` (409), `google_reauth_required` (409), `google_connection_unavailable` (503), `google_unavailable` (503, pode tentar de novo), `google_permission_denied` (409), `spreadsheet_setup_in_progress` (409), `spreadsheet_not_found` (409), `spreadsheet_archived` (409), `spreadsheet_setup_failed` (502). O código fica também em `lastErrorCode`. Nenhum conteúdo das respostas do Google é exposto.
+
+### O que é criado
+
+- O arquivo é criado **no Google Drive do usuário, com o token dele** (o dono é o usuário), pela API do Drive. Depois é formatado por um único `batchUpdate` da API do Sheets.
+- **Abas**, nomeadas no idioma do perfil: Dashboard, Movimentações, Receitas, Despesas, Contas, Investimentos, Categorias, Orçamento, Metas e Resumo Mensal (em inglês e espanhol: Transactions/Movimientos…). Cada aba tem cor própria e cabeçalho congelado.
+- **Cabeçalhos** em negrito, na cor da aba; colunas com largura definida.
+- **Formatos**: moeda do perfil (padrão com o símbolo, separadores do idioma), datas, data e hora, inteiros, decimais e percentuais. Idioma e fuso da planilha seguem o perfil.
+- **Listas suspensas** com valores traduzidos: tipo, status, forma de pagamento, recorrente, frequência, tipo de conta, classe de investimento e tipo de categoria. Datas validadas.
+- **Filtros** nas abas de dados e de planejamento.
+- **Cores condicionais**: valor verde/vermelho/âmbar por tipo, status pago em verde, contas pendentes vencidas em vermelho, saldos e orçamentos negativos em vermelho.
+- **Fórmulas**:
+  - Receitas e Despesas: visões ordenadas de Movimentações (sem cancelados);
+  - Dashboard: receitas, despesas e saldo do mês, total investido, contas pendentes e vencidas;
+  - Resumo Mensal: últimos 12 meses com receitas, despesas, investimentos e saldo;
+  - Orçamento: gasto e restante por categoria e mês;
+  - Metas: progresso.
+- **Gráfico** de colunas "Receitas x Despesas (12 meses)" no Dashboard, alimentado pelo Resumo Mensal.
+- **IDs e versões ocultos**: as abas de dados têm as colunas técnicas `record_id`, `record_version` e `synced_at`, ocultas e protegidas (com aviso, sem impedir o dono). Cabeçalhos e abas geradas por fórmula também são protegidos com aviso.
+- **Identificação estável**: _developer metadata_ marca a planilha (`lff.spreadsheet_id`, `lff.template_version`), cada aba (`lff.tab`) e cada coluna (`lff.column`). A sincronização (PASSO 11) usa essas marcas, não nomes nem posições: abas renomeadas pelo usuário continuam funcionando.
+- A primeira planilha pronta vira a planilha **ativa** do usuário.
+
+### Idempotência e falhas
+
+- Repetir o `POST` com o mesmo nome **nunca cria um segundo arquivo** e leva a planilha ao mesmo estado: abas, metadados, proteções e o gráfico só são criados se faltarem; formatos, validações, filtros, fórmulas e regras de cor são regravados (as regras de cor são substituídas, não acumuladas). Abas criadas pelo usuário nunca são apagadas; só a aba em branco padrão é removida, e apenas na primeira montagem.
+- O arquivo recebe a `appProperty` `lffSpreadsheetId` (id da nossa linha). Se o processo cair entre criar o arquivo e salvar o id, a nova tentativa **encontra o arquivo pela marca** em vez de criar outro. O id é salvo assim que o arquivo existe.
+- Se o usuário apagar o arquivo no Drive, o próximo `POST` cria um novo para a mesma planilha.
+- Uma trava (`setup_started_at`) impede duas montagens simultâneas da mesma planilha (`409`); uma trava esquecida por queda expira em 2 minutos.
+- Token: `GoogleConnectionService.getAccessToken` (renova perto da expiração). Se o Google responder `401` mesmo assim, o token é invalidado e há uma única nova tentativa com token renovado.
+- Falha numa planilha que já funcionava mantém `ACTIVE` (só grava `lastErrorCode`); nas demais, a planilha fica `ERROR` e o `POST` pode ser repetido.
+
+### Fórmulas: risco conhecido
+
+As fórmulas são enviadas em notação canônica (funções em inglês, `,` como separador), que a API do Sheets converte para o idioma da planilha. Isso só é confirmado contra o Google real pelo smoke opcional:
+
+```bash
+RUN_GOOGLE_INTEGRATION_TESTS=true GOOGLE_CLIENT_ID=... GOOGLE_CLIENT_SECRET=... \
+GOOGLE_TEST_REFRESH_TOKEN=<refresh token de uma conta de teste> \
+pnpm --filter @leccor/backend test:google
+```
+
+Ele cria uma planilha real, aplica o template duas vezes, confere a idempotência e apaga o arquivo.
+
+### Sincronização (PASSO 11, planejado)
 
 Sincronização:
 

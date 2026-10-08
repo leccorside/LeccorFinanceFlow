@@ -112,6 +112,37 @@ const ptBR = {
   'google.error.load': 'Não foi possível carregar o estado da conexão Google.',
   'google.error.disconnect': 'Não foi possível desconectar agora. Tente novamente.',
 
+  'sheets.title': 'Planilha financeira',
+  'sheets.description':
+    'Criamos no seu Google Drive uma planilha organizada, com abas, fórmulas, filtros e gráfico. Ela é sua: fica na sua conta.',
+  'sheets.empty': 'Você ainda não tem uma planilha.',
+  'sheets.create': 'Criar minha planilha financeira',
+  'sheets.creating': 'Criando a planilha…',
+  'sheets.created': 'Planilha pronta no seu Google Drive.',
+  'sheets.open': 'Abrir no Google Sheets',
+  'sheets.active': 'em uso',
+  'sheets.needsGoogle': 'Conecte sua conta Google acima para criar a planilha.',
+  'sheets.status.PENDING_CREATION': 'Sendo preparada',
+  'sheets.status.ACTIVE': 'Pronta',
+  'sheets.status.ERROR': 'Não foi concluída',
+  'sheets.status.ARCHIVED': 'Arquivada',
+  'sheets.error.google_not_connected': 'Conecte sua conta Google para criar a planilha.',
+  'sheets.error.google_connection_unavailable':
+    'A conexão com o Google ainda não está configurada neste ambiente.',
+  'sheets.error.google_reauth_required': 'Reconecte sua conta Google e tente de novo.',
+  'sheets.error.google_unavailable':
+    'O Google não respondeu. Tente novamente em instantes.',
+  'sheets.error.google_permission_denied':
+    'O Google recusou o acesso. Reconecte a conta e confirme a permissão do Google Drive.',
+  'sheets.error.spreadsheet_setup_in_progress':
+    'A planilha já está sendo preparada. Aguarde alguns instantes.',
+  'sheets.error.spreadsheet_setup_failed':
+    'Não foi possível preparar a planilha. Tente novamente.',
+  'sheets.error.spreadsheet_not_found':
+    'A planilha não foi encontrada no seu Google Drive.',
+  'sheets.error.unknown': 'Não foi possível criar a planilha.',
+  'sheets.error.load': 'Não foi possível carregar suas planilhas.',
+
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',
   'locale.es-ES': 'Español (España)',
@@ -231,6 +262,37 @@ const enUS: Messages = {
   'google.error.load': 'Could not load the Google connection status.',
   'google.error.disconnect': 'Could not disconnect now. Please try again.',
 
+  'sheets.title': 'Financial spreadsheet',
+  'sheets.description':
+    'We create an organized spreadsheet in your Google Drive, with tabs, formulas, filters and a chart. It is yours: it lives in your account.',
+  'sheets.empty': 'You do not have a spreadsheet yet.',
+  'sheets.create': 'Create my financial spreadsheet',
+  'sheets.creating': 'Creating the spreadsheet…',
+  'sheets.created': 'Spreadsheet ready in your Google Drive.',
+  'sheets.open': 'Open in Google Sheets',
+  'sheets.active': 'in use',
+  'sheets.needsGoogle': 'Connect your Google account above to create the spreadsheet.',
+  'sheets.status.PENDING_CREATION': 'Being prepared',
+  'sheets.status.ACTIVE': 'Ready',
+  'sheets.status.ERROR': 'Not completed',
+  'sheets.status.ARCHIVED': 'Archived',
+  'sheets.error.google_not_connected':
+    'Connect your Google account to create the spreadsheet.',
+  'sheets.error.google_connection_unavailable':
+    'The Google connection is not configured in this environment yet.',
+  'sheets.error.google_reauth_required': 'Reconnect your Google account and try again.',
+  'sheets.error.google_unavailable': 'Google did not respond. Please try again shortly.',
+  'sheets.error.google_permission_denied':
+    'Google refused access. Reconnect the account and allow the Google Drive permission.',
+  'sheets.error.spreadsheet_setup_in_progress':
+    'The spreadsheet is already being prepared. Please wait a moment.',
+  'sheets.error.spreadsheet_setup_failed':
+    'Could not prepare the spreadsheet. Please try again.',
+  'sheets.error.spreadsheet_not_found':
+    'The spreadsheet was not found in your Google Drive.',
+  'sheets.error.unknown': 'Could not create the spreadsheet.',
+  'sheets.error.load': 'Could not load your spreadsheets.',
+
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',
   'locale.es-ES': 'Español (España)',
@@ -348,6 +410,40 @@ const esES: Messages = {
   'google.error.unknown': 'No fue posible conectar tu cuenta de Google.',
   'google.error.load': 'No se pudo cargar el estado de la conexión con Google.',
   'google.error.disconnect': 'No se pudo desconectar ahora. Inténtalo de nuevo.',
+
+  'sheets.title': 'Hoja de cálculo financiera',
+  'sheets.description':
+    'Creamos en tu Google Drive una hoja organizada, con pestañas, fórmulas, filtros y gráfico. Es tuya: queda en tu cuenta.',
+  'sheets.empty': 'Todavía no tienes una hoja de cálculo.',
+  'sheets.create': 'Crear mi hoja de cálculo financiera',
+  'sheets.creating': 'Creando la hoja de cálculo…',
+  'sheets.created': 'Hoja de cálculo lista en tu Google Drive.',
+  'sheets.open': 'Abrir en Google Sheets',
+  'sheets.active': 'en uso',
+  'sheets.needsGoogle':
+    'Conecta tu cuenta de Google arriba para crear la hoja de cálculo.',
+  'sheets.status.PENDING_CREATION': 'En preparación',
+  'sheets.status.ACTIVE': 'Lista',
+  'sheets.status.ERROR': 'No se completó',
+  'sheets.status.ARCHIVED': 'Archivada',
+  'sheets.error.google_not_connected':
+    'Conecta tu cuenta de Google para crear la hoja de cálculo.',
+  'sheets.error.google_connection_unavailable':
+    'La conexión con Google aún no está configurada en este entorno.',
+  'sheets.error.google_reauth_required':
+    'Vuelve a conectar tu cuenta de Google e inténtalo de nuevo.',
+  'sheets.error.google_unavailable':
+    'Google no respondió. Inténtalo de nuevo en unos instantes.',
+  'sheets.error.google_permission_denied':
+    'Google rechazó el acceso. Vuelve a conectar la cuenta y permite el acceso a Google Drive.',
+  'sheets.error.spreadsheet_setup_in_progress':
+    'La hoja de cálculo ya se está preparando. Espera unos instantes.',
+  'sheets.error.spreadsheet_setup_failed':
+    'No se pudo preparar la hoja de cálculo. Inténtalo de nuevo.',
+  'sheets.error.spreadsheet_not_found':
+    'No se encontró la hoja de cálculo en tu Google Drive.',
+  'sheets.error.unknown': 'No se pudo crear la hoja de cálculo.',
+  'sheets.error.load': 'No se pudieron cargar tus hojas de cálculo.',
 
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',

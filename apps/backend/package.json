@@ -18,7 +18,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:status": "prisma migrate status",
-    "credentials:rotate": "tsx src/scripts/rotate-credentials.ts"
+    "credentials:rotate": "tsx src/scripts/rotate-credentials.ts",
+    "test:google": "vitest run -c vitest.google.config.ts"
   },
   "dependencies": {
     "@nestjs/common": "^12.1.2",

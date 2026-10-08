@@ -21,6 +21,11 @@ import {
   type GoogleOAuthClient,
   type GoogleTokenSet,
 } from '../../src/google/google-oauth.client.js';
+import {
+  GOOGLE_WORKSPACE_CLIENT,
+  type GoogleWorkspaceClient,
+} from '../../src/spreadsheets/google-workspace.client.js';
+import { FakeWorkspace } from './fake-workspace.js';
 
 export const FRONTEND = 'http://localhost:5173';
 export const REDIRECT_URI = 'http://localhost:5173/api/v1/auth/google/callback';
@@ -39,6 +44,7 @@ export function testEnv(
     GOOGLE_REDIRECT_URI: REDIRECT_URI,
     RATE_LIMIT_MAX_REQUESTS: '100000',
     AUTH_RATE_LIMIT_MAX_REQUESTS: '100000',
+    SPREADSHEET_RATE_LIMIT_MAX_REQUESTS: '100000',
     ADMIN_EMAILS: '',
     DATA_ENCRYPTION_KEY_V1: TEST_ENCRYPTION_KEY_V1,
     DATA_ENCRYPTION_KEY_ACTIVE_VERSION: 'v1',
@@ -147,6 +153,7 @@ export async function createTestApp(
   provider: GoogleIdentityProvider | null,
   extraModules: Type[] = [],
   oauth: GoogleOAuthClient | null = new FakeGoogleOAuth(),
+  workspace: GoogleWorkspaceClient = new FakeWorkspace(),
 ): Promise<NestExpressApplication> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule, ...extraModules],
@@ -155,6 +162,8 @@ export async function createTestApp(
     .useValue(provider)
     .overrideProvider(GOOGLE_OAUTH_CLIENT)
     .useValue(oauth)
+    .overrideProvider(GOOGLE_WORKSPACE_CLIENT)
+    .useValue(workspace)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app, loadEnv(process.env));
@@ -228,4 +237,25 @@ export async function loginAs(
     csrf: (csrf.body as { csrfToken: string }).csrfToken,
     cookie: `lff_session=${access}`,
   };
+}
+
+/** Completes the Drive/Sheets consent for `session` through the HTTP API (fake Google). */
+export async function connectGoogle(
+  app: NestExpressApplication,
+  session: Session,
+): Promise<void> {
+  const server = app.getHttpServer();
+  const start = await request(server)
+    .get('/api/v1/google/connect')
+    .set('Cookie', session.cookie)
+    .expect(302);
+  const state = new URL(start.headers.location as string).searchParams.get('state') ?? '';
+  const done = await request(server)
+    .get('/api/v1/google/callback')
+    .query({ code: 'code', state })
+    .set('Cookie', `${session.cookie}; lff_google_state=${state}`)
+    .expect(302);
+  if (!String(done.headers.location).includes('google=connected')) {
+    throw new Error(`google connection failed: ${String(done.headers.location)}`);
+  }
 }

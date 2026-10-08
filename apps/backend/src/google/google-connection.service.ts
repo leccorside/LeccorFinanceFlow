@@ -242,6 +242,14 @@ export class GoogleConnectionService {
           'Reconecte sua conta Google para continuar.',
         );
       }
+      if (error instanceof GoogleConnectionError) {
+        // Missing Google client or encryption key in this environment.
+        throw new ApiException(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          'google_connection_unavailable',
+          'A conexão com o Google não está configurada neste ambiente.',
+        );
+      }
       throw error;
     }
   }
@@ -282,6 +290,17 @@ export class GoogleConnectionService {
     }
 
     return this.refreshAccessToken(connection);
+  }
+
+  /**
+   * Marks the stored access token as expired, so the next `getAccessToken` refreshes it.
+   * Used when a Google API answers 401 although the token looked valid.
+   */
+  async invalidateAccessToken(userId: string): Promise<void> {
+    await this.prisma.googleConnection.updateMany({
+      where: { userId, status: 'ACTIVE' },
+      data: { accessTokenExpiresAt: new Date(0) },
+    });
   }
 
   /**

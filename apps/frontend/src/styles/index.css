@@ -302,6 +302,39 @@ textarea {
   overflow-wrap: anywhere;
 }
 
+.sheet-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.sheet-list li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  align-items: baseline;
+  padding: 12px 14px;
+  border: 1px solid rgb(164 226 190 / 14%);
+  border-radius: 14px;
+}
+
+.sheet-name {
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.sheet-status {
+  color: #8fa99a;
+  font-size: 0.9rem;
+}
+
+.sheet-list a {
+  color: #7de2aa;
+  font-weight: 650;
+}
+
 .confirm-box {
   padding: 14px;
   border: 1px solid rgb(255 196 120 / 35%);

@@ -17,7 +17,7 @@ export const Roles = (...roles: [RoleName, ...RoleName[]]) =>
 
 /** Named policy (limit from env) or an explicit limit. Applied per client IP. */
 export type RateLimitPolicy =
-  { policy: 'auth' } | { name: string; limit: number; windowMs: number };
+  { policy: 'auth' | 'spreadsheets' } | { name: string; limit: number; windowMs: number };
 
 /** Adds a route-specific bucket on top of the global per-IP limit. */
 export const RateLimit = (policy: RateLimitPolicy) => SetMetadata(RATE_LIMIT, policy);

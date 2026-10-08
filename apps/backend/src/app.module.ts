@@ -7,6 +7,7 @@ import { DatabaseModule } from './database/database.module.js';
 import { GoogleModule } from './google/google.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ProfileModule } from './profile/profile.module.js';
+import { SpreadsheetsModule } from './spreadsheets/spreadsheets.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -20,6 +21,7 @@ import { UsersModule } from './users/users.module.js';
     AuthModule,
     ProfileModule,
     GoogleModule,
+    SpreadsheetsModule,
   ],
 })
 export class AppModule {}
