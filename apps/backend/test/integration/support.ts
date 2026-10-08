@@ -12,6 +12,15 @@ import {
 } from '../../src/auth/google-identity.provider.js';
 import { configureApp } from '../../src/common/security/configure-app.js';
 import { loadEnv } from '../../src/config/env.js';
+import {
+  type ConsentExchange,
+  type ConsentRequest,
+  GOOGLE_OAUTH_CLIENT,
+  type GoogleConnectionGrant,
+  GoogleGrantRevokedError,
+  type GoogleOAuthClient,
+  type GoogleTokenSet,
+} from '../../src/google/google-oauth.client.js';
 
 export const FRONTEND = 'http://localhost:5173';
 export const REDIRECT_URI = 'http://localhost:5173/api/v1/auth/google/callback';
@@ -31,9 +40,14 @@ export function testEnv(
     RATE_LIMIT_MAX_REQUESTS: '100000',
     AUTH_RATE_LIMIT_MAX_REQUESTS: '100000',
     ADMIN_EMAILS: '',
+    DATA_ENCRYPTION_KEY_V1: TEST_ENCRYPTION_KEY_V1,
+    DATA_ENCRYPTION_KEY_ACTIVE_VERSION: 'v1',
     ...overrides,
   });
 }
+
+/** Fixed test-only key (base64 of 32 bytes). */
+export const TEST_ENCRYPTION_KEY_V1 = Buffer.alloc(32, 0x11).toString('base64');
 
 export class FakeGoogle implements GoogleIdentityProvider {
   identity: GoogleIdentity = defaultIdentity();
@@ -71,16 +85,76 @@ export function defaultIdentity(): GoogleIdentity {
   };
 }
 
+export const DRIVE_FILE = 'https://www.googleapis.com/auth/drive.file';
+
+/** Fake Google OAuth for the Drive/Sheets connection. Records every call. */
+export class FakeGoogleOAuth implements GoogleOAuthClient {
+  grant: GoogleConnectionGrant = defaultGrant();
+  failExchange = false;
+  refreshBehavior: 'ok' | 'revoked' | 'outage' = 'ok';
+  revokeResult = true;
+  lastConsent?: ConsentRequest;
+  lastExchange?: ConsentExchange;
+  refreshCalls: string[] = [];
+  revokeCalls: string[] = [];
+  private counter = 0;
+
+  buildConsentUrl(request: ConsentRequest): URL {
+    this.lastConsent = request;
+    const url = new URL('https://accounts.google.com/o/oauth2/v2/auth');
+    url.searchParams.set('state', request.state);
+    url.searchParams.set('scope', 'openid email ' + DRIVE_FILE);
+    return url;
+  }
+
+  async exchangeCode(exchange: ConsentExchange): Promise<GoogleConnectionGrant> {
+    this.lastExchange = exchange;
+    if (this.failExchange) throw new Error('token endpoint failure');
+    return this.grant;
+  }
+
+  async refresh(refreshToken: string): Promise<GoogleTokenSet> {
+    this.refreshCalls.push(refreshToken);
+    if (this.refreshBehavior === 'revoked') throw new GoogleGrantRevokedError();
+    if (this.refreshBehavior === 'outage') throw new Error('503 from Google');
+    this.counter += 1;
+    return {
+      accessToken: `refreshed-access-${this.counter}`,
+      expiresAt: new Date(Date.now() + 3_600_000),
+      scopes: [DRIVE_FILE],
+    };
+  }
+
+  async revoke(token: string): Promise<boolean> {
+    this.revokeCalls.push(token);
+    return this.revokeResult;
+  }
+}
+
+export function defaultGrant(): GoogleConnectionGrant {
+  return {
+    subject: 'google-sub-ana',
+    email: 'Ana.Silva@Example.com',
+    accessToken: 'plain-access-token-123',
+    refreshToken: 'plain-refresh-token-456',
+    expiresAt: new Date(Date.now() + 3_600_000),
+    scopes: ['openid', DRIVE_FILE],
+  };
+}
+
 /** Builds the real AppModule (+ extra modules) with the same HTTP hardening as main.ts. */
 export async function createTestApp(
   provider: GoogleIdentityProvider | null,
   extraModules: Type[] = [],
+  oauth: GoogleOAuthClient | null = new FakeGoogleOAuth(),
 ): Promise<NestExpressApplication> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule, ...extraModules],
   })
     .overrideProvider(GOOGLE_IDENTITY_PROVIDER)
     .useValue(provider)
+    .overrideProvider(GOOGLE_OAUTH_CLIENT)
+    .useValue(oauth)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app, loadEnv(process.env));

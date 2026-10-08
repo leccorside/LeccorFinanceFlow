@@ -97,6 +97,9 @@ O backend valida o ambiente com Zod (`apps/backend/src/config/env.ts`) antes de 
 | `MAX_JSON_BODY_SIZE`                        | `<n>b`, `<n>kb` ou `<n>mb`                                                      | `1mb`                                               |
 | `TRUST_PROXY`                               | `false`, `true`, número de saltos ou lista do Express                           | `false`                                             |
 | `ADMIN_EMAILS`                              | e-mails separados por vírgula (normalizados)                                    | vazio                                               |
+| `GOOGLE_CONNECTION_REDIRECT_URI`            | URL http(s) registrada no Google Cloud (consentimento do Drive)                 | `http://localhost:5173/api/v1/google/callback`      |
+| `DATA_ENCRYPTION_KEY_V<n>`                  | base64 de exatamente 32 bytes aleatórios; vazio = cofre desligado               | vazio                                               |
+| `DATA_ENCRYPTION_KEY_ACTIVE_VERSION`        | versão configurada (`v1`, `v2`…); opcional se houver uma única chave            | `v1`                                                |
 
 Configuração inválida encerra o processo com código 1 e uma mensagem que lista variável e regra violada, sem ecoar o valor recebido (evita vazar segredos). Novas variáveis entram no schema conforme os módulos que as usam forem implementados.
 
@@ -193,14 +196,15 @@ Escritas à mão no fim de `migration.sql` (o Prisma não modela CHECK, índice 
 
 ### Migrations, reversão e seed
 
-| Script (backend)        | Ação                                                        |
-| ----------------------- | ----------------------------------------------------------- |
-| `pnpm db:migrate`       | `prisma migrate dev` (cria migrations em desenvolvimento)   |
-| `pnpm db:deploy`        | `prisma migrate deploy` (aplica pendentes; usado no Docker) |
-| `pnpm db:seed`          | papéis `ADMIN`/`USER` e 14 categorias padrão, por upsert    |
-| `pnpm db:status`        | estado das migrations                                       |
-| `pnpm prisma:generate`  | regenera o client (também roda no `postinstall`)            |
-| `pnpm test:integration` | testes em bancos descartáveis (exige `TEST_DATABASE_URL`)   |
+| Script (backend)          | Ação                                                        |
+| ------------------------- | ----------------------------------------------------------- |
+| `pnpm db:migrate`         | `prisma migrate dev` (cria migrations em desenvolvimento)   |
+| `pnpm db:deploy`          | `prisma migrate deploy` (aplica pendentes; usado no Docker) |
+| `pnpm db:seed`            | papéis `ADMIN`/`USER` e 14 categorias padrão, por upsert    |
+| `pnpm db:status`          | estado das migrations                                       |
+| `pnpm prisma:generate`    | regenera o client (também roda no `postinstall`)            |
+| `pnpm test:integration`   | testes em bancos descartáveis (exige `TEST_DATABASE_URL`)   |
+| `pnpm credentials:rotate` | recriptografa as credenciais guardadas com a chave ativa    |
 
 Cada migration tem um `down.sql` ao lado do `migration.sql`. Para reverter (apaga todos os dados): `prisma db execute --file prisma/migrations/<nome>/down.sql`; o próprio arquivo remove o registro em `_prisma_migrations`, e `db:deploy` reaplica depois. Ao criar novas migrations com SQL manual, escrever também o `down.sql` e manter o teste de drift verde.
 
@@ -217,11 +221,17 @@ Implementada no PASSO 04 (`apps/backend/src/auth`, `apps/backend/src/users`).
 ### Configurar o Google Cloud (desenvolvimento)
 
 1. No Google Cloud Console, crie um cliente OAuth do tipo **Aplicativo da Web**.
-2. Em "URIs de redirecionamento autorizados", cadastre exatamente `http://localhost:5173/api/v1/auth/google/callback`. Se trocar `FRONTEND_PORT`, ajuste a URI e `GOOGLE_REDIRECT_URI`.
-3. Coloque `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` no `.env` e recrie o backend (`docker compose up -d --build backend`).
-4. Acesse `http://localhost:5173/api/v1/auth/google/login` para entrar. Após o login, `http://localhost:5173/api/v1/auth/me` mostra o usuário.
+2. Em "URIs de redirecionamento autorizados", cadastre exatamente as duas URIs:
+   - `http://localhost:5173/api/v1/auth/google/callback` (login);
+   - `http://localhost:5173/api/v1/google/callback` (conexão com o Drive/Sheets).
 
-Sem essas duas variáveis o backend sobe normalmente e `GET /auth/google/login` responde `503 oauth_not_configured`.
+   Se trocar `FRONTEND_PORT`, ajuste as URIs, `GOOGLE_REDIRECT_URI` e `GOOGLE_CONNECTION_REDIRECT_URI`.
+
+3. Para a conexão com planilhas: ative as APIs **Google Drive** e **Google Sheets** no projeto e inclua o escopo `.../auth/drive.file` na tela de consentimento OAuth.
+4. Coloque `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` e uma chave `DATA_ENCRYPTION_KEY_V1` (gerada com `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`) no `.env` e recrie o backend (`docker compose up -d --build backend`).
+5. Acesse `http://localhost:5173/login` para entrar e, em `/profile`, use "Conectar conta Google".
+
+Sem ID/segredo, o backend sobe normalmente e `GET /auth/google/login` responde `503 oauth_not_configured`. Sem ID/segredo ou sem chave de criptografia, a conexão com o Drive volta ao perfil com `googleError=google_connection_unavailable`.
 
 ### Endpoints
 
@@ -317,20 +327,53 @@ O `/auth/me` também passa a expor `locale` como tag BCP 47.
   - visitante anônimo em rota protegida vai para `/login?redirectTo=...`.
 - **Tema**: a preferência é salva, mas a interface ainda usa só o tema escuro; tema claro e "seguir o sistema" serão aplicados na interface definitiva (PASSO 16).
 
-## Google OAuth (conexão com Sheets)
+## Conexão Google (Drive/Sheets) e cofre de credenciais (PASSO 07)
 
-A conexão com Sheets será tratada pelo backend usando Authorization Code com state e PKCE, separada do login. O consentimento para Drive/Sheets será incremental. Tokens Google permanecerão criptografados no banco e nunca serão entregues ao React.
+Implementada em `apps/backend/src/google` e `apps/backend/src/common/crypto`.
 
-Estados tratados:
+### Escopos
 
-- conectado e válido;
-- token próximo da expiração;
-- renovação bem-sucedida;
-- consentimento revogado/expirado;
-- reconexão necessária;
-- desconectado pelo usuário.
+Somente `openid email` (para saber qual conta Google concedeu o acesso) e `https://www.googleapis.com/auth/drive.file`. Com `drive.file`, o Leccor acessa **apenas os arquivos que ele mesmo criar ou que o usuário abrir com ele**, o que basta para a API do Sheets. O escopo `.../auth/spreadsheets` (todas as planilhas do usuário) não é pedido. Os escopos são fixos no código (`GOOGLE_API_SCOPES`).
 
-Desconectar elimina credenciais locais e tenta revogar o token no Google. Isso não apagará planilhas sem uma confirmação separada e específica.
+### Fluxo
+
+| Método e rota                                    | Uso                                                                                                                                                          |
+| ------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/v1/google/connection`                  | Estado: `NOT_CONNECTED`, `ACTIVE`, `NEEDS_REAUTH` ou `REVOKED`, conta Google, escopos concedidos e faltantes, datas. **Nunca inclui tokens.**                |
+| `GET /api/v1/google/connect?redirectTo=/profile` | Navegação do navegador: redireciona ao consentimento do Google. Anônimo → `/login`; sem configuração → `/profile?googleError=google_connection_unavailable`. |
+| `GET /api/v1/google/callback`                    | Retorno do Google. Sucesso → `redirectTo?google=connected`; falha → `/profile?googleError=<código>` (ou `/login` se a sessão expirou).                       |
+| `DELETE /api/v1/google/connection`               | Desconecta (exige `X-CSRF-Token`). Responde `{ status, remoteRevocation: "revoked" \| "failed" \| "skipped" }`.                                              |
+
+- Consentimento separado do login, incremental (`include_granted_scopes`), offline (`access_type=offline`, `prompt=consent`, para o Google emitir refresh token), com PKCE S256, `state`, `nonce` e `login_hint` com o e-mail do usuário. A assinatura do ID token é validada.
+- A tentativa fica em `auth_login_attempts` com `purpose = GOOGLE_CONNECTION` e o `user_id` de quem iniciou. O callback exige o cookie `lff_google_state` (`HttpOnly`, `Path=/api/v1/google`), a mesma sessão de quem iniciou e uma tentativa ainda não usada nem expirada. Um `state` de login não conclui conexão, e vice-versa.
+- Se o usuário desmarcar o acesso ao Drive na tela do Google → `insufficient_scopes` (nada é salvo). Se o Google não enviar refresh token: numa reconexão da mesma conta, o atual é mantido; na primeira conexão → `missing_refresh_token`.
+- Códigos de erro: `google_connection_unavailable`, `unauthenticated`, `access_denied`, `invalid_state`, `expired_state`, `provider_error`, `insufficient_scopes`, `missing_refresh_token`.
+
+### Uso interno dos tokens
+
+`GoogleConnectionService.getAccessToken(userId)` é a única forma de obter um token do Google, só no backend (adapter do Sheets, PASSO 08):
+
+- devolve o access token enquanto faltar mais de 1 minuto para expirar; senão, renova com o refresh token e grava o novo token cifrado;
+- se o Google recusar a renovação (`invalid_grant`: acesso revogado ou expirado) → a conexão vira `NEEDS_REAUTH`, os tokens são apagados e a chamada falha com `409 google_reauth_required`;
+- falha temporária do Google → `503 google_unavailable`, sem alterar a conexão;
+- sem conexão → `409 google_not_connected`;
+- credencial que não pode ser decifrada → `409 google_reauth_required`, mantendo o valor para recuperação.
+
+### Desconexão
+
+Revoga no Google (melhor esforço) e apaga os tokens locais em qualquer caso (`status = REVOKED`). **Planilhas não são apagadas**: continuam no Drive do usuário e no banco. Excluir planilhas será uma operação separada e confirmada (PASSO 15/21). Reconectar depois volta a `ACTIVE`.
+
+### Cofre de credenciais (AES-256-GCM)
+
+- `CredentialVault`: AES-256-GCM com IV aleatório de 96 bits e tag de 128 bits. Formato autodescritivo `v<n>.<iv>.<tag>.<dados>` (base64url).
+- **Vínculo ao contexto**: cada valor é cifrado com AAD `google_connections:<userId>:<campo>`. Copiar o token cifrado para outro usuário ou outra coluna faz a decifragem falhar.
+- **No banco**: CHECKs aceitam tokens apenas nesse formato cifrado (texto puro é recusado), exigem refresh token em conexões `ACTIVE` e proíbem tokens em conexões inativas.
+- **Chaves**: `DATA_ENCRYPTION_KEY_V<n>` (base64 de 32 bytes) e `DATA_ENCRYPTION_KEY_ACTIVE_VERSION`. Sem chave, o cofre fica desligado e a conexão Google indisponível. Erros de configuração nunca mostram a chave.
+- **Rotação**:
+  1. adicione `DATA_ENCRYPTION_KEY_V2` e ative `v2`, mantendo a `V1`;
+  2. reinicie o backend: novas gravações usam `v2`, e os valores em `v1` continuam legíveis e são recriptografados ao serem usados;
+  3. rode `docker compose exec backend pnpm --filter @leccor/backend credentials:rotate`;
+  4. quando o relatório indicar `0 unreadable`, a `V1` pode ser removida. Credenciais indecifráveis são puladas, nunca apagadas, e o script termina com código 1.
 
 ## Google Sheets
 

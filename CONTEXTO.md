@@ -2,7 +2,7 @@
 
 ## Estado em 08/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 06 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 07 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,28 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Conexão Google e cofre implementados no PASSO 07:
+
+- `src/common/crypto`: `CredentialVault` (AES-256-GCM, `v<n>.<iv>.<tag>.<dados>`, AAD de contexto, `isCurrent`/`reencrypt`) e `CryptoModule` global (`CREDENTIAL_VAULT`, `null` sem chave);
+- `src/config/env.ts`: `ENCRYPTION` a partir de `DATA_ENCRYPTION_KEY_V<n>` + `DATA_ENCRYPTION_KEY_ACTIVE_VERSION`; `GOOGLE_OAUTH.connectionRedirectUri`;
+- `src/google`: `OpenIdGoogleOAuthClient` atrás de `GoogleOAuthClient` (token `GOOGLE_OAUTH_CLIENT`), `GoogleConnectionService` (`status`, `startConnect`, `completeConnect`, `getAccessToken` interno, `disconnect`, `rotateGoogleCredentials`) e `GoogleController` (`/google/connection` GET/DELETE, `/google/connect`, `/google/callback`);
+- `src/scripts/rotate-credentials.ts` (`pnpm credentials:rotate`);
+- migration `20261008213903_google_connection_attempts`: `purpose` + `user_id` em `auth_login_attempts` e CHECKs em `google_connections` (só texto cifrado, `ACTIVE` exige refresh, inativas sem tokens, `revoked_at` ⇔ `REVOKED`);
+- frontend: `services/google.ts`, `GoogleConnectionCard` + `google-return.ts` no perfil e 28 chaves de i18n por idioma.
+
+## Decisões do PASSO 07
+
+- **Escopo `drive.file` apenas** (+ `openid email`); `spreadsheets` não é pedido, porque daria acesso a todas as planilhas do usuário. Consequência: o app só enxerga planilhas criadas por ele ou abertas pelo usuário com ele (o "Google Picker" fica como opção futura para importar planilhas existentes).
+- **A conta Google conectada pode diferir da do login**; ela é identificada por `sub`/`email` do ID token e exibida no perfil.
+- **Consentimento separado, incremental e offline** com `prompt=consent` para garantir refresh token; o `access_token`/`refresh_token` do login continuam descartados.
+- **Tentativa de conexão vinculada a usuário + navegador + finalidade**: um callback de outra sessão é recusado sem consumir a tentativa.
+- **Cofre com AAD por usuário e campo**; CHECK no banco impede gravar token em texto puro por engano.
+- **Renovação preguiçosa** (`getAccessToken`, margem de 60 s), sem job; `invalid_grant` → `NEEDS_REAUTH` com tokens apagados; falhas temporárias não alteram a conexão.
+- **Rotação**: preguiçosa ao usar + script para tudo. Credenciais indecifráveis são puladas e nunca apagadas (chave antiga removida cedo demais é recuperável).
+- **Desconectar nunca apaga planilhas**; a revogação remota é de melhor esforço, e a resposta diz se o Google confirmou.
+- **Sem chave ou sem cliente Google**: o backend sobe; o estado funciona, e conectar volta com `google_connection_unavailable`.
+- **`.env.example`**: `DATA_ENCRYPTION_KEY_V1` vazio (o placeholder antigo seria recusado pela validação) e `GOOGLE_SHEETS_SCOPES` removido (escopos fixos no código).
 
 Perfil e i18n implementados no PASSO 06:
 
@@ -145,6 +167,8 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 07: a primeira versão da rotação abortava inteira ao encontrar uma credencial indecifrável (pega pelo teste de integração, que reaproveita a credencial corrompida de outro teste). Corrigido: a credencial é pulada e contada, e o script sai com código 1. Em `getAccessToken`, falha de decifragem virou `409 google_reauth_required` em vez de 500.
+- PASSO 07: o `%{redirect_url}` do curl veio vazio nos testes manuais; para conferir redirecionamentos, ler o header `Location` (`curl -D -`).
 - PASSO 06: o script `typecheck` do frontend rodava `tsc --noEmit` sobre um `tsconfig.json` com `"files": []` e não verificava nada desde o PASSO 01 (só o `build` checava). Corrigido.
 - PASSO 06: o Zod 4 executa todas as checagens de um campo mesmo após a primeira falha, então um valor inválido pode gerar várias issues no mesmo caminho. Os testes comparam caminhos distintos.
 - PASSO 06: o TanStack Query v5 passa um segundo argumento (contexto) para `mutationFn`; envolver o serviço numa arrow function para não repassá-lo.
@@ -181,11 +205,11 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 06 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 07 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 7`
+`INICIE O PASSO 8`
 
-Quando autorizado, executar apenas o PASSO 07 de `PASSOS.md`: conexão Google (Sheets/Drive) e cofre de credenciais. Não antecipar a criação da planilha (PASSO 08).
+Quando autorizado, executar apenas o PASSO 08 de `PASSOS.md`: criação e formatação do Google Sheets. Usar `GoogleConnectionService.getAccessToken(userId)` (única fonte de token) e tratar `google_not_connected`/`google_reauth_required`/`google_unavailable`. Não antecipar o domínio financeiro (PASSO 09) nem a sincronização (PASSO 11).
 
 Regras para todo módulo novo:
 
@@ -201,7 +225,9 @@ Regras para todo módulo novo:
 Pendências conhecidas para passos futuros:
 
 - PASSO 16: aplicar o tema (`preferences.theme`) e o início da semana na interface definitiva; o cliente HTTP (CSRF + refresh) já existe em `services/api.ts`.
-- PASSO 07: exibir no perfil o estado da conexão Google/Sheets ("Conta Google conectada" do PROMPT).
+- PASSO 12: cifrar as API keys de IA com o mesmo `CredentialVault` (contexto `ai_configurations:<id>:api_key`) e incluí-las no script `credentials:rotate`.
+- PASSO 21: desconexão já não apaga planilhas; definir a exclusão explícita de planilhas e a revogação na exclusão de conta.
+- A conexão real com o Google ainda não foi testada ponta a ponta (sem credenciais): ao configurar, confirmar o refresh token e a granularidade de escopos na tela do Google.
 - PASSO 17: usar `voice.gender`/`autoSpeak`/`speakingRate` do perfil na síntese de voz; o comando por conversa "troque sua voz" vai usar `ProfileService.update`.
 - `packages/contracts` ainda não é usado: os tipos de perfil existem no backend e no frontend. Avaliar mover os contratos públicos para lá quando o build do pacote estiver integrado ao Docker.
 - PASSO 14/17: usar `@RateLimit` com `ASSISTANT_RATE_LIMIT_MAX_REQUESTS`/`VOICE_RATE_LIMIT_MAX_REQUESTS` (já no `.env.example`, ainda não validados no `env.ts`), de preferência por usuário.
@@ -215,7 +241,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`) e 05 (`aab4870`) commitados; o PASSO 06 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`) e 06 (`9e9c872`) commitados; o PASSO 07 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -273,3 +299,11 @@ Pendências conhecidas para passos futuros:
 - Frontend: 47 testes (i18n, formatação, cliente HTTP, formulário, telas de perfil e login, App) passam no host e no container.
 - Docker, pelo proxy do Vite e com sessão sintética criada no banco (removida ao final): `GET /profile` 200; `PATCH` sem CSRF 403; `PATCH` com token e `Origin` do frontend 200 (idioma, moeda, fuso, voz e tema persistidos, refletidos no `/auth/me`); `PATCH` com `email` 400 `validation_failed`; `/profile` e `/login` servem a SPA.
 - `pnpm quality` passou por completo (com o `typecheck` do frontend agora efetivo).
+
+## Evidências do PASSO 07
+
+- Backend: 121 testes unitários e 117 de integração (21 novos da conexão Google) passam no host e no container; nenhum banco de teste restante.
+- Frontend: 56 testes (6 novos do card de conexão, nos 3 idiomas) passam no host e no container.
+- Mutações detectadas: AAD do cofre desligado e callback sem exigir o mesmo usuário.
+- Docker: migration aplicada; `GET /google/connection` sem tokens; `connect` anônimo → `/login?redirectTo=%2Fprofile`; sem configuração → `/profile?googleError=google_connection_unavailable`; `DELETE` 403 sem CSRF e 200 com; consentimento real (backend avulso com credenciais fictícias) com `scope=openid email .../drive.file`, `access_type=offline`, `prompt=consent`, `include_granted_scopes=true`, PKCE S256 e `login_hint`; `credentials:rotate` executado (código 0).
+- `pnpm quality` passou por completo.

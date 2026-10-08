@@ -158,7 +158,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: adiciona perfil do usuário e preferências de localização`
 
-## [ ] PASSO 07 — Conexão Google e cofre de credenciais
+## [x] PASSO 07 — Conexão Google e cofre de credenciais
 
 **Objetivo:** separar consentimento Sheets/Drive do login e guardar credenciais criptografadas.
 
@@ -170,7 +170,24 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** criptografia/rotação, refresh, revogado, scopes e ownership.
 
-**Sugestão de commit:** `feat: secure google sheets connection lifecycle`
+**Evidência (08/10/2026):**
+
+- **Backend**: `CredentialVault` (AES-256-GCM, chaves versionadas, AAD por usuário e campo), módulos `crypto` e `google`, script `credentials:rotate` e migration `20261008213903_google_connection_attempts` com `down.sql` e CHECKs que só aceitam tokens cifrados. 121 testes unitários; os novos cobrem:
+  - cofre: ida e volta, IV novo, contexto, adulteração de cada segmento e rotação v1→v2;
+  - chaves no env: versões, tamanho e ausência de eco;
+  - cliente OAuth real contra Google simulado: escopo mínimo, offline/incremental, PKCE/nonce, `invalid_grant` × falha temporária, revogação.
+- **Integração**: 117 testes (21 novos):
+  - estado sem tokens e anônimo → login;
+  - tentativa vinculada a usuário e navegador; callback de outra sessão recusado sem consumir a tentativa; estados de login e conexão não se misturam;
+  - escopo insuficiente; refresh token ausente ou mantido;
+  - renovação perto da expiração; `invalid_grant` → `NEEDS_REAUTH` e reconexão; falha temporária mantém a conexão; token copiado para outro usuário não decifra;
+  - desconexão revoga, apaga tokens e mantém planilhas; desconexão com falha remota; CSRF e isolamento;
+  - CHECKs recusam texto puro; rotação de todas as credenciais; indisponível sem chave.
+- **Frontend**: card "Conta Google conectada" no perfil, com desconexão confirmada e mensagens de retorno nos 3 idiomas. 56 testes.
+- **Mutações detectadas**: AAD desligado (4 testes) e callback sem exigir o mesmo usuário (1 teste).
+- **Docker**: migration aplicada; estado, redirecionamentos (anônimo → login, sem configuração → erro no perfil), `DELETE` com e sem CSRF; consentimento real com escopo `openid email drive.file`, `access_type=offline`, `prompt=consent`, `include_granted_scopes=true`, PKCE e `login_hint`; script de rotação executado. Suítes passam nos containers e `pnpm quality` passou por completo.
+
+**Sugestão de commit:** `feat: protege o ciclo de vida da conexão com o google sheets`
 
 ## [ ] PASSO 08 — Criação e formatação do Google Sheets
 

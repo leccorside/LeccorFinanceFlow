@@ -76,6 +76,7 @@ export class AuthService {
     });
     await this.prisma.authLoginAttempt.create({
       data: {
+        purpose: 'LOGIN',
         stateHash: hashToken(state),
         nonce,
         codeVerifier,
@@ -300,7 +301,10 @@ export class AuthService {
 
   private async consumeAttempt(stateHash: string) {
     try {
-      return await this.prisma.authLoginAttempt.delete({ where: { stateHash } });
+      // A GOOGLE_CONNECTION state can never complete a login (and vice versa).
+      return await this.prisma.authLoginAttempt.delete({
+        where: { stateHash, purpose: 'LOGIN' },
+      });
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

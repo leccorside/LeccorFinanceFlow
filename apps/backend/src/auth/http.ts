@@ -41,6 +41,8 @@ export const COOKIE = {
   refresh: { name: 'lff_refresh', path: '/api/v1/auth', sameSite: 'strict' },
   /** OAuth state binding: Lax so it survives the top-level redirect back from Google. */
   oauthState: { name: 'lff_oauth_state', path: '/api/v1/auth/google', sameSite: 'lax' },
+  /** State binding of the Drive/Sheets consent flow. */
+  googleState: { name: 'lff_google_state', path: '/api/v1/google', sameSite: 'lax' },
 } as const;
 
 export type CookieKind = keyof typeof COOKIE;

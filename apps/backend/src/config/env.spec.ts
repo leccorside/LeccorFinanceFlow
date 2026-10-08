@@ -32,6 +32,7 @@ describe('loadEnv', () => {
       MAX_JSON_BODY_SIZE: '1mb',
       TRUST_PROXY: false,
       ADMIN_EMAILS: [],
+      ENCRYPTION: null,
     });
     expect(Object.isFrozen(env)).toBe(true);
   });
@@ -55,6 +56,7 @@ describe('loadEnv', () => {
       clientId: google.GOOGLE_CLIENT_ID,
       clientSecret: google.GOOGLE_CLIENT_SECRET,
       redirectUri: google.GOOGLE_REDIRECT_URI,
+      connectionRedirectUri: 'http://localhost:5173/api/v1/google/callback',
     });
   });
 
@@ -156,6 +158,75 @@ describe('loadEnv', () => {
       expect((error as Error).message).not.toContain('super-secret-password');
       expect((error as Error).message).not.toContain('top-secret-google');
     }
+  });
+});
+
+describe('encryption keys', () => {
+  const key = (byte: number) => Buffer.alloc(32, byte).toString('base64');
+
+  it('is null (feature disabled) when no key is set or keys are blank', () => {
+    expect(loadEnv({ DATABASE_URL: validDatabaseUrl }).ENCRYPTION).toBeNull();
+    expect(
+      loadEnv({
+        DATABASE_URL: validDatabaseUrl,
+        DATA_ENCRYPTION_KEY_V1: '  ',
+        DATA_ENCRYPTION_KEY_ACTIVE_VERSION: 'v1',
+      }).ENCRYPTION,
+    ).toBeNull();
+  });
+
+  it('loads versioned keys and the active version', () => {
+    const env = loadEnv({
+      DATABASE_URL: validDatabaseUrl,
+      DATA_ENCRYPTION_KEY_V1: key(1),
+      DATA_ENCRYPTION_KEY_V2: key(2),
+      DATA_ENCRYPTION_KEY_ACTIVE_VERSION: 'V2',
+    });
+    expect(env.ENCRYPTION?.activeVersion).toBe('v2');
+    expect([...(env.ENCRYPTION?.keys.keys() ?? [])].sort()).toEqual(['v1', 'v2']);
+    expect(env.ENCRYPTION?.keys.get('v1')?.length).toBe(32);
+  });
+
+  it('defaults the active version when a single key exists', () => {
+    const env = loadEnv({
+      DATABASE_URL: validDatabaseUrl,
+      DATA_ENCRYPTION_KEY_V3: key(3),
+    });
+    expect(env.ENCRYPTION?.activeVersion).toBe('v3');
+  });
+
+  it('rejects keys that are not 32 bytes and never echoes them', () => {
+    const short = Buffer.alloc(16, 7).toString('base64');
+    try {
+      loadEnv({ DATABASE_URL: validDatabaseUrl, DATA_ENCRYPTION_KEY_V1: short });
+      expect.unreachable();
+    } catch (error) {
+      expect((error as Error).message).toMatch(/DATA_ENCRYPTION_KEY_V1/);
+      expect((error as Error).message).not.toContain(short);
+    }
+    expect(() =>
+      loadEnv({
+        DATABASE_URL: validDatabaseUrl,
+        DATA_ENCRYPTION_KEY_V1: 'replace-with-base64-encoded-32-byte-key',
+      }),
+    ).toThrow(/DATA_ENCRYPTION_KEY_V1/);
+  });
+
+  it('requires the active version to be configured when several keys exist', () => {
+    expect(() =>
+      loadEnv({
+        DATABASE_URL: validDatabaseUrl,
+        DATA_ENCRYPTION_KEY_V1: key(1),
+        DATA_ENCRYPTION_KEY_V2: key(2),
+      }),
+    ).toThrow(/DATA_ENCRYPTION_KEY_ACTIVE_VERSION/);
+    expect(() =>
+      loadEnv({
+        DATABASE_URL: validDatabaseUrl,
+        DATA_ENCRYPTION_KEY_V1: key(1),
+        DATA_ENCRYPTION_KEY_ACTIVE_VERSION: 'v9',
+      }),
+    ).toThrow(/DATA_ENCRYPTION_KEY_ACTIVE_VERSION/);
   });
 });
 

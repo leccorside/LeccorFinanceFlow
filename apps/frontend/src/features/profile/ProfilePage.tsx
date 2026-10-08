@@ -16,6 +16,9 @@ import {
   type ProfileUpdate,
   updateProfile,
 } from '../../services/profile';
+import { useSearchParams } from 'react-router-dom';
+import { GoogleConnectionCard } from './GoogleConnectionCard';
+import { returnMessageKey } from './google-return';
 import {
   diffProfile,
   fieldErrorsFrom,
@@ -37,6 +40,9 @@ export function ProfilePage() {
   const profile = useQuery({ queryKey: ['profile'], queryFn: getProfile });
   // Lives here because the form re-mounts after each save (new server copy).
   const [justSaved, setJustSaved] = useState(false);
+  // Return of the Google consent flow: /profile?google=connected or ?googleError=<code>.
+  const [params] = useSearchParams();
+  const googleMessage = returnMessageKey(params.get('google'), params.get('googleError'));
 
   if (profile.isPending) {
     return <p role="status">{t('app.loading')}</p>;
@@ -62,7 +68,9 @@ export function ProfilePage() {
           currency: updated.currency,
         });
       }}
-    />
+    >
+      <GoogleConnectionCard returnMessage={googleMessage} />
+    </ProfileForm>
   );
 }
 
@@ -71,7 +79,9 @@ function ProfileForm({
   justSaved,
   onEdit,
   onSaved,
+  children,
 }: {
+  children?: ReactNode;
   profile: Profile;
   justSaved: boolean;
   onEdit: () => void;
@@ -359,6 +369,7 @@ function ProfileForm({
           </p>
         </div>
       </form>
+      {children}
     </section>
   );
 }

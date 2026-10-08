@@ -106,6 +106,10 @@ const envSchema = z
     GOOGLE_REDIRECT_URI: optionalNonEmpty.pipe(
       httpUrl.default('http://localhost:5173/api/v1/auth/google/callback'),
     ),
+    /** Redirect URI of the separate Drive/Sheets consent (also registered in Google Cloud). */
+    GOOGLE_CONNECTION_REDIRECT_URI: optionalNonEmpty.pipe(
+      httpUrl.default('http://localhost:5173/api/v1/google/callback'),
+    ),
     /** Extra browser origins allowed by CORS and the CSRF origin check (FRONTEND_URL always is). */
     CORS_ALLOWED_ORIGINS: originList,
     RATE_LIMIT_TTL_SECONDS: positiveInt(60, 86_400),
@@ -147,6 +151,7 @@ const envSchema = z
       GOOGLE_CLIENT_ID,
       GOOGLE_CLIENT_SECRET,
       GOOGLE_REDIRECT_URI,
+      GOOGLE_CONNECTION_REDIRECT_URI,
       CORS_ALLOWED_ORIGINS,
       ...env
     }) => ({
@@ -165,12 +170,65 @@ const envSchema = z
               clientId: GOOGLE_CLIENT_ID,
               clientSecret: GOOGLE_CLIENT_SECRET,
               redirectUri: GOOGLE_REDIRECT_URI,
+              connectionRedirectUri: GOOGLE_CONNECTION_REDIRECT_URI,
             }
           : null,
     }),
   );
 
-export type AppEnv = z.infer<typeof envSchema>;
+export interface EncryptionConfig {
+  activeVersion: string;
+  /** version ("v1", "v2"…) → 32-byte AES key. */
+  keys: ReadonlyMap<string, Buffer>;
+}
+
+export type AppEnv = z.infer<typeof envSchema> & {
+  /** Null when no DATA_ENCRYPTION_KEY_V<n> is set: features storing secrets answer 503. */
+  ENCRYPTION: EncryptionConfig | null;
+};
+
+const KEY_VARIABLE = /^DATA_ENCRYPTION_KEY_V(\d+)$/;
+
+/**
+ * Reads DATA_ENCRYPTION_KEY_V<n> (base64 of exactly 32 bytes) and
+ * DATA_ENCRYPTION_KEY_ACTIVE_VERSION. Old versions stay configured after a rotation so
+ * existing ciphertexts remain readable until re-encrypted.
+ */
+function parseEncryption(
+  source: Record<string, string | undefined>,
+  issues: string[],
+): EncryptionConfig | null {
+  const keys = new Map<string, Buffer>();
+  for (const [name, raw] of Object.entries(source)) {
+    const match = KEY_VARIABLE.exec(name);
+    const value = raw?.trim();
+    if (!match || !value) {
+      continue;
+    }
+    const key = /^[A-Za-z0-9+/_-]+={0,2}$/.test(value)
+      ? Buffer.from(value, 'base64')
+      : null;
+    if (!key || key.length !== 32) {
+      issues.push(`${name}: must be the base64 encoding of exactly 32 random bytes`);
+      continue;
+    }
+    keys.set(`v${Number(match[1])}`, key);
+  }
+
+  if (keys.size === 0) {
+    return null;
+  }
+
+  const requested = source.DATA_ENCRYPTION_KEY_ACTIVE_VERSION?.trim().toLowerCase();
+  const activeVersion = requested || (keys.size === 1 ? [...keys.keys()][0] : undefined);
+  if (!activeVersion || !keys.has(activeVersion)) {
+    issues.push(
+      'DATA_ENCRYPTION_KEY_ACTIVE_VERSION: must name a configured key version (e.g. v1)',
+    );
+    return null;
+  }
+  return { activeVersion, keys };
+}
 
 export const APP_ENV = Symbol('APP_ENV');
 
@@ -190,14 +248,16 @@ export class EnvValidationError extends Error {
  */
 export function loadEnv(source: Record<string, string | undefined>): Readonly<AppEnv> {
   const result = envSchema.safeParse(source);
-
-  if (!result.success) {
-    throw new EnvValidationError(
-      result.error.issues.map(
+  const issues = result.success
+    ? []
+    : result.error.issues.map(
         (issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`,
-      ),
-    );
+      );
+  const encryption = parseEncryption(source, issues);
+
+  if (!result.success || issues.length > 0) {
+    throw new EnvValidationError(issues);
   }
 
-  return Object.freeze(result.data);
+  return Object.freeze({ ...result.data, ENCRYPTION: encryption });
 }

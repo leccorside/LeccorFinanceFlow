@@ -73,6 +73,45 @@ const ptBR = {
   'profile.error.load': 'Não foi possível carregar seu perfil.',
   'profile.error.field': 'Valor inválido.',
 
+  'google.title': 'Conta Google conectada',
+  'google.description':
+    'Permite criar e atualizar a sua planilha financeira. Pedimos só acesso aos arquivos que o Leccor criar ou que você abrir com ele.',
+  'google.status.NOT_CONNECTED': 'Não conectada',
+  'google.status.ACTIVE': 'Conectada',
+  'google.status.NEEDS_REAUTH':
+    'Reconexão necessária: a autorização expirou ou foi removida no Google.',
+  'google.status.REVOKED': 'Desconectada',
+  'google.account': 'Conta',
+  'google.connectedAt': 'Conectada desde',
+  'google.connect': 'Conectar conta Google',
+  'google.reconnect': 'Reconectar conta Google',
+  'google.disconnect': 'Desconectar',
+  'google.disconnectConfirm':
+    'Desconectar remove o acesso do Leccor à sua conta Google. Suas planilhas continuam no seu Google Drive e nada é apagado.',
+  'google.disconnectConfirmButton': 'Sim, desconectar',
+  'google.cancel': 'Cancelar',
+  'google.disconnected': 'Conta Google desconectada. Suas planilhas foram mantidas.',
+  'google.disconnectedLocalOnly':
+    'Removemos o acesso aqui, mas o Google não confirmou a revogação. Você pode removê-la em myaccount.google.com/permissions.',
+  'google.connectedNow': 'Conta Google conectada com sucesso.',
+  'google.error.google_connection_unavailable':
+    'A conexão com o Google ainda não está configurada neste ambiente.',
+  'google.error.unauthenticated':
+    'Sua sessão expirou. Entre novamente e conecte de novo.',
+  'google.error.access_denied': 'A autorização foi cancelada no Google.',
+  'google.error.invalid_state':
+    'A conexão expirou ou foi aberta em outra aba. Tente novamente.',
+  'google.error.expired_state': 'A conexão demorou demais. Tente novamente.',
+  'google.error.provider_error':
+    'Não foi possível concluir a conexão com o Google. Tente novamente.',
+  'google.error.insufficient_scopes':
+    'Para funcionar, marque a permissão de acesso aos arquivos do Google Drive.',
+  'google.error.missing_refresh_token':
+    'O Google não enviou uma autorização permanente. Remova o acesso do Leccor em myaccount.google.com/permissions e conecte de novo.',
+  'google.error.unknown': 'Não foi possível conectar sua conta Google.',
+  'google.error.load': 'Não foi possível carregar o estado da conexão Google.',
+  'google.error.disconnect': 'Não foi possível desconectar agora. Tente novamente.',
+
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',
   'locale.es-ES': 'Español (España)',
@@ -154,6 +193,44 @@ const enUS: Messages = {
   'profile.error.load': 'Could not load your profile.',
   'profile.error.field': 'Invalid value.',
 
+  'google.title': 'Connected Google account',
+  'google.description':
+    'Lets Leccor create and update your financial spreadsheet. We only ask for access to files Leccor creates or that you open with it.',
+  'google.status.NOT_CONNECTED': 'Not connected',
+  'google.status.ACTIVE': 'Connected',
+  'google.status.NEEDS_REAUTH':
+    'Reconnection needed: the authorization expired or was removed on Google.',
+  'google.status.REVOKED': 'Disconnected',
+  'google.account': 'Account',
+  'google.connectedAt': 'Connected since',
+  'google.connect': 'Connect Google account',
+  'google.reconnect': 'Reconnect Google account',
+  'google.disconnect': 'Disconnect',
+  'google.disconnectConfirm':
+    'Disconnecting removes Leccor’s access to your Google account. Your spreadsheets stay in your Google Drive and nothing is deleted.',
+  'google.disconnectConfirmButton': 'Yes, disconnect',
+  'google.cancel': 'Cancel',
+  'google.disconnected': 'Google account disconnected. Your spreadsheets were kept.',
+  'google.disconnectedLocalOnly':
+    'We removed the access here, but Google did not confirm the revocation. You can remove it at myaccount.google.com/permissions.',
+  'google.connectedNow': 'Google account connected successfully.',
+  'google.error.google_connection_unavailable':
+    'The Google connection is not configured in this environment yet.',
+  'google.error.unauthenticated': 'Your session expired. Sign in and connect again.',
+  'google.error.access_denied': 'The authorization was cancelled on Google.',
+  'google.error.invalid_state':
+    'The connection expired or was opened in another tab. Please try again.',
+  'google.error.expired_state': 'The connection took too long. Please try again.',
+  'google.error.provider_error':
+    'Could not complete the Google connection. Please try again.',
+  'google.error.insufficient_scopes':
+    'To work, please allow access to the Google Drive files.',
+  'google.error.missing_refresh_token':
+    'Google did not send a lasting authorization. Remove Leccor’s access at myaccount.google.com/permissions and connect again.',
+  'google.error.unknown': 'Could not connect your Google account.',
+  'google.error.load': 'Could not load the Google connection status.',
+  'google.error.disconnect': 'Could not disconnect now. Please try again.',
+
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',
   'locale.es-ES': 'Español (España)',
@@ -232,6 +309,45 @@ const esES: Messages = {
   'profile.error.save': 'No se pudo guardar. Revisa los campos resaltados.',
   'profile.error.load': 'No se pudo cargar tu perfil.',
   'profile.error.field': 'Valor no válido.',
+
+  'google.title': 'Cuenta de Google conectada',
+  'google.description':
+    'Permite crear y actualizar tu hoja de cálculo financiera. Solo pedimos acceso a los archivos que Leccor cree o que abras con él.',
+  'google.status.NOT_CONNECTED': 'No conectada',
+  'google.status.ACTIVE': 'Conectada',
+  'google.status.NEEDS_REAUTH':
+    'Hay que volver a conectar: la autorización caducó o se eliminó en Google.',
+  'google.status.REVOKED': 'Desconectada',
+  'google.account': 'Cuenta',
+  'google.connectedAt': 'Conectada desde',
+  'google.connect': 'Conectar cuenta de Google',
+  'google.reconnect': 'Volver a conectar la cuenta de Google',
+  'google.disconnect': 'Desconectar',
+  'google.disconnectConfirm':
+    'Desconectar elimina el acceso de Leccor a tu cuenta de Google. Tus hojas de cálculo siguen en tu Google Drive y no se borra nada.',
+  'google.disconnectConfirmButton': 'Sí, desconectar',
+  'google.cancel': 'Cancelar',
+  'google.disconnected':
+    'Cuenta de Google desconectada. Tus hojas de cálculo se mantienen.',
+  'google.disconnectedLocalOnly':
+    'Quitamos el acceso aquí, pero Google no confirmó la revocación. Puedes quitarlo en myaccount.google.com/permissions.',
+  'google.connectedNow': 'Cuenta de Google conectada correctamente.',
+  'google.error.google_connection_unavailable':
+    'La conexión con Google aún no está configurada en este entorno.',
+  'google.error.unauthenticated': 'Tu sesión caducó. Inicia sesión y vuelve a conectar.',
+  'google.error.access_denied': 'La autorización se canceló en Google.',
+  'google.error.invalid_state':
+    'La conexión caducó o se abrió en otra pestaña. Inténtalo de nuevo.',
+  'google.error.expired_state': 'La conexión tardó demasiado. Inténtalo de nuevo.',
+  'google.error.provider_error':
+    'No fue posible completar la conexión con Google. Inténtalo de nuevo.',
+  'google.error.insufficient_scopes':
+    'Para funcionar, marca el permiso de acceso a los archivos de Google Drive.',
+  'google.error.missing_refresh_token':
+    'Google no envió una autorización permanente. Quita el acceso de Leccor en myaccount.google.com/permissions y vuelve a conectar.',
+  'google.error.unknown': 'No fue posible conectar tu cuenta de Google.',
+  'google.error.load': 'No se pudo cargar el estado de la conexión con Google.',
+  'google.error.disconnect': 'No se pudo desconectar ahora. Inténtalo de nuevo.',
 
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',

@@ -191,18 +191,23 @@ enum ActionKind {
   DELETE
 }
 
+enum AuthAttemptPurpose {
+  LOGIN
+  GOOGLE_CONNECTION
+}
+
 // ─────────────────────── Identity and access ───────────────────────
 
 model User {
-  id           String     @id @default(uuid(7)) @db.Uuid
+  id            String     @id @default(uuid(7)) @db.Uuid
   /// Always stored lower-cased and trimmed (CHECK constraint).
-  email        String     @unique
+  email         String     @unique
   /// Google `sub` claim; immutable identity key for login.
-  googleSubject String?   @unique @map("google_subject")
-  status       UserStatus @default(ACTIVE)
-  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(3)
-  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  googleSubject String?    @unique @map("google_subject")
+  status        UserStatus @default(ACTIVE)
+  lastLoginAt   DateTime?  @map("last_login_at") @db.Timestamptz(3)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime   @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   roles                 UserRole[]
   profile               UserProfile?
@@ -220,6 +225,7 @@ model User {
   actionHistory         ActionHistory[]
   updatedSettings       SystemSetting[]
   sessions              UserSession[]
+  authAttempts          AuthLoginAttempt[]
 
   @@index([status])
   @@map("users")
@@ -252,17 +258,23 @@ model UserSession {
 
 /// Pending Google login: single-use, short-lived. Deleted when consumed.
 model AuthLoginAttempt {
-  id           String   @id @default(uuid(7)) @db.Uuid
-  stateHash    String   @unique @map("state_hash") @db.Char(64)
-  nonce        String   @db.VarChar(128)
+  id           String             @id @default(uuid(7)) @db.Uuid
+  purpose      AuthAttemptPurpose @default(LOGIN)
+  /// Set iff purpose = GOOGLE_CONNECTION: the callback must come from this same user.
+  userId       String?            @map("user_id") @db.Uuid
+  stateHash    String             @unique @map("state_hash") @db.Char(64)
+  nonce        String             @db.VarChar(128)
   /// PKCE verifier; useless without the authorization code and lives at most a few minutes.
-  codeVerifier String   @map("code_verifier") @db.VarChar(128)
+  codeVerifier String             @map("code_verifier") @db.VarChar(128)
   /// Validated relative path to return to after login.
-  redirectPath String   @default("/") @map("redirect_path") @db.VarChar(512)
-  expiresAt    DateTime @map("expires_at") @db.Timestamptz(3)
-  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  redirectPath String             @default("/") @map("redirect_path") @db.VarChar(512)
+  expiresAt    DateTime           @map("expires_at") @db.Timestamptz(3)
+  createdAt    DateTime           @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  user User? @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([expiresAt])
+  @@index([userId])
   @@map("auth_login_attempts")
 }
 
@@ -510,21 +522,21 @@ model Transaction {
 }
 
 model Investment {
-  id          String          @id @default(uuid(7)) @db.Uuid
-  ownerId     String          @map("owner_id") @db.Uuid
-  accountId   String?         @map("account_id") @db.Uuid
-  assetClass  InvestmentClass @map("asset_class")
-  name        String          @db.VarChar(150)
-  symbol      String?         @db.VarChar(30)
-  quantity    Decimal         @default(0) @db.Decimal(28, 10)
-  totalCost   Decimal         @default(0) @map("total_cost") @db.Decimal(19, 4)
-  currency    String          @default("BRL") @db.Char(3)
-  notes       String?         @db.VarChar(1000)
-  syncStatus  SyncStatus      @default(PENDING_SYNC) @map("sync_status")
-  syncError   String?         @map("sync_error") @db.VarChar(500)
-  version     Int             @default(1)
-  createdAt   DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt   DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
+  id         String          @id @default(uuid(7)) @db.Uuid
+  ownerId    String          @map("owner_id") @db.Uuid
+  accountId  String?         @map("account_id") @db.Uuid
+  assetClass InvestmentClass @map("asset_class")
+  name       String          @db.VarChar(150)
+  symbol     String?         @db.VarChar(30)
+  quantity   Decimal         @default(0) @db.Decimal(28, 10)
+  totalCost  Decimal         @default(0) @map("total_cost") @db.Decimal(19, 4)
+  currency   String          @default("BRL") @db.Char(3)
+  notes      String?         @db.VarChar(1000)
+  syncStatus SyncStatus      @default(PENDING_SYNC) @map("sync_status")
+  syncError  String?         @map("sync_error") @db.VarChar(500)
+  version    Int             @default(1)
+  createdAt  DateTime        @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt  DateTime        @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   owner        User              @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   account      FinancialAccount? @relation(fields: [accountId], references: [id], onDelete: NoAction)

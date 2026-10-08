@@ -6,6 +6,20 @@ import { getProfile, type Profile, updateProfile } from '../../services/profile'
 import { renderWithProviders } from '../../test/render';
 import { ProfilePage } from './ProfilePage';
 
+vi.mock('../../services/google', () => ({
+  getGoogleConnection: vi.fn().mockResolvedValue({
+    status: 'NOT_CONNECTED',
+    googleEmail: null,
+    grantedScopes: [],
+    requiredScopes: ['https://www.googleapis.com/auth/drive.file'],
+    missingScopes: ['https://www.googleapis.com/auth/drive.file'],
+    connectedAt: null,
+    lastRefreshedAt: null,
+  }),
+  disconnectGoogle: vi.fn(),
+  googleConnectUrl: () => '/api/v1/google/connect?redirectTo=%2Fprofile',
+}));
+
 vi.mock('../../services/profile', () => ({
   getProfile: vi.fn(),
   updateProfile: vi.fn(),
@@ -95,7 +109,7 @@ describe('ProfilePage', () => {
     expect(
       await screen.findByRole('heading', { name: 'Your profile' }),
     ).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Profile updated.');
+    expect(screen.getByText('Profile updated.')).toBeInTheDocument();
   });
 
   it('does not call the API when nothing changed', async () => {
@@ -130,7 +144,7 @@ describe('ProfilePage', () => {
     expect(screen.getByLabelText('Telefone')).toHaveAccessibleDescription(
       /Valor inválido/,
     );
-    expect(screen.getByRole('status')).toHaveTextContent('Não foi possível salvar');
+    expect(screen.getByText(/Não foi possível salvar/)).toBeInTheDocument();
   });
 
   it('shows an error when the profile cannot be loaded', async () => {
