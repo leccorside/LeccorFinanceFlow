@@ -125,7 +125,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: aplica rbac, ownership e proteção da api`
 
-## [ ] PASSO 06 — Perfil, preferências e internacionalização base
+## [x] PASSO 06 — Perfil, preferências e internacionalização base
 
 **Objetivo:** entregar perfil com PT/EN/ES, moeda, fuso e voz.
 
@@ -137,7 +137,26 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** validações, três idiomas, fusos e acesso de outro usuário.
 
-**Sugestão de commit:** `feat: add user profile and localization preferences`
+**Evidência (08/10/2026):**
+
+- **Backend**: módulo `profile` (`GET`/`PATCH /profile`) e e-mail sincronizado do Google verificado no login. 101 testes unitários (os novos validam três idiomas, fusos válidos e inválidos, moeda, telefone, foto, voz e preferências, além da rejeição de `email`/`userId`/`roles`). 96 de integração (14 novos de perfil): valores padrão, persistência de todos os campos, troca de idioma, mesclagem de preferências, limpeza com `null`, e-mail não alterável, CSRF obrigatório, isolamento entre usuários, ausência de rota por id e sincronização e conflito de e-mail no login.
+- **Frontend**: i18n próprio pt-BR/en-US/es-ES, formatação `Intl`, cliente HTTP com CSRF e refresh, telas `/login` e `/profile`. 47 testes, cobrindo:
+  - paridade de chaves e placeholders;
+  - moeda por idioma sem erro de float;
+  - instante no fuso do perfil;
+  - data de calendário sem deslocamento;
+  - diff de campos;
+  - CSRF, refresh e retentativa do cliente;
+  - perfil nos 3 idiomas;
+  - prévia ao vivo;
+  - salvamento só do que mudou com troca de idioma da UI;
+  - erros por campo acessíveis;
+  - login com erros traduzidos;
+  - redirecionamento de anônimo.
+- **Bug antigo corrigido**: o `typecheck` do frontend não verificava nenhum arquivo.
+- **Docker, pelo proxy do Vite e com sessão sintética**: `GET /profile` 200; `PATCH` sem token 403; `PATCH` válido 200, refletido no `/auth/me`; `PATCH` com `email` 400; SPA servida em `/profile` e `/login`. As suítes passam nos containers (101 + 96 + 47) e `pnpm quality` passou por completo.
+
+**Sugestão de commit:** `feat: adiciona perfil do usuário e preferências de localização`
 
 ## [ ] PASSO 07 — Conexão Google e cofre de credenciais
 

@@ -41,6 +41,35 @@ export class UsersService {
   }
 
   /**
+   * The account e-mail follows the verified e-mail of the linked Google account: that is
+   * the only trusted way to change it (the profile API never accepts `email`). If another
+   * account already uses the new address, the current one is kept.
+   */
+  private async syncVerifiedEmail(user: User, verifiedEmail: string): Promise<User> {
+    if (user.email === verifiedEmail) {
+      return user;
+    }
+    const taken = await this.prisma.user.findUnique({ where: { email: verifiedEmail } });
+    if (taken) {
+      return user;
+    }
+    try {
+      return await this.prisma.user.update({
+        where: { id: user.id },
+        data: { email: verifiedEmail },
+      });
+    } catch (error) {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
+        return user; // lost a race for the same address: keep the current e-mail
+      }
+      throw error;
+    }
+  }
+
+  /**
    * Bootstrap of administrators: accounts whose e-mail is in ADMIN_EMAILS receive ADMIN
    * on login. Grants are additive; removing an e-mail from the list does not demote
    * (demotion is an explicit admin action, PASSO 20).
@@ -68,7 +97,7 @@ export class UsersService {
       where: { googleSubject: identity.subject },
     });
     if (bySubject) {
-      return bySubject;
+      return this.syncVerifiedEmail(bySubject, email);
     }
 
     const byEmail = await this.prisma.user.findUnique({ where: { email } });

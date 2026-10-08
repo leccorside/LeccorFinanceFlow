@@ -27,18 +27,248 @@ body {
 
 button,
 input,
+select,
 textarea {
   font: inherit;
 }
 
+:focus-visible {
+  outline: 3px solid #7de2aa;
+  outline-offset: 2px;
+}
+
 .app-shell {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   min-height: 100vh;
-  place-items: center;
-  padding: 24px;
   background:
     radial-gradient(circle at 15% 20%, rgb(48 141 93 / 24%), transparent 32%),
     radial-gradient(circle at 85% 80%, rgb(40 93 199 / 16%), transparent 35%), #07120d;
+}
+
+.topbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px clamp(16px, 4vw, 40px);
+  border-bottom: 1px solid rgb(164 226 190 / 12%);
+}
+
+.topbar nav {
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+
+.brand,
+.topbar a,
+.link-button {
+  color: #d7e9de;
+  font-weight: 650;
+  text-decoration: none;
+}
+
+.brand {
+  color: #7de2aa;
+  letter-spacing: 0.02em;
+}
+
+.link-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.app-main {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  padding: clamp(16px, 4vw, 40px);
+}
+
+.page {
+  width: min(880px, 100%);
+}
+
+.page--narrow {
+  width: min(520px, 100%);
+  padding: clamp(24px, 5vw, 44px);
+  border: 1px solid rgb(164 226 190 / 16%);
+  border-radius: 24px;
+  background: rgb(13 31 22 / 82%);
+}
+
+.page h1 {
+  max-width: none;
+  margin: 0 0 8px;
+  font-size: clamp(1.8rem, 5vw, 2.6rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.page-header {
+  margin-bottom: 24px;
+}
+
+.profile-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 20px;
+}
+
+.profile-form fieldset,
+.preview {
+  display: grid;
+  gap: 16px;
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+  padding: 20px;
+  border: 1px solid rgb(164 226 190 / 14%);
+  border-radius: 20px;
+  background: rgb(13 31 22 / 72%);
+}
+
+.profile-form legend,
+.preview h2 {
+  margin: 0;
+  padding: 0 6px;
+  color: #7de2aa;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.field {
+  display: grid;
+  gap: 6px;
+}
+
+.field label,
+.field-label {
+  color: #d7e9de;
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+
+.field input,
+.field select {
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid rgb(164 226 190 / 24%);
+  border-radius: 12px;
+  color: #effaf4;
+  background: rgb(4 12 8 / 70%);
+}
+
+.field input[readonly] {
+  color: #acc4b6;
+  background: rgb(4 12 8 / 35%);
+}
+
+.field small {
+  color: #8fa99a;
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.field--invalid input,
+.field--invalid select {
+  border-color: #ff8f8f;
+}
+
+.field .field-error {
+  color: #ffb4b4;
+}
+
+.choice-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.choice {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  min-height: 44px;
+  color: #d7e9de;
+}
+
+.choice input {
+  width: 20px;
+  height: 20px;
+  accent-color: #5ce899;
+}
+
+.preview dl {
+  display: grid;
+  gap: 4px 16px;
+  margin: 0;
+}
+
+.preview dt {
+  color: #8fa99a;
+  font-size: 0.8rem;
+}
+
+.preview dd {
+  margin: 0 0 10px;
+  color: #effaf4;
+  font-size: 1.05rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  grid-column: 1 / -1;
+  gap: 16px;
+  align-items: center;
+}
+
+.button-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+  margin-top: 8px;
+  padding: 12px 22px;
+  border: 0;
+  border-radius: 999px;
+  color: #04110a;
+  background: #5ce899;
+  font-weight: 750;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.button-primary:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+.form-status {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.form-status--error,
+.alert {
+  color: #ffb4b4;
+}
+
+.alert {
+  margin: 16px 0;
+  padding: 12px 14px;
+  border: 1px solid rgb(255 143 143 / 35%);
+  border-radius: 12px;
+  background: rgb(80 20 20 / 35%);
 }
 
 .foundation-card {

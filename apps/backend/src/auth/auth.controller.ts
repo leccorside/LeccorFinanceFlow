@@ -28,6 +28,7 @@ import {
   queryString,
   readCookie,
 } from './http.js';
+import { toLocaleTag } from '../profile/profile.schemas.js';
 import { CurrentUser } from './session-auth.guard.js';
 
 export interface MeResponse {
@@ -193,7 +194,7 @@ export class AuthController {
         firstName: profile.firstName,
         lastName: profile.lastName,
         photoUrl: profile.photoUrl,
-        locale: profile.locale,
+        locale: toLocaleTag(profile.locale),
         currency: profile.currency,
         timeZone: profile.timeZone,
       },

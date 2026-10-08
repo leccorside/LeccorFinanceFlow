@@ -2,7 +2,7 @@
 
 ## Estado em 08/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 05 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 06 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,24 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Perfil e i18n implementados no PASSO 06:
+
+- backend `src/profile`: `GET`/`PATCH /profile` (`ProfileService`, schemas Zod em `profile.schemas.ts`, `LOCALES` BCP 47 ↔ enum); `UsersService.syncVerifiedEmail` no login; `/auth/me` com `locale` BCP 47; helper `common/validation/defined.ts`;
+- frontend `src/i18n` (catálogos, `I18nProvider`, `useI18n`, `format.ts`), `src/services/api.ts` (CSRF + refresh), `services/auth.ts`, `services/profile.ts`, `features/auth/LoginPage`, `features/profile/ProfilePage` + `profile-form.ts`, `App` com cabeçalho, `RequireAuth` e aplicação do idioma/fuso/moeda do perfil; estilos do formulário;
+- correção do script `typecheck` do frontend (agora `tsc -p tsconfig.app.json` e `tsconfig.node.json`).
+
+## Decisões do PASSO 06
+
+- **E-mail confiável**: a API de perfil nunca aceita `email`. O e-mail da conta acompanha o e-mail verificado do Google vinculado (sincronizado no login; se já estiver em uso por outra conta, mantém o atual). É a leitura de "editar e-mail" compatível com o critério de não sobrescrever arbitrariamente; não existe e-mail de contato separado.
+- **Sem rota `/profile/:id`**: o usuário só endereça o próprio perfil.
+- **Tags BCP 47 na API** (`pt-BR`), enum no banco (`pt_BR`).
+- **Validação de fuso por nome IANA** + `Intl`; offsets recusados. Moedas: ISO 4217 conhecidas pelo `Intl` do Node.
+- **Preferências com schema fixo** (`theme`, `weekStartsOn`), mescladas no JSON; o que estiver salvo e for desconhecido ou inválido é ignorado na leitura. A "preferência de planilha" do PASSO é a planilha ativa (`spreadsheets.is_active`), tratada no PASSO 08.
+- **i18n próprio, sem dependência**: catálogos tipados (paridade garantida em compilação e teste) e `Intl` nativo. Valores monetários formatados a partir da string decimal.
+- **Datas de calendário formatadas em UTC** para nunca mudarem de dia; instantes no fuso do perfil.
+- **Cliente HTTP criado já neste passo** (era previsto para o PASSO 16) porque o perfil é a primeira tela que escreve na API.
+- **Tema salvo mas não aplicado** (a UI atual só tem tema escuro); aplicação no PASSO 16.
 
 ## Decisões do PASSO 05
 
@@ -127,6 +145,10 @@ Proteção da API implementada no PASSO 05:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 06: o script `typecheck` do frontend rodava `tsc --noEmit` sobre um `tsconfig.json` com `"files": []` e não verificava nada desde o PASSO 01 (só o `build` checava). Corrigido.
+- PASSO 06: o Zod 4 executa todas as checagens de um campo mesmo após a primeira falha, então um valor inválido pode gerar várias issues no mesmo caminho. Os testes comparam caminhos distintos.
+- PASSO 06: o TanStack Query v5 passa um segundo argumento (contexto) para `mutationFn`; envolver o serviço numa arrow function para não repassá-lo.
+- PASSO 06: escapes `\u00a0`/`\u202f` escritos em testes acabaram gravados como caracteres reais (ESLint `no-irregular-whitespace`). Corrigido com um script que troca pelos escapes; ao lidar com a saída do `Intl`, conferir esses espaços especiais.
 - PASSO 05: com o filtro global, uma exceção 503 lançada pelo readiness viraria o contrato de erro e quebraria o corpo do healthcheck; por isso o readiness define o status via `@Res({ passthrough: true })`.
 - PASSO 05: testes que criam recursos com nome repetido batem na unicidade (`owner_id, type, name`) e recebem 409; usar nomes únicos por teste.
 - Comandos `docker compose run ... -w /app/...` pelo Git Bash precisam de `MSYS_NO_PATHCONV=1`, senão o caminho vira `C:/Program Files/Git/app/...`. O PowerShell 5.1 corrompe aspas aninhadas em `sh -c`; para esses casos, usar Bash.
@@ -159,24 +181,29 @@ Proteção da API implementada no PASSO 05:
 
 ## Próxima ação
 
-O PASSO 05 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 06 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 6`
+`INICIE O PASSO 7`
 
-Quando autorizado, executar apenas o PASSO 06 de `PASSOS.md`: perfil, preferências e internacionalização base. Não antecipar a conexão Google/Sheets (PASSO 07).
+Quando autorizado, executar apenas o PASSO 07 de `PASSOS.md`: conexão Google (Sheets/Drive) e cofre de credenciais. Não antecipar a criação da planilha (PASSO 08).
 
-Regras para todo módulo novo (a partir do PASSO 06):
+Regras para todo módulo novo:
 
 - rotas são autenticadas por padrão; só usar `@Public()` com justificativa;
 - todo parâmetro de entrada passa por `validate(...)`/`uuidParam`, com DTOs criados por `dto({...})`;
 - recursos do usuário são consultados com `ownedBy(user)` no `where` e respondem `ResourceNotFoundException` quando nada corresponde;
 - `ownerId` sempre vem da sessão; escritas exigem `X-CSRF-Token` (já garantido pelo guard);
 - erros esperados usam `ApiException(status, code, message?, details?)`;
-- testes de integração usam `test/integration/support.ts` (`createTestApp`, `loginAs`).
+- testes de integração usam `test/integration/support.ts` (`createTestApp`, `loginAs`);
+- PATCH com `.partial()` do Zod + Prisma: usar `defined()` (`common/validation/defined.ts`) por causa do `exactOptionalPropertyTypes`;
+- frontend: textos sempre via `t('chave')` com a chave nos 3 catálogos; valores e datas via `useI18n().money/dateTime/calendarDate`; chamadas à API via `services/api.ts`.
 
 Pendências conhecidas para passos futuros:
 
-- PASSO 16: o cliente HTTP do frontend deve buscar o token em `GET /auth/csrf`, enviá-lo em `X-CSRF-Token` e tentar `POST /auth/refresh` uma vez ao receber 401.
+- PASSO 16: aplicar o tema (`preferences.theme`) e o início da semana na interface definitiva; o cliente HTTP (CSRF + refresh) já existe em `services/api.ts`.
+- PASSO 07: exibir no perfil o estado da conexão Google/Sheets ("Conta Google conectada" do PROMPT).
+- PASSO 17: usar `voice.gender`/`autoSpeak`/`speakingRate` do perfil na síntese de voz; o comando por conversa "troque sua voz" vai usar `ProfileService.update`.
+- `packages/contracts` ainda não é usado: os tipos de perfil existem no backend e no frontend. Avaliar mover os contratos públicos para lá quando o build do pacote estiver integrado ao Docker.
 - PASSO 14/17: usar `@RateLimit` com `ASSISTANT_RATE_LIMIT_MAX_REQUESTS`/`VOICE_RATE_LIMIT_MAX_REQUESTS` (já no `.env.example`, ainda não validados no `env.ts`), de preferência por usuário.
 - PASSO 20: ao bloquear um usuário, chamar `AuthService.revokeAllSessions`; promoção e rebaixamento de admins.
 - Rate limit pelo proxy do Vite: todo o tráfego do navegador chega com o IP do container do frontend (um único bucket); em produção, configurar `TRUST_PROXY` atrás do proxy reverso.
@@ -188,7 +215,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSO 01 (`5f4756e`), PASSO 02 (`6324d5d`), PASSO 03 (`32de508`) e PASSO 04 (`33279f6`) commitados; o PASSO 05 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`) e 05 (`aab4870`) commitados; o PASSO 06 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -239,3 +266,10 @@ Pendências conhecidas para passos futuros:
 - Mutações no `RolesGuard` (ignorar papel) e no `CsrfGuard` (ignorar token) foram detectadas (2 falhas) e revertidas.
 - Docker: migration `20261008200737_session_csrf_token` aplicada; via proxy do Vite, os headers `nosniff`/`DENY`/CSP/`no-referrer` e `X-Request-Id` chegam ao cliente; `GET /auth/csrf` sem sessão → 401 no contrato; `POST /auth/logout` com `Origin: https://evil.example` → 403 `csrf_failed`; preflight CORS com `ACAO` só para `http://localhost:5173`; corpo de 1,1 MB → 413 `payload_too_large`.
 - `pnpm quality` passou por completo no host.
+
+## Evidências do PASSO 06
+
+- Backend: 101 testes unitários e 96 de integração (14 novos de perfil) passam no host e no container; nenhum banco de teste restante.
+- Frontend: 47 testes (i18n, formatação, cliente HTTP, formulário, telas de perfil e login, App) passam no host e no container.
+- Docker, pelo proxy do Vite e com sessão sintética criada no banco (removida ao final): `GET /profile` 200; `PATCH` sem CSRF 403; `PATCH` com token e `Origin` do frontend 200 (idioma, moeda, fuso, voz e tema persistidos, refletidos no `/auth/me`); `PATCH` com `email` 400 `validation_failed`; `/profile` e `/login` servem a SPA.
+- `pnpm quality` passou por completo (com o `typecheck` do frontend agora efetivo).

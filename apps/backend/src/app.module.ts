@@ -4,6 +4,7 @@ import { SecurityModule } from './common/security/security.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
 import { HealthModule } from './health/health.module.js';
+import { ProfileModule } from './profile/profile.module.js';
 import { UsersModule } from './users/users.module.js';
 
 @Module({
@@ -14,6 +15,7 @@ import { UsersModule } from './users/users.module.js';
     HealthModule,
     UsersModule,
     AuthModule,
+    ProfileModule,
   ],
 })
 export class AppModule {}

@@ -253,6 +253,69 @@ Códigos de erro do login (`/login?error=`): `access_denied`, `invalid_state`, `
 - **Guard**: `SessionAuthGuard` é global (default-deny) e `@CurrentUser()` entrega o usuário da sessão. Papéis, CSRF e rate limit: ver "Segurança da API".
 - **Token CSRF**: `GET /api/v1/auth/csrf` (exige sessão) devolve `{ csrfToken, headerName: "X-CSRF-Token" }`. O token é fixo durante a sessão (sobrevive ao refresh e vale para todas as abas).
 - **Primeiro administrador**: e-mails listados em `ADMIN_EMAILS` recebem o papel `ADMIN` a cada login (comparação sem diferenciar maiúsculas). Remover o e-mail da lista não rebaixa ninguém; rebaixamento será ação explícita do painel admin (PASSO 20).
+- **E-mail da conta**: a cada login, o e-mail da conta é sincronizado com o e-mail **verificado** da conta Google vinculada (pelo `sub`). Se o novo endereço já pertencer a outra conta, o atual é mantido.
+
+## Perfil e internacionalização (PASSO 06)
+
+### API
+
+| Método e rota           | Uso                                                                               |
+| ----------------------- | --------------------------------------------------------------------------------- |
+| `GET /api/v1/profile`   | Perfil do próprio usuário (com valores padrão quando ainda não há registro).      |
+| `PATCH /api/v1/profile` | Atualização parcial; exige `X-CSRF-Token`. Responde o perfil completo atualizado. |
+
+Não existe rota com `:id`: cada usuário só endereça o próprio perfil, então não há o que adivinhar (sem superfície de IDOR).
+
+Resposta:
+
+```json
+{
+  "email": "ana@example.com",
+  "firstName": "Ana",
+  "lastName": "Silva",
+  "photoUrl": null,
+  "phone": "+5511999998888",
+  "locale": "pt-BR",
+  "currency": "BRL",
+  "timeZone": "America/Sao_Paulo",
+  "preferences": { "theme": "system", "weekStartsOn": "monday" },
+  "voice": { "gender": "FEMALE", "autoSpeak": true, "speakingRate": 1 },
+  "updatedAt": "2026-10-08T12:00:00.000Z"
+}
+```
+
+Regras do `PATCH` (DTO strict; envie só o que mudou):
+
+| Campo                                                            | Regra                                                                                        |
+| ---------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `firstName`, `lastName`                                          | até 100 caracteres, sem caracteres de controle; vazio ou `null` limpa                        |
+| `photoUrl`                                                       | somente `https://`, até 2048 caracteres; `null` limpa                                        |
+| `phone`                                                          | formato E.164 (`+5511999998888`); `null` limpa                                               |
+| `locale`                                                         | `pt-BR`, `en-US` ou `es-ES` (tags BCP 47; no banco viram `pt_BR`/`en_US`/`es_ES`)            |
+| `currency`                                                       | código ISO 4217 maiúsculo conhecido pelo `Intl`                                              |
+| `timeZone`                                                       | nome IANA (`America/Sao_Paulo`, `Europe/Madrid`, `UTC`); offsets como `+03:00` são recusados |
+| `preferences.theme` / `preferences.weekStartsOn`                 | `system`/`light`/`dark` e `monday`/`sunday` (mesclados com os já salvos)                     |
+| `voice.gender` / `voice.autoSpeak` / `voice.speakingRate`        | `FEMALE`/`MALE`, booleano e 0,5–2,0 em passos de 0,05                                        |
+| `email`, `id`, `userId`, `roles`, `status`, chaves desconhecidas | **rejeitados** com `400 validation_failed`                                                   |
+
+**E-mail**: é um valor confiável e não pode ser alterado pela API. Ele acompanha o e-mail verificado da conta Google (ver "Autenticação"). Para trocá-lo, o usuário troca o e-mail no Google e entra novamente. A tela de perfil explica isso.
+
+O `/auth/me` também passa a expor `locale` como tag BCP 47.
+
+### Frontend
+
+- **i18n** em `apps/frontend/src/i18n`: catálogos `pt-BR`, `en-US` e `es-ES`. O `pt-BR` é a referência e os outros são tipados com o mesmo conjunto de chaves, então faltar uma tradução é erro de compilação. Um teste confere chaves e placeholders `{nome}`. Sem biblioteca externa.
+- **Idioma ativo**: antes do login, vem do navegador (`es-MX` → `es-ES`, `en` → `en-US`; demais → `pt-BR`); depois do login, do perfil (`/auth/me`). O `<html lang>` acompanha o idioma.
+- **Formatação** (`i18n/format.ts`), sempre com o idioma, a moeda e o fuso do perfil:
+  - **valores**: `Intl.NumberFormat` recebendo a string decimal da API, sem passar por `float`;
+  - **instantes**: exibidos no fuso do perfil;
+  - **datas de calendário** (vencimento, ocorrência): nunca mudam de dia por causa do fuso.
+- **Cliente HTTP** (`services/api.ts`): cookies da mesma origem; envia `X-CSRF-Token` (obtido de `/auth/csrf` e guardado em memória) em toda escrita; em `401` tenta `POST /auth/refresh` uma única vez e repete a requisição; em `403 csrf_failed` busca o token de novo uma vez.
+- **Telas**:
+  - `/login`: botão "Entrar com Google", com mensagens de erro traduzidas a partir de `?error=`;
+  - `/profile`: protegida, com prévia ao vivo de valor, data/hora no fuso e data de vencimento; envia apenas os campos alterados e marca os campos recusados pela API com `aria-invalid` e mensagem associada;
+  - visitante anônimo em rota protegida vai para `/login?redirectTo=...`.
+- **Tema**: a preferência é salva, mas a interface ainda usa só o tema escuro; tema claro e "seguir o sistema" serão aplicados na interface definitiva (PASSO 16).
 
 ## Google OAuth (conexão com Sheets)
 

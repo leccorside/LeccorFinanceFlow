@@ -4,7 +4,7 @@ Assistente financeiro pessoal com IA, Google Sheets e experiência conversaciona
 
 ## Estado atual
 
-Arquitetura e planejamento estão concluídos. PASSOS 01 a 05 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade, ambiente oficial em Docker Compose, modelo relacional completo com Prisma, login com Google (OAuth com PKCE/state/nonce) com sessão própria em cookies HttpOnly, e proteção da API (autenticação default-deny, RBAC ADMIN/USER, ownership sem IDOR, DTOs estritos, CSRF, CORS, headers de segurança, rate limit e contrato único de erros). Perfil e funcionalidades financeiras ainda não foram iniciados.
+Arquitetura e planejamento estão concluídos. PASSOS 01 a 06 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade, ambiente oficial em Docker Compose, modelo relacional completo com Prisma, login com Google (OAuth com PKCE/state/nonce) com sessão própria em cookies HttpOnly, e proteção da API (autenticação default-deny, RBAC ADMIN/USER, ownership sem IDOR, DTOs estritos, CSRF, CORS, headers de segurança, rate limit e contrato único de erros), perfil com preferências e interface em português, inglês e espanhol (idioma, moeda e fuso aplicados à apresentação). Conexão com o Google Sheets e funcionalidades financeiras ainda não foram iniciadas.
 
 O primeiro administrador é definido por `ADMIN_EMAILS` no `.env`.
 
@@ -59,6 +59,6 @@ pnpm quality
 
 Para autorizar o próximo passo, use:
 
-`INICIE O PASSO 6`
+`INICIE O PASSO 7`
 
-Até essa autorização, perfil, preferências e internacionalização não devem ser iniciados.
+Até essa autorização, a conexão Google (Sheets/Drive) e o cofre de credenciais não devem ser iniciados.
