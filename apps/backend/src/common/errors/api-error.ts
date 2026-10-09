@@ -19,6 +19,7 @@ const DEFAULTS: Record<number, { code: string; message: string }> = {
   409: { code: 'conflict', message: 'Conflito com o estado atual do recurso.' },
   413: { code: 'payload_too_large', message: 'Conteúdo maior que o permitido.' },
   415: { code: 'unsupported_media_type', message: 'Tipo de conteúdo não suportado.' },
+  422: { code: 'unprocessable', message: 'A operação não é permitida com esses dados.' },
   429: {
     code: 'rate_limited',
     message: 'Muitas requisições. Tente novamente em instantes.',

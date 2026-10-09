@@ -446,6 +446,67 @@ Sincronização:
 
 PostgreSQL prevalece em conflitos simultâneos. Alterações manuais não conflitantes do Sheets são aceitas. Exclusão de linha não equivale a exclusão financeira.
 
+## Domínio financeiro (PASSO 09)
+
+Implementado em `apps/backend/src/finance`. Os serviços (`AccountsService`, `CategoriesService`, `TransactionsService`, `FinanceQueriesService`, `ActionHistoryService`) são a fonte da verdade; o assistente (PASSO 13) vai chamá-los diretamente. A API REST abaixo os expõe com as mesmas regras. Toda rota exige sessão, toda escrita exige `X-CSRF-Token`, e todo id de outro usuário responde `404`.
+
+### Rotas
+
+| Rota                                                                                         | Uso                                                                                                                                                                                                                                                                                                                |
+| -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET/POST /api/v1/accounts`, `GET/PATCH/DELETE /api/v1/accounts/:id`                         | Contas e cartões. `GET` traz `balance` (saldo inicial + concluídos) e `pendingNet` (pendentes). `?includeArchived=true` inclui arquivadas.                                                                                                                                                                         |
+| `GET/POST /api/v1/categories`, `PATCH/DELETE /api/v1/categories/:id`                         | Categorias padrão (nome no idioma do perfil, `systemKey`) e próprias. `?kind=EXPENSE` filtra.                                                                                                                                                                                                                      |
+| `GET/POST /api/v1/transactions`, `GET/PATCH/DELETE /api/v1/transactions/:id`                 | Movimentações. A busca aceita `from`, `to`, `type` e `status` (listas separadas por vírgula), `accountId`, `categoryId` (inclui subcategorias), `q` (descrição/observação), `minAmount`, `maxAmount`, `overdue=true`, `sort` (`date_desc`, `date_asc`, `amount_desc`, `amount_asc`), `limit` (até 100) e `offset`. |
+| `GET /api/v1/finance/summary?from&to`                                                        | Resumo do período **por moeda**: receitas, despesas e investimentos (concluído, pendente e total), saldo realizado e projetado, despesas por categoria raiz com participação (%), e os 5 maiores gastos.                                                                                                           |
+| `GET /api/v1/finance/expenses-by-period` e `/income-by-period` `?from&to&groupBy=day\|month` | Séries por dia ou mês, por moeda.                                                                                                                                                                                                                                                                                  |
+| `GET /api/v1/finance/upcoming-bills?days=7`                                                  | Despesas pendentes com vencimento de hoje até hoje + `days` − 1, no fuso do usuário.                                                                                                                                                                                                                               |
+| `GET /api/v1/finance/overdue-bills`                                                          | Despesas pendentes vencidas (antes de hoje, no fuso do usuário).                                                                                                                                                                                                                                                   |
+| `GET /api/v1/action-history?limit=50`                                                        | Histórico funcional do usuário (mais recente primeiro).                                                                                                                                                                                                                                                            |
+
+Valores são enviados e devolvidos como **texto decimal** (`"87.45"`), formatado com as casas da moeda (`"1000"` em JPY).
+
+### Regras determinísticas
+
+| Regra                                                                                                                                                   | Erro (`422` salvo indicado)                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Valor positivo, só dígitos e ponto, sem notação científica, até 15 dígitos inteiros e no máximo as casas decimais da moeda (BRL 2, JPY 0, BHD 3)        | `invalid_amount`, `amount_not_positive`, `too_many_decimals`                                                           |
+| Datas `AAAA-MM-DD` reais, entre 1900 e 2100                                                                                                             | `400 validation_failed`                                                                                                |
+| Moeda = moeda da conta; sem conta, a informada ou a do perfil; nunca há conversão                                                                       | `currency_mismatch`                                                                                                    |
+| Sem status informado: com vencimento → `PENDING`; sem vencimento → `COMPLETED` com `paidOn = occurredOn`                                                | —                                                                                                                      |
+| Data de pagamento só em concluídas; voltar para pendente/cancelada limpa a data                                                                         | `paid_on_requires_completed`                                                                                           |
+| Transferência: conta de origem e destino obrigatórias, diferentes, mesma moeda, sem categoria; destino só em transferências                             | `transfer_requires_accounts`, `transfer_same_account`, `transfer_category_not_allowed`, `transfer_account_not_allowed` |
+| Categoria compatível com o tipo (receita↔`INCOME`, despesa↔`EXPENSE`, investimento↔`INVESTMENT`; `GENERAL` serve para todos)                            | `category_kind_mismatch`                                                                                               |
+| Conta ou categoria arquivada não recebe novos lançamentos                                                                                               | `account_archived`, `category_archived`                                                                                |
+| Despesa em cartão de crédito: forma de pagamento padrão `CREDIT_CARD`                                                                                   | —                                                                                                                      |
+| Campos de cartão (limite, fechamento, vencimento, final) só em `CREDIT_CARD`                                                                            | `card_fields_not_allowed`                                                                                              |
+| Edição com `version` desatualizada                                                                                                                      | `409 version_conflict`                                                                                                 |
+| Conta/categoria em uso não pode ser excluída (arquive)                                                                                                  | `409 account_in_use`, `409 category_in_use`                                                                            |
+| Categorias padrão não podem ser alteradas                                                                                                               | `403 category_read_only`                                                                                               |
+| Subcategoria só um nível abaixo, com o mesmo tipo da categoria pai; nome único (sem diferenciar maiúsculas) entre irmãs, inclusive em relação às padrão | `category_too_deep`, `category_kind_mismatch`, `409 category_name_taken`                                               |
+| Período de consulta de até 3.700 dias                                                                                                                   | `period_too_long`                                                                                                      |
+| Campos de sistema (`ownerId`, `syncStatus`, `spreadsheetId`, `installmentId`, `version` na criação…)                                                    | `400 validation_failed`                                                                                                |
+
+### Cálculos
+
+- Somas feitas no banco (`Decimal`) e combinadas com `Prisma.Decimal`, nunca com `number`: `0.10 + 0.20 = 0.30`.
+- **Moedas nunca são somadas entre si**: resumos, séries e totais de contas vêm separados por moeda.
+- Movimentações **canceladas** não entram em nenhum total. **Transferências** não são receita nem despesa, só mudam saldos de contas.
+- Saldo de conta: receitas somam; despesas, investimentos e transferências de saída subtraem; transferências de entrada somam. Só concluídas entram no saldo; pendentes ficam em `pendingNet`. Saldo negativo em cartão = valor devido.
+- Despesas por categoria somam as subcategorias na categoria raiz ("Combustível" conta em "Transporte"). A participação é calculada com `Decimal` e 2 casas.
+- "Hoje" (vencidas e a vencer, `isOverdue`) é calculado no fuso do perfil.
+
+### Histórico funcional (`ActionHistory`)
+
+Cada criação, edição e exclusão de conta, categoria ou movimentação grava um registro **na mesma transação do banco**: se o histórico falhar, a operação inteira é desfeita.
+
+- **Criação**: estado completo depois.
+- **Edição**: só os campos alterados, antes e depois.
+- **Exclusão**: estado completo antes, o suficiente para restaurar no undo (PASSO 15).
+
+Dados de sincronização e de propriedade ficam fora dos snapshots. Não é log técnico.
+
+Toda alteração marca o registro como `PENDING_SYNC` e incrementa `version`. A escrita na planilha é o PASSO 11. Novas movimentações são vinculadas à planilha ativa do usuário, se houver.
+
 ## IA e tool calling
 
 O modelo não executa SQL, Prisma nem Google API. Ele escolhe entre ferramentas expostas pelo `ToolRegistry`. O `ToolExecutor` valida schema, sessão, papel, ownership, confirmação, regra de negócio e resultado.

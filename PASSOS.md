@@ -232,7 +232,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: cria planilhas financeiras formatadas`
 
-## [ ] PASSO 09 — Domínio financeiro e consultas
+## [x] PASSO 09 — Domínio financeiro e consultas
 
 **Objetivo:** implementar contas, categorias, transações e agregações determinísticas.
 
@@ -244,7 +244,33 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** receitas/despesas/transferências, moeda, datas, status, agregações, IDOR e transações atômicas.
 
-**Sugestão de commit:** `feat: implement core financial domain`
+**Evidência (09/10/2026):**
+
+- **Backend**: módulo `finance` com serviços de contas, categorias, movimentações, consultas e histórico funcional, mais as rotas REST correspondentes. Sem migration nova: o schema do PASSO 03 já cobria o domínio.
+- **Unitários**: 195 (40 de finanças), cobrindo:
+  - parser de dinheiro sem float (casas por moeda, notação científica, separadores, negativos, `0.1 + 0.2`);
+  - datas reais, limites de ano e virada de mês;
+  - "hoje" em São Paulo, Tóquio e Kiritimati;
+  - snapshots do histórico e diff mínimo.
+- **Integração**: 162 (28 de finanças) com Postgres real e categorias semeadas, cobrindo:
+  - contas: moeda do perfil, campos de cartão, nome duplicado, casas em JPY, saldo negativo, exclusão bloqueada e arquivamento;
+  - despesa paga por padrão com saldo exato e conta pendente sem pagamento;
+  - valores e datas inválidos;
+  - moeda da conta e transferência entre moedas recusada;
+  - transferências válidas e todas as inválidas; categoria × tipo; forma de pagamento de cartão; vínculo à planilha ativa;
+  - edição com `version`, status e data de pagamento coerentes, histórico com diff mínimo, exclusão com snapshot completo;
+  - **atomicidade** (falha no histórico desfaz a movimentação);
+  - IDOR em 8 caminhos e mass assignment em 5 campos;
+  - categorias traduzidas, subcategoria, nível excessivo, tipo, nome duplicado também contra as padrão, padrão somente leitura, em uso;
+  - resumo por moeda, sem canceladas nem transferências, com participação por categoria raiz e maiores gastos;
+  - séries por mês e por dia; busca por texto, categoria com subcategorias, valor, ordem e paginação;
+  - períodos inválidos e longos;
+  - vencidas e a vencer decididas pelo fuso do usuário (Kiritimati × Pago Pago) e janela de dias.
+- **Mutações detectadas**: leitura sem `ownedBy` (IDOR) e canceladas contadas no resumo.
+- **Bug real corrigido**: criar cartão descartava dia de fechamento, dia de vencimento e últimos dígitos.
+- **Docker**, via proxy do Vite com sessão sintética: conta, despesa paga, saldo `912.55`, resumo do mês, `422 currency_mismatch` e histórico. Suítes nos containers (195 + 162 + 63) e `pnpm quality` completo.
+
+**Sugestão de commit:** `feat: implementa o domínio financeiro principal`
 
 ## [ ] PASSO 10 — Parcelas, recorrências e investimentos
 

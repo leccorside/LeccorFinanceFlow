@@ -1,8 +1,8 @@
 # Contexto do projeto
 
-## Estado em 08/10/2026
+## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 08 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 09 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,29 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Domínio financeiro implementado no PASSO 09 (`src/finance`):
+
+- `money.ts` (`parseMoney`, `moneyString`, `currencyDigits`), `dates.ts` (`parseCalendarDate`, `todayIn`, limites 1900–2100), `user-settings.ts` (moeda/fuso/idioma do perfil com padrões);
+- `finance.schemas.ts`: DTOs strict, enums e `ruleViolation()` → `422` com código específico (código `422 unprocessable` acrescentado aos padrões de erro);
+- `AccountsService` (CRUD, saldos via `groupBy`, arquivamento, exclusão bloqueada em uso, `findOwned`), `CategoriesService` (padrão + próprias, nomes traduzidos `SYSTEM_CATEGORY_NAMES`, `KINDS_FOR_TYPE`, `findUsable`), `TransactionsService` (`resolve()` único para criar/editar, busca, `toResponse`), `FinanceQueriesService` (resumo, séries, contas a vencer/vencidas), `ActionHistoryService` (`record(tx, …)`, `snapshotOf`, `diffSnapshots`, `list`);
+- controllers `/accounts`, `/categories`, `/transactions`, `/finance/*` e `/action-history`; `FinanceModule` exporta os serviços para o assistente;
+- testes: `finance-units.spec.ts` e `test/integration/finance.int-spec.ts` (semeia as categorias padrão no banco descartável).
+
+## Decisões do PASSO 09
+
+- **Sem migration**: o schema do PASSO 03 já tinha tudo; as regras ficam no serviço (mensagens claras) e as CHECKs do banco são a segunda linha.
+- **Valores como texto decimal** na entrada e na saída; números JSON só são aceitos quando o texto canônico já é exato. Casas decimais limitadas pela moeda.
+- **Sem conversão de moeda**: a moeda da movimentação é a da conta; resumos e totais são sempre separados por moeda.
+- **Status padrão**: com vencimento → pendente; sem vencimento → concluído e pago na data da ocorrência. Pagamento só em concluídas; voltar a pendente limpa a data.
+- **Categoria única por movimentação** (folha): a raiz é a "Categoria" e a folha a "Subcategoria". Subcategorias têm um nível só e o mesmo tipo da raiz; `GENERAL` ("Outros") serve para qualquer tipo.
+- **Nomes das categorias padrão traduzidos no backend** pelo `systemKey` (pt-BR fica no banco; en-US e es-ES em código), porque o assistente e a planilha também precisam deles.
+- **Canceladas fora de todos os totais; transferências não são receita nem despesa.** O saldo do período é realizado (concluídas) e o projetado inclui pendentes.
+- **Contas a pagar = despesas pendentes**; "a receber" (receitas pendentes) ficam fora das listas de contas.
+- **Concorrência otimista** com `version` (opcional no `PATCH`) + `update where version` para corrida entre requisições.
+- **`ActionHistory` na mesma transação**: criação com estado completo, edição com diff mínimo, exclusão com snapshot completo (base do undo).
+- **Escritas REST existem** (protegidas por CSRF), mas não há formulários financeiros no frontend; o assistente usará os serviços.
+- **Período máximo de consulta fixo em 3.700 dias** (`MAX_PERIOD_DAYS`); `MAX_REPORT_RANGE_MONTHS` do `.env` continua reservado para relatórios (PASSO 19).
 
 Planilha financeira implementada no PASSO 08:
 
@@ -191,6 +214,8 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 09: **bug real** pego pela integração: criar um cartão validava, mas não gravava, dia de fechamento, dia de vencimento e últimos dígitos (o helper de validação devolvia um objeto vazio usado no spread). Corrigido: validação separada e campos gravados explicitamente.
+- PASSO 09: no host, a suíte do frontend voltou a estourar o tempo de inicialização dos workers na primeira rodada da `quality` (disco USB a frio); a segunda rodada passou e a suíte passa no container.
 - PASSO 08: limpar o id do arquivo apagado no Drive violava a CHECK "planilha `ACTIVE` exige arquivo" (pego pelo teste de integração). Corrigido: a linha volta a `PENDING_CREATION` até ser recriada.
 - PASSO 08: o limite de taxa fixo (10/min) da criação de planilhas barrava os próprios testes; virou a política configurável `SPREADSHEET_RATE_LIMIT_MAX_REQUESTS`.
 - PASSO 08: **bug real visto só no Docker**: sem chave de criptografia, `POST /spreadsheets` respondia 500, porque `getAccessToken` deixava escapar um erro interno do fluxo OAuth. Os testes sempre tinham chave. Corrigido para `503 google_connection_unavailable`, com teste sem chave.
@@ -233,11 +258,17 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 08 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 09 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 9`
+`INICIE O PASSO 10`
 
-Quando autorizado, executar apenas o PASSO 09 de `PASSOS.md`: domínio financeiro (contas, categorias, transações, consultas e ActionHistory). Não escrever na planilha ainda (a sincronização é o PASSO 11): as entidades nascem com `sync_status = PENDING_SYNC`.
+Quando autorizado, executar apenas o PASSO 10 de `PASSOS.md`: parcelamentos, recorrências e investimentos. Reutilizar `TransactionsService` (regras únicas em `resolve()`), `parseMoney`/`currencyDigits` para dividir parcelas sem perder centavos, `ActionHistoryService.record` dentro da mesma transação e `todayIn` para materializar recorrências no fuso do usuário. A sincronização com a planilha continua no PASSO 11.
+
+Pendências ligadas ao PASSO 09:
+
+- PASSO 10: liberar `installmentId`/`recurringTransactionId`/`investmentId` só pelos serviços próprios (os DTOs atuais recusam esses campos).
+- PASSO 15: undo a partir dos snapshots do `ActionHistory` (criação → excluir; edição → aplicar `before`; exclusão → recriar com o mesmo id).
+- PASSO 18: dashboard consumindo `/finance/*` e `/accounts`.
 
 Pendências ligadas ao PASSO 08:
 
@@ -276,7 +307,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`) e 07 (`ab50b00`) commitados; o PASSO 08 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`) e 08 (`a84d5fc`) commitados; o PASSO 09 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -350,4 +381,12 @@ Pendências conhecidas para passos futuros:
 - Mutações detectadas: metadados de aba sempre recriados (idempotência) e busca por `appProperties` desligada (recuperação pós-queda).
 - Docker: migration `20261008220911_spreadsheet_setup` aplicada; `POST /spreadsheets` sem chave → `503 google_connection_unavailable` (planilha `ERROR` com `last_error_code`); sem CSRF 403; com `ownerId` 400.
 - Smoke real `pnpm test:google` presente e pulado por padrão (sem conta de teste).
+- `pnpm quality` passou por completo.
+
+## Evidências do PASSO 09
+
+- Backend: 195 testes unitários (40 de finanças) e 162 de integração (28 de finanças) passam no host e no container; nenhum banco de teste restante.
+- Frontend sem mudanças: 63 testes passam no container e na segunda rodada da `quality` no host.
+- Mutações detectadas: leitura de movimentação sem `ownedBy` (IDOR) e canceladas somadas no resumo.
+- Docker, com sessão sintética removida ao final: conta com saldo inicial 1000, despesa de 87,45 em Alimentação (`COMPLETED`, paga no dia), saldo `912.55`, resumo de outubro com 100% em Alimentação, `422 currency_mismatch` ao informar USD numa conta BRL, histórico `TRANSACTION:CREATE, FINANCIAL_ACCOUNT:CREATE`.
 - `pnpm quality` passou por completo.

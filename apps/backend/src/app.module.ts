@@ -4,6 +4,7 @@ import { CryptoModule } from './common/crypto/crypto.module.js';
 import { SecurityModule } from './common/security/security.module.js';
 import { ConfigModule } from './config/config.module.js';
 import { DatabaseModule } from './database/database.module.js';
+import { FinanceModule } from './finance/finance.module.js';
 import { GoogleModule } from './google/google.module.js';
 import { HealthModule } from './health/health.module.js';
 import { ProfileModule } from './profile/profile.module.js';
@@ -22,6 +23,7 @@ import { UsersModule } from './users/users.module.js';
     ProfileModule,
     GoogleModule,
     SpreadsheetsModule,
+    FinanceModule,
   ],
 })
 export class AppModule {}
