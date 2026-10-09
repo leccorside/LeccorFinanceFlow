@@ -12,6 +12,8 @@ import {
   sendMessage,
   undoLastAction,
 } from '../../services/assistant';
+import { getProfile, type Profile } from '../../services/profile';
+import { getVoiceCapabilities } from '../../services/voice';
 import { renderWithProviders } from '../../test/render';
 import { AssistantPage } from './AssistantPage';
 
@@ -26,7 +28,28 @@ vi.mock('../../services/assistant', () => ({
   undoLastAction: vi.fn(),
 }));
 
+vi.mock('../../services/voice', () => ({
+  getVoiceCapabilities: vi.fn(),
+  transcribe: vi.fn(),
+  speak: vi.fn(),
+}));
+vi.mock('../../services/profile', () => ({ getProfile: vi.fn() }));
+
 const CONVERSATION = '6f0f7d55-7d0e-4c1b-9f43-5d8a5e9f0a11';
+
+const PROFILE = {
+  email: 'ana@example.com',
+  firstName: 'Ana',
+  lastName: null,
+  photoUrl: null,
+  phone: null,
+  locale: 'pt-BR',
+  currency: 'BRL',
+  timeZone: 'America/Sao_Paulo',
+  preferences: { theme: 'dark', weekStartsOn: 'monday', confirmSimpleDeletes: true },
+  voice: { gender: 'FEMALE', autoSpeak: false, speakingRate: 1 },
+  updatedAt: null,
+} satisfies Profile;
 
 function turn(overrides: Partial<AssistantTurn> = {}): AssistantTurn {
   return {
@@ -69,6 +92,15 @@ function spoken(text: string) {
 
 describe('AssistantPage', () => {
   beforeEach(() => {
+    // Text-only environment by default (voice is covered in AssistantVoice.test.tsx).
+    vi.mocked(getVoiceCapabilities).mockResolvedValue({
+      transcription: false,
+      speech: false,
+      maxAudioBytes: 1_000_000,
+      maxAudioSeconds: 120,
+      audioTypes: [],
+    });
+    vi.mocked(getProfile).mockResolvedValue(PROFILE);
     vi.mocked(listConversations).mockResolvedValue([]);
     vi.mocked(listPendingConfirmations).mockResolvedValue([]);
     vi.mocked(getSuggestions).mockResolvedValue([
@@ -113,7 +145,7 @@ describe('AssistantPage', () => {
     );
     expect(composer()).toHaveValue('');
     expect(await screen.findByText('gastei 50 no mercado')).toBeInTheDocument();
-    expect(screen.getByRole('status')).toHaveTextContent('Pensando…');
+    expect(screen.getByRole('status')).toHaveTextContent('Executando…');
     expect(container.querySelector('canvas.voice-orb')).toHaveAttribute(
       'data-state',
       'thinking',
@@ -167,6 +199,11 @@ describe('AssistantPage', () => {
         message: 'Quais contas vencem esta semana?',
       }),
     );
+    // An immediate reply in a new conversation keeps the question above it.
+    expect(await spoken('Registrei R$ 50,00 em Mercado.')).toBeInTheDocument();
+    expect(
+      screen.getByText('Quais contas vencem esta semana?', { selector: '.bubble-text' }),
+    ).toBeInTheDocument();
   });
 
   it('explains a failed send, gives the text back and retries it', async () => {
@@ -271,7 +308,7 @@ describe('AssistantPage', () => {
       ]),
     );
 
-    const log = screen.getByRole('log');
+    const log = await screen.findByRole('log');
     expect(within(log).getByText('gastei 50')).toBeInTheDocument();
     expect(within(log).getByText('Novo lançamento · feito')).toBeInTheDocument();
     // History is shown at once (no typing effect).

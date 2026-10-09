@@ -18,6 +18,14 @@ export function configureApp(app: NestExpressApplication, env: AppEnv): void {
   // JSON only; anything above the limit is answered with 413 by the exception filter.
   app.useBodyParser('json', { limit: env.MAX_JSON_BODY_SIZE });
   app.useBodyParser('urlencoded', { limit: env.MAX_JSON_BODY_SIZE, extended: false });
+  // Recorded audio (POST /voice/transcriptions) arrives as the raw body, kept in memory only.
+  app.useBodyParser('raw', {
+    type: (request: { headers: Record<string, unknown> }) =>
+      String(request.headers['content-type'] ?? '')
+        .toLowerCase()
+        .startsWith('audio/'),
+    limit: env.VOICE.maxAudioBytes,
+  });
 
   app.use(requestIdMiddleware);
   app.use(securityHeadersMiddleware({ hsts: env.COOKIE_SECURE }));

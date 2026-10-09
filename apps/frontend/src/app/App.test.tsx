@@ -9,6 +9,11 @@ vi.mock('../services/health', () => ({ getHealth: vi.fn() }));
 vi.mock('../services/profile', () => ({
   getProfile: vi.fn(() => new Promise(() => {})),
 }));
+vi.mock('../services/voice', () => ({
+  getVoiceCapabilities: vi.fn(() => new Promise(() => {})),
+  transcribe: vi.fn(),
+  speak: vi.fn(),
+}));
 vi.mock('../services/assistant', () => ({
   listConversations: vi.fn(() => Promise.resolve([])),
   listPendingConfirmations: vi.fn(() => Promise.resolve([])),

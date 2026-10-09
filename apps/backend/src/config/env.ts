@@ -75,6 +75,12 @@ const emailList = csv
   .transform((emails) => emails.map((email) => email.toLowerCase()))
   .pipe(z.array(z.email()));
 
+/** Ordered voice providers (fallback order); unknown names are a configuration error. */
+const voiceProviders = csv
+  .transform((names) => names.map((name) => name.toLowerCase()))
+  .pipe(z.array(z.enum(['openai', 'gemini'])))
+  .refine((names) => new Set(names).size === names.length, 'must not repeat a provider');
+
 const positiveInt = (fallback: number, max: number) =>
   z.coerce.number().int().min(1).max(max).default(fallback);
 
@@ -121,6 +127,8 @@ const envSchema = z
     SPREADSHEET_RATE_LIMIT_MAX_REQUESTS: positiveInt(10, 1_000_000),
     /** Per client IP and window, on assistant messages (each one may call AI providers). */
     ASSISTANT_RATE_LIMIT_MAX_REQUESTS: positiveInt(30, 1_000_000),
+    /** Per client IP and window, on transcription and speech (each one calls a provider). */
+    VOICE_RATE_LIMIT_MAX_REQUESTS: positiveInt(10, 1_000_000),
     MAX_JSON_BODY_SIZE: z
       .string()
       .regex(/^\d+(b|kb|mb)$/i, 'must look like 512kb or 1mb')
@@ -138,6 +146,17 @@ const envSchema = z
     OPENAI_DEFAULT_CHAT_MODEL: optionalNonEmpty,
     GEMINI_DEFAULT_CHAT_MODEL: optionalNonEmpty,
     ANTHROPIC_DEFAULT_CHAT_MODEL: optionalNonEmpty,
+    /** Speech-to-text / text-to-speech providers in fallback order (openai, gemini); empty = off. */
+    STT_PROVIDER: voiceProviders,
+    TTS_PROVIDER: voiceProviders,
+    /** Key and model of the FIRST listed provider; the others use OPENAI_/GEMINI_API_KEY and defaults. */
+    STT_API_KEY: optionalNonEmpty,
+    TTS_API_KEY: optionalNonEmpty,
+    STT_MODEL: optionalNonEmpty,
+    TTS_MODEL: optionalNonEmpty,
+    /** Uploaded audio limits (OpenAI accepts up to 25 MB). */
+    MAX_AUDIO_SIZE_MB: positiveInt(10, 25),
+    MAX_AUDIO_DURATION_SECONDS: positiveInt(120, 600),
   })
   .superRefine((env, ctx) => {
     // Client ID and secret decide whether Google login is enabled; both or neither.
@@ -174,9 +193,30 @@ const envSchema = z
       OPENAI_DEFAULT_CHAT_MODEL,
       GEMINI_DEFAULT_CHAT_MODEL,
       ANTHROPIC_DEFAULT_CHAT_MODEL,
+      STT_PROVIDER,
+      TTS_PROVIDER,
+      STT_API_KEY,
+      TTS_API_KEY,
+      STT_MODEL,
+      TTS_MODEL,
+      MAX_AUDIO_SIZE_MB,
+      MAX_AUDIO_DURATION_SECONDS,
       ...env
     }) => ({
       ...env,
+      VOICE: {
+        transcription: voiceChain(STT_PROVIDER, STT_API_KEY, STT_MODEL, {
+          openai: OPENAI_API_KEY,
+          gemini: GEMINI_API_KEY,
+        }),
+        speech: voiceChain(TTS_PROVIDER, TTS_API_KEY, TTS_MODEL, {
+          openai: OPENAI_API_KEY,
+          gemini: GEMINI_API_KEY,
+        }),
+        maxAudioBytes: MAX_AUDIO_SIZE_MB * 1024 * 1024,
+        maxAudioSeconds: MAX_AUDIO_DURATION_SECONDS,
+        timeoutMs: AI_REQUEST_TIMEOUT_MS,
+      },
       AI: {
         timeoutMs: AI_REQUEST_TIMEOUT_MS,
         environmentKeys: {
@@ -209,6 +249,30 @@ const envSchema = z
           : null,
     }),
   );
+
+export type VoiceProviderName = 'openai' | 'gemini';
+
+export interface VoiceProviderConfig {
+  provider: VoiceProviderName;
+  /** Undefined when no key is available: the attempt is skipped as not configured. */
+  apiKey: string | undefined;
+  /** Undefined = the provider's default model. */
+  model: string | undefined;
+}
+
+/** The dedicated key/model belong to the first provider; the rest reuse the AI keys. */
+function voiceChain(
+  providers: VoiceProviderName[],
+  key: string | undefined,
+  model: string | undefined,
+  fallbackKeys: Record<VoiceProviderName, string | undefined>,
+): VoiceProviderConfig[] {
+  return providers.map((provider, index) => ({
+    provider,
+    apiKey: (index === 0 ? key : undefined) ?? fallbackKeys[provider],
+    model: index === 0 ? model : undefined,
+  }));
+}
 
 export interface EncryptionConfig {
   activeVersion: string;

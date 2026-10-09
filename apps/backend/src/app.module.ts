@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AdminModule } from './admin/admin.module.js';
 import { AiModule } from './ai/ai.module.js';
 import { AssistantModule } from './assistant/assistant.module.js';
+import { VoiceModule } from './voice/voice.module.js';
 import { AuthModule } from './auth/auth.module.js';
 import { CryptoModule } from './common/crypto/crypto.module.js';
 import { SecurityModule } from './common/security/security.module.js';
@@ -30,6 +31,7 @@ import { UsersModule } from './users/users.module.js';
     AiModule,
     AdminModule,
     AssistantModule,
+    VoiceModule,
   ],
 })
 export class AppModule {}

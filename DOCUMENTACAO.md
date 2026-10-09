@@ -162,7 +162,7 @@ Prefixo: `/api/v1`.
 | `/installments`           | compras parceladas e suas parcelas (PASSO 10)                       |
 | `/recurring-transactions` | recorrências materializadas sob demanda (PASSO 10)                  |
 | `/assistant`              | conversas, mensagens, ferramentas e confirmações (undo no PASSO 15) |
-| `/voice`                  | transcrição, síntese e vozes disponíveis                            |
+| `/voice`                  | capacidades, transcrição e leitura em voz alta (PASSO 17)           |
 | `/reports`                | geração e download autenticado                                      |
 | `/dashboard`              | agregações por período                                              |
 | `/admin/*`                | usuários, provedores, modelos e configurações                       |
@@ -935,18 +935,86 @@ Chrome real (Playwright) contra o Vite com a API simulada, nas larguras 320, 375
 - botão flutuante;
 - movimento reduzido.
 
-## Voz
+## Voz (PASSO 17)
 
-O navegador pedirá permissão e capturará áudio. O backend encaminhará o conteúdo ao `SpeechToTextProvider`, executará o mesmo pipeline textual e poderá gerar áudio pelo `TextToSpeechProvider`.
+Fluxo: o usuário toca no microfone → o navegador grava → a API transcreve → o texto vai ao assistente **como uma mensagem digitada** → a resposta aparece no chat → é lida em voz alta.
 
-Controles mínimos:
+Como a transcrição passa pelo mesmo `POST /assistant/messages`, valem as mesmas regras: números só de ferramentas, ambiguidade sem execução e confirmação explícita para exclusões. Uma exclusão pedida por voz mostra o cartão de confirmação; o texto transcrito fica visível no chat como a mensagem do usuário.
 
-- início/parada claros;
-- transcrição visível;
-- estados de processamento acessíveis;
-- revisão ou confirmação em ações sensíveis;
-- escolha feminina/masculina persistida;
-- fallback para texto quando áudio não estiver disponível.
+### Rotas
+
+| Método e rota                | Corpo                              | Resposta                                                                |
+| ---------------------------- | ---------------------------------- | ----------------------------------------------------------------------- |
+| `GET /voice/capabilities`    | —                                  | `{ transcription, speech, maxAudioBytes, maxAudioSeconds, audioTypes }` |
+| `POST /voice/transcriptions` | áudio cru, `Content-Type: audio/*` | `{ text, provider }`                                                    |
+| `POST /voice/speech`         | `{ messageId }` (estrito)          | bytes do áudio (`audio/mpeg` ou `audio/wav`), `Cache-Control: no-store` |
+
+Todas exigem sessão; os POST exigem CSRF e usam o rate limit `voice` (`VOICE_RATE_LIMIT_MAX_REQUESTS`).
+
+Erros:
+
+| Código                   | HTTP | Quando                                                                |
+| ------------------------ | ---- | --------------------------------------------------------------------- |
+| `audio_unsupported_type` | 415  | tipo fora da lista ou bytes que não batem com o tipo declarado        |
+| `audio_empty`            | 400  | corpo vazio                                                           |
+| `payload_too_large`      | 413  | acima de `MAX_AUDIO_SIZE_MB` (barrado no parser, antes do provedor)   |
+| `voice_no_speech`        | 422  | nada foi entendido                                                    |
+| `voice_request_rejected` | 422  | o provedor recusou a requisição (sem fallback)                        |
+| `voice_unavailable`      | 503  | nenhum provedor respondeu (`details.attempts`)                        |
+| `voice_not_configured`   | 503  | `STT_PROVIDER`/`TTS_PROVIDER` vazios                                  |
+| `not_found`              | 404  | `messageId` que não é resposta do assistente numa conversa do usuário |
+
+Tipos aceitos: `audio/webm`, `audio/ogg`, `audio/mp4` (e `m4a`/`aac`), `audio/mpeg`, `audio/wav`. O que o MediaRecorder grava no Chrome/Edge, Safari e Firefox entra nessa lista.
+
+### Provedores
+
+`STT_PROVIDER` e `TTS_PROVIDER` são listas em ordem de fallback (`openai`, `gemini`). Vazias desligam a capacidade, e a interface continua por texto.
+
+- **Chaves**: `STT_API_KEY`/`TTS_API_KEY` e `STT_MODEL`/`TTS_MODEL` valem para o **primeiro** provedor da lista. Os demais usam `OPENAI_API_KEY`/`GEMINI_API_KEY` e os modelos padrão. As chaves cifradas da administração de IA não são usadas pela voz.
+- **Fallback**: igual ao do chat. Indisponível, tempo esgotado, limite, chave ou modelo recusados e resposta malformada passam ao próximo; requisição inválida ou conteúdo bloqueado param.
+
+| Provedor | Transcrição (padrão)                                                                            | Fala (padrão)                                                 | Feminina / masculina |
+| -------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------- |
+| OpenAI   | `gpt-4o-mini-transcribe` (multipart, `language` do perfil)                                      | `gpt-4o-mini-tts` (MP3)                                       | `nova` / `onyx`      |
+| Gemini   | `gemini-2.5-flash` (áudio inline; o prompt manda transcrever e nunca seguir instruções faladas) | `gemini-2.5-flash-preview-tts` (PCM 24 kHz embrulhado em WAV) | `Kore` / `Charon`    |
+
+Os formatos seguem a documentação das APIs e não foram exercitados contra os serviços reais (não há chaves no ambiente).
+
+### Privacidade
+
+- O áudio chega como corpo da requisição, fica só em memória e é **zerado** quando os provedores terminam.
+- Não é gravado em banco, disco ou log, e não vira conversa sozinho: só o texto transcrito, quando enviado ao assistente.
+- O microfone só fica aberto enquanto grava; ao parar, cancelar ou sair da página, as trilhas são encerradas.
+- A fala chega ao navegador como `blob:` e a URL é revogada ao terminar.
+
+### Interface
+
+- **Microfone primeiro**: com a caixa vazia, o botão principal é o microfone (52 px no celular) e "Enviar" aparece quando há texto.
+- **Gravando**: a caixa vira uma faixa com "Ouvindo…", barras, tempo (`0:07 / 2:00`), "Descartar gravação" e "Parar e enviar" (que recebe o foco). Esc descarta. Ao atingir `MAX_AUDIO_DURATION_SECONDS` a gravação para e é enviada.
+- **Estados do orbe** (anunciados em `role="status"`):
+
+  | Estado        | Orbe                                                    |
+  | ------------- | ------------------------------------------------------- |
+  | Pronto        | respira                                                 |
+  | Ouvindo       | espectro real do microfone                              |
+  | Interpretando | cometa girando ao contrário                             |
+  | Executando    | cometa                                                  |
+  | Respondendo   | espectro real da voz (ou sintético durante a digitação) |
+
+- **Fala**: a resposta é lida em voz alta quando a pergunta foi falada, ou sempre com "Ler as respostas em voz alta" ligado no perfil. Usa a velocidade do perfil (`playbackRate`). Cada resposta tem "Ouvir resposta"/"Parar a fala" (`aria-pressed`), e o cabeçalho mostra "Parar a fala".
+- **Autoplay**: se o navegador mantiver o `AudioContext` suspenso, o áudio toca direto, sem o espectro (nunca mudo).
+- **Preferência de voz**: no perfil ou pela conversa ("troque sua voz para masculina", ferramenta `change_voice_preference`). A próxima fala já usa a nova voz.
+- **Alternativa por texto**: quando não dá para usar voz, a interface explica e a caixa de texto continua funcionando:
+
+  | Situação                        | Interface                                               |
+  | ------------------------------- | ------------------------------------------------------- |
+  | Permissão negada                | alerta explicando como liberar                          |
+  | Sem microfone                   | alerta                                                  |
+  | Gravação curta ou grande demais | alerta, sem enviar                                      |
+  | Navegador sem MediaRecorder     | microfone desabilitado com o motivo                     |
+  | Voz desligada no servidor       | microfone desabilitado com o motivo                     |
+  | Provedor indisponível           | alerta, sem "Tentar de novo" (o áudio não foi guardado) |
+  | Falha ao ler em voz alta        | aviso discreto; a resposta continua no chat             |
 
 ## Segurança
 

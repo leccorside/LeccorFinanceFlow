@@ -16,6 +16,8 @@ interface MessageItemProps {
   onWritten: (id: string) => void;
   onPickCandidate: (record: Record<string, unknown>) => void;
   disabled: boolean;
+  /** Read-aloud control of a stored reply (null when speech is off or not possible). */
+  speech?: { speaking: boolean; loading: boolean; onToggle: () => void } | null;
 }
 
 /** Equalizer shown next to a reply while it is being written. */
@@ -37,6 +39,7 @@ function AssistantBubble({
   onWritten,
   onPickCandidate,
   disabled,
+  speech,
 }: MessageItemProps & { item: Extract<ChatItem, { kind: 'assistant' }> }) {
   const i18n = useI18n();
   const { t, dateTime } = i18n;
@@ -56,8 +59,27 @@ function AssistantBubble({
     >
       <header className="bubble-meta">
         <span className="bubble-author">{t('assistant.name')}</span>
-        {writing && <Equalizer />}
+        {(writing || speech?.speaking) && <Equalizer />}
         <time dateTime={item.createdAt}>{dateTime(item.createdAt)}</time>
+        {speech && (
+          <button
+            type="button"
+            className={
+              speech.speaking ? 'listen-button listen-button--on' : 'listen-button'
+            }
+            aria-pressed={speech.speaking}
+            aria-busy={speech.loading}
+            aria-label={
+              speech.speaking ? t('assistant.listenStop') : t('assistant.listen')
+            }
+            title={speech.speaking ? t('assistant.listenStop') : t('assistant.listen')}
+            onClick={speech.onToggle}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M3 9v6h4l5 5V4L7 9H3Zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4Zm-2.5-9v2.06a7 7 0 0 1 0 13.88V21a9 9 0 0 0 0-18Z" />
+            </svg>
+          </button>
+        )}
       </header>
       {/* Screen readers get the whole answer once; the typing effect is visual only. */}
       <p className="visually-hidden">{item.content}</p>

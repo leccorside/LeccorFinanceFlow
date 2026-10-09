@@ -31,6 +31,7 @@ describe('loadEnv', () => {
       AUTH_RATE_LIMIT_MAX_REQUESTS: 20,
       SPREADSHEET_RATE_LIMIT_MAX_REQUESTS: 10,
       ASSISTANT_RATE_LIMIT_MAX_REQUESTS: 30,
+      VOICE_RATE_LIMIT_MAX_REQUESTS: 10,
       MAX_JSON_BODY_SIZE: '1mb',
       TRUST_PROXY: false,
       ADMIN_EMAILS: [],
@@ -38,6 +39,13 @@ describe('loadEnv', () => {
         timeoutMs: 30_000,
         environmentKeys: { OPENAI: undefined, GEMINI: undefined, ANTHROPIC: undefined },
         defaultModels: { OPENAI: undefined, GEMINI: undefined, ANTHROPIC: undefined },
+      },
+      VOICE: {
+        transcription: [],
+        speech: [],
+        maxAudioBytes: 10 * 1024 * 1024,
+        maxAudioSeconds: 120,
+        timeoutMs: 30_000,
       },
       ENCRYPTION: null,
     });
@@ -296,6 +304,41 @@ describe('security settings', () => {
     const source: Record<string, string> = { DATABASE_URL: validDatabaseUrl };
     if (value !== undefined) source.TRUST_PROXY = value;
     expect(loadEnv(source).TRUST_PROXY).toBe(expected);
+  });
+
+  it('builds the voice provider chains: dedicated key and model for the first one only', () => {
+    const env = loadEnv({
+      DATABASE_URL: validDatabaseUrl,
+      OPENAI_API_KEY: 'sk-ai',
+      GEMINI_API_KEY: 'gm-ai',
+      STT_PROVIDER: ' OpenAI , gemini ',
+      STT_API_KEY: 'sk-stt',
+      STT_MODEL: 'whisper-1',
+      TTS_PROVIDER: 'gemini',
+      MAX_AUDIO_SIZE_MB: '2',
+    });
+    expect(env.VOICE.transcription).toEqual([
+      { provider: 'openai', apiKey: 'sk-stt', model: 'whisper-1' },
+      { provider: 'gemini', apiKey: 'gm-ai', model: undefined },
+    ]);
+    expect(env.VOICE.speech).toEqual([
+      { provider: 'gemini', apiKey: 'gm-ai', model: undefined },
+    ]);
+    expect(env.VOICE.maxAudioBytes).toBe(2 * 1024 * 1024);
+  });
+
+  it('rejects unknown or repeated voice providers and audio limits out of range', () => {
+    const base = { DATABASE_URL: validDatabaseUrl };
+    expect(() => loadEnv({ ...base, STT_PROVIDER: 'anthropic' })).toThrow(/STT_PROVIDER/);
+    expect(() => loadEnv({ ...base, TTS_PROVIDER: 'openai,openai' })).toThrow(
+      /TTS_PROVIDER/,
+    );
+    expect(() => loadEnv({ ...base, MAX_AUDIO_SIZE_MB: '26' })).toThrow(
+      /MAX_AUDIO_SIZE_MB/,
+    );
+    expect(() => loadEnv({ ...base, MAX_AUDIO_DURATION_SECONDS: '0' })).toThrow(
+      /MAX_AUDIO_DURATION_SECONDS/,
+    );
   });
 
   it('validates body size and rate limits', () => {

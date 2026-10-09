@@ -617,7 +617,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: entrega a interface conversacional futurista`
 
-## [ ] PASSO 17 — Voz completa
+## [x] PASSO 17 — Voz completa
 
 **Objetivo:** implementar ouvir -> transcrever -> executar -> responder -> falar.
 
@@ -629,7 +629,35 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** permissões negadas, MIME/tamanho, provider indisponível, preferência e fluxo E2E simulado.
 
-**Sugestão de commit:** `feat: add end-to-end voice interaction`
+**Evidência (09/10/2026):**
+
+- **Backend** (`src/voice`):
+  - `GET /voice/capabilities`, `POST /voice/transcriptions` (áudio cru `audio/*`) e `POST /voice/speech` (`{ messageId }`);
+  - provedores OpenAI e Gemini para STT e TTS, em ordem de fallback (`STT_PROVIDER`/`TTS_PROVIDER`), com as mesmas regras de falha recuperável do chat;
+  - validação de MIME (lista fechada) **e** da assinatura dos bytes; limite de tamanho no parser (`MAX_AUDIO_SIZE_MB`);
+  - áudio só em memória e zerado ao fim da requisição;
+  - fala só de respostas do assistente do próprio usuário, com a voz do perfil (feminina/masculina);
+  - rate limit `voice` (`VOICE_RATE_LIMIT_MAX_REQUESTS`).
+- **Frontend**:
+  - `useRecorder` (MediaRecorder, microfone liberado ao parar, limite de duração, descarte com Esc) e `useSpeech` (reprodução com a velocidade do perfil);
+  - orbe com o **espectro real** do microfone ao ouvir e da voz ao falar;
+  - estados Pronto → Ouvindo → Interpretando → Executando → Respondendo;
+  - a transcrição vira mensagem comum (aparece no chat e passa pelas mesmas confirmações);
+  - resposta lida em voz alta quando a pergunta foi falada ou com "ler respostas em voz alta" ligado; botão "Ouvir" em cada resposta e "Parar a fala";
+  - com a caixa vazia o microfone é a ação principal (maior no celular);
+  - erros de permissão, sem microfone, navegador sem gravação, gravação curta/grande e provedor indisponível explicados, sempre com o texto disponível.
+- **Bug real corrigido**: numa conversa nova, uma resposta imediata (caso da voz) perdia a mensagem do usuário, porque o `receive` lia uma cópia antiga das mensagens locais.
+- **Testes**:
+  - backend 315 unitários (+13: áudio, WAV, clientes OpenAI/Gemini, texto falável, env) e 278 de integração (+14 de voz);
+  - frontend 107 (+10 de voz com MediaRecorder, microfone, AudioContext e áudio simulados).
+- **Mutações detectadas**: assinatura do áudio ignorada; buffer não descartado; fala de mensagem de outro usuário; mensagem do usuário perdida numa resposta imediata.
+- **Chrome real** (microfone falso do Chrome, MediaRecorder e AnalyserNode reais, API simulada) em 375 e 1280:
+  - upload `audio/webm` com assinatura EBML e CSRF;
+  - estados na ordem; a fala tocou até o fim e voltou a "Pronto";
+  - permissão negada em 320 e voz desligada no servidor.
+- **Docker**: suítes nos containers (315 + 278 + 107); `pnpm quality` completo.
+
+**Sugestão de commit:** `feat: adiciona interação completa por voz`
 
 ## [ ] PASSO 18 — Dashboard e insights financeiros
 

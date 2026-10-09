@@ -1,4 +1,5 @@
-export type OrbState = 'idle' | 'listening' | 'thinking' | 'speaking' | 'error';
+export type OrbState =
+  'idle' | 'listening' | 'transcribing' | 'thinking' | 'speaking' | 'error';
 
 /** Deterministic pseudo-noise, smooth in time (no Math.random flicker). */
 function noise(i: number, t: number): number {
@@ -26,6 +27,7 @@ export function synthesizeLevels(state: OrbState, t: number, out: Float32Array):
       case 'listening':
         level = 0.18 + n * 0.45 * (0.6 + 0.4 * Math.sin(t * 4));
         break;
+      case 'transcribing':
       case 'thinking': {
         // A bright comet running around the ring.
         const head = (t * 1.6) % 1;

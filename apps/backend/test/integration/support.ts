@@ -3,6 +3,8 @@ import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
 import { AI_PROVIDER_CLIENTS, type AiProviderClients } from '../../src/ai/ai.types.js';
+import { VOICE_CLIENTS, type VoiceClients } from '../../src/voice/voice.types.js';
+import { FakeVoiceClients } from './fake-voice.js';
 import { AppModule } from '../../src/app.module.js';
 import {
   type AuthorizationRequest,
@@ -48,6 +50,7 @@ export function testEnv(
     AUTH_RATE_LIMIT_MAX_REQUESTS: '100000',
     SPREADSHEET_RATE_LIMIT_MAX_REQUESTS: '100000',
     ASSISTANT_RATE_LIMIT_MAX_REQUESTS: '100000',
+    VOICE_RATE_LIMIT_MAX_REQUESTS: '100000',
     ADMIN_EMAILS: '',
     DATA_ENCRYPTION_KEY_V1: TEST_ENCRYPTION_KEY_V1,
     DATA_ENCRYPTION_KEY_ACTIVE_VERSION: 'v1',
@@ -158,6 +161,7 @@ export async function createTestApp(
   oauth: GoogleOAuthClient | null = new FakeGoogleOAuth(),
   workspace: GoogleWorkspaceClient = new FakeWorkspace(),
   ai: AiProviderClients = new FakeAiClients(),
+  voice: VoiceClients = new FakeVoiceClients(),
 ): Promise<NestExpressApplication> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule, ...extraModules],
@@ -170,6 +174,8 @@ export async function createTestApp(
     .useValue(workspace)
     .overrideProvider(AI_PROVIDER_CLIENTS)
     .useValue(ai)
+    .overrideProvider(VOICE_CLIENTS)
+    .useValue(voice)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app, loadEnv(process.env));

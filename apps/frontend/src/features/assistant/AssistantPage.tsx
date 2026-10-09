@@ -4,6 +4,8 @@ import { useEffect, useId, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { useI18n } from '../../i18n/context';
 import { apiErrorOf } from '../../services/api';
+import { getProfile } from '../../services/profile';
+import { getVoiceCapabilities, transcribe } from '../../services/voice';
 import {
   type AssistantTurn,
   cancelInConversation,
@@ -27,6 +29,8 @@ import { ConfirmationCard } from './ConfirmationCard';
 import { ConversationPanel } from './ConversationPanel';
 import { MessageItem } from './MessageItem';
 import { useMediaQuery } from './motion';
+import { recordingSupported, useRecorder } from './voice/useRecorder';
+import { useSpeech } from './voice/useSpeech';
 import { type OrbState, VoiceOrb } from './VoiceOrb';
 
 const messagesKey = (id: string) => ['assistant', 'messages', id] as const;
@@ -35,6 +39,9 @@ const CONFIRMATIONS_KEY = ['assistant', 'confirmations'] as const;
 
 let localIds = 0;
 const localId = (prefix: string) => `${prefix}-${Date.now()}-${(localIds += 1)}`;
+
+/** Replies stored by the API (local placeholders cannot be read aloud). */
+const STORED_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function MessageSkeleton() {
   return (
@@ -63,6 +70,16 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draft, setDraft] = useState('');
   const [freshItems, setFreshItems] = useState<ChatItem[]>([]);
+  /**
+   * Synchronous mirror of freshItems: a reply can arrive before React re-renders (fast
+   * answers, a voice message sent from another callback), and must not lose the message
+   * that was just added.
+   */
+  const freshRef = useRef<ChatItem[]>([]);
+  const setFresh = (next: ChatItem[]) => {
+    freshRef.current = next;
+    setFreshItems(next);
+  };
   const [writingId, setWritingId] = useState<string | null>(null);
   const [failure, setFailure] = useState<{ text: string; message: string } | null>(null);
   const [turnSuggestions, setTurnSuggestions] = useState<string[]>([]);
@@ -94,6 +111,19 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
     staleTime: 5 * 60_000,
   });
 
+  const capabilities = useQuery({
+    queryKey: ['voice', 'capabilities'],
+    queryFn: getVoiceCapabilities,
+    staleTime: 10 * 60_000,
+  });
+  const profile = useQuery({ queryKey: ['profile'], queryFn: getProfile });
+  const [voiceNote, setVoiceNote] = useState('');
+  const speech = useSpeech({
+    rate: profile.data?.voice.speakingRate ?? 1,
+    onError: () => setVoiceNote(t('assistant.voice.speechFailed')),
+  });
+  const canSpeak = capabilities.data?.speech === true;
+
   const items = conversationId ? (history.data ?? []) : freshItems;
 
   // A different conversation starts quiet (state adjusted during render, as React advises).
@@ -114,7 +144,7 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
         ...added,
       ]);
     } else {
-      setFreshItems((old) => [...old, ...added]);
+      setFresh([...freshRef.current, ...added]);
     }
   };
 
@@ -124,19 +154,26 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
         (old ?? []).filter((item) => item.id !== id),
       );
     } else {
-      setFreshItems((old) => old.filter((item) => item.id !== id));
+      setFresh(freshRef.current.filter((item) => item.id !== id));
     }
   };
 
   /** Shows a turn's reply (new conversation: moves the local messages into its cache). */
-  const receive = (turn: AssistantTurn, from: string | null) => {
+  const receive = (turn: AssistantTurn, from: string | null, byVoice = false) => {
     const reply = itemFromTurn(turn);
+    if (
+      canSpeak &&
+      STORED_ID.test(turn.reply.id) &&
+      (byVoice || profile.data?.voice.autoSpeak)
+    ) {
+      void speech.play(turn.reply.id);
+    }
     if (from === null) {
       queryClient.setQueryData<ChatItem[]>(messagesKey(turn.conversationId), [
-        ...freshItems,
+        ...freshRef.current,
         reply,
       ]);
-      setFreshItems([]);
+      setFresh([]);
       setAdopted(turn.conversationId);
       setParams({ c: turn.conversationId });
     } else {
@@ -149,7 +186,12 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
   };
 
   const send = useMutation({
-    mutationFn: (vars: { text: string; target: string | null; tempId: string }) =>
+    mutationFn: (vars: {
+      text: string;
+      target: string | null;
+      tempId: string;
+      byVoice?: boolean;
+    }) =>
       sendMessage({
         message: vars.text,
         ...(vars.target ? { conversationId: vars.target } : {}),
@@ -161,7 +203,7 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
         { kind: 'user', id: tempId, content: text, createdAt: new Date().toISOString() },
       ]);
     },
-    onSuccess: (turn, { target }) => receive(turn, target),
+    onSuccess: (turn, { target, byVoice }) => receive(turn, target, byVoice),
     onError: (error, { text, target, tempId }) => {
       remove(target, tempId);
       setDraft((current) => current || text);
@@ -169,18 +211,50 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
     },
   });
 
-  const submit = (text: string) => {
+  const submit = (text: string, byVoice = false) => {
     if (send.isPending) return;
-    setDraft('');
-    send.mutate({ text, target: conversationId, tempId: localId('user') });
+    if (!byVoice) setDraft('');
+    send.mutate({ text, target: conversationId, tempId: localId('user'), byVoice });
   };
+
+  // Voice: record → transcribe → the transcript goes to the assistant like typed text.
+  const transcription = useMutation({
+    mutationFn: transcribe,
+    onMutate: () => {
+      setFailure(null);
+      setVoiceNote('');
+    },
+    onSuccess: ({ text }) => submit(text, true),
+    // The recording is gone (never kept): the way forward is to speak again or type.
+    onError: (error) =>
+      setFailure({ text: '', message: t(errorKey(apiErrorOf(error)?.code)) }),
+  });
+  const maxAudioBytes = capabilities.data?.maxAudioBytes ?? Infinity;
+  const recorder = useRecorder({
+    maxSeconds: capabilities.data?.maxAudioSeconds ?? 120,
+    onRecorded: (audio) => {
+      if (audio.size > maxAudioBytes) {
+        setFailure({ text: '', message: t('assistant.error.payload_too_large') });
+        return;
+      }
+      transcription.mutate(audio);
+    },
+  });
+  const startRecording = () => {
+    speech.stop(); // never record the assistant's own voice
+    setFailure(null);
+    setVoiceNote('');
+    void recorder.start();
+  };
+  const voiceAvailable =
+    capabilities.data?.transcription === true && recordingSupported();
 
   const decide = useMutation({
     mutationFn: (vars: { id: string; conversation: string; accept: boolean }) =>
       vars.accept
         ? confirmInConversation(vars.conversation, vars.id)
         : cancelInConversation(vars.conversation, vars.id),
-    onSuccess: (turn, { conversation }) => receive(turn, conversation),
+    onSuccess: (turn, { conversation }) => receive(turn, conversation, false),
     onError: (error, { conversation }) => {
       void queryClient.invalidateQueries({ queryKey: CONFIRMATIONS_KEY });
       append(conversation, [
@@ -248,16 +322,23 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
   const confirmations = (pending.data ?? []).filter(
     (item) => conversationId !== null && item.conversationId === conversationId,
   );
-  const busy = send.isPending || decide.isPending;
+  const busy = send.isPending || decide.isPending || transcription.isPending;
   const lastItem = items.at(-1);
   const lastFailed = lastItem?.kind === 'assistant' && lastItem.failed === true;
-  const orbState: OrbState = busy
-    ? 'thinking'
-    : writingId
-      ? 'speaking'
-      : failure || lastFailed
-        ? 'error'
-        : 'idle';
+  const recording = recorder.status === 'recording';
+  const orbState: OrbState = recording
+    ? 'listening'
+    : transcription.isPending
+      ? 'transcribing'
+      : send.isPending || decide.isPending
+        ? 'thinking'
+        : speech.speakingId || writingId
+          ? 'speaking'
+          : failure || lastFailed || recorder.error
+            ? 'error'
+            : 'idle';
+  // Real spectrum: the microphone while listening, the voice while it speaks.
+  const orbAnalyser = recording ? recorder.analyser : speech.analyser;
   const loadingHistory = conversationId !== null && history.isPending;
   const empty = !loadingHistory && !history.isError && items.length === 0;
   const chips = empty ? (suggestions.data ?? []) : turnSuggestions.slice(0, 3);
@@ -275,6 +356,15 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
     setDrawerOpen(false);
     toggleRef.current?.focus();
   };
+
+  useEffect(() => {
+    if (!recording) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') recorder.cancel();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [recording, recorder]);
 
   // Escape closes the drawer and gives focus back to its button.
   useEffect(() => {
@@ -346,7 +436,7 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.6 }}
                 >
-                  <VoiceOrb state={orbState} size={44} />
+                  <VoiceOrb state={orbState} size={44} analyser={orbAnalyser} />
                 </motion.span>
               )}
             </AnimatePresence>
@@ -359,6 +449,19 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
               </span>
             </div>
           </div>
+          {speech.speakingId && (
+            <button
+              type="button"
+              className="icon-button icon-button--live"
+              aria-label={t('assistant.listenStop')}
+              title={t('assistant.listenStop')}
+              onClick={speech.stop}
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true">
+                <rect x="7" y="7" width="10" height="10" rx="2" />
+              </svg>
+            </button>
+          )}
           <button
             type="button"
             className="ghost-button"
@@ -390,6 +493,7 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
                 <VoiceOrb
                   state={orbState}
                   size={wide ? 240 : 180}
+                  analyser={orbAnalyser}
                   className="voice-orb--hero"
                 />
                 <h2 className="chat-hero-title">{greeting}</h2>
@@ -431,6 +535,18 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
                     onWritten={onWritten}
                     onPickCandidate={pickCandidate}
                     disabled={busy}
+                    speech={
+                      canSpeak && STORED_ID.test(item.id)
+                        ? {
+                            speaking: speech.speakingId === item.id,
+                            loading: speech.loadingId === item.id,
+                            onToggle: () =>
+                              speech.speakingId === item.id
+                                ? speech.stop()
+                                : void speech.play(item.id),
+                          }
+                        : null
+                    }
                   />
                 ))}
                 {send.isPending && (
@@ -478,24 +594,43 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
           {failure && (
             <div className="alert chat-alert" role="alert">
               <p>{failure.message}</p>
+              {failure.text && (
+                <button
+                  type="button"
+                  className="button-secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setDraft('');
+                    send.mutate({
+                      text: failure.text,
+                      target: conversationId,
+                      tempId: localId('user'),
+                    });
+                  }}
+                >
+                  {t('assistant.retry')}
+                </button>
+              )}
+            </div>
+          )}
+          {recorder.error && (
+            <div className="alert chat-alert" role="alert">
+              <p>{t(`assistant.voice.${recorder.error}`)}</p>
               <button
                 type="button"
                 className="button-secondary"
-                disabled={busy}
-                onClick={() => {
-                  setDraft('');
-                  send.mutate({
-                    text: failure.text,
-                    target: conversationId,
-                    tempId: localId('user'),
-                  });
-                }}
+                onClick={recorder.clearError}
               >
-                {t('assistant.retry')}
+                {t('assistant.voice.dismiss')}
               </button>
             </div>
           )}
-          {chips.length > 0 && !busy && (
+          {voiceNote && (
+            <p className="voice-note" role="status">
+              {voiceNote}
+            </p>
+          )}
+          {chips.length > 0 && !busy && !recording && (
             <ul className="suggestion-chips" aria-label={t('assistant.suggestions')}>
               {chips.map((suggestion) => (
                 <li key={suggestion}>
@@ -512,6 +647,20 @@ export function AssistantPage({ firstName }: { firstName: string | null }) {
             onSend={submit}
             busy={busy}
             inputRef={inputRef}
+            voice={{
+              available: voiceAvailable,
+              unavailableReason: !recordingSupported()
+                ? t('assistant.mic.unsupported')
+                : capabilities.data && !capabilities.data.transcription
+                  ? t('assistant.mic.unavailable')
+                  : null,
+              status: transcription.isPending ? 'transcribing' : recorder.status,
+              elapsed: recorder.elapsed,
+              maxSeconds: capabilities.data?.maxAudioSeconds ?? 120,
+              onStart: startRecording,
+              onStop: recorder.stop,
+              onCancel: recorder.cancel,
+            }}
           />
         </footer>
       </section>

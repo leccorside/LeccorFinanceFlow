@@ -5,26 +5,19 @@ export type Fetch = (url: string, init: RequestInit) => Promise<Response>;
 export const defaultFetch: Fetch = (url, init) => fetch(url, init);
 
 /**
- * POSTs JSON and returns the parsed body. Network failures, timeouts (the caller's
- * AbortSignal), HTTP errors and non-JSON bodies all become a classified AiProviderError;
- * the response body of an error is never read into the error.
+ * Sends one request and returns the successful response. Network failures, timeouts (the
+ * caller's AbortSignal) and HTTP errors become a classified AiProviderError; the body of an
+ * error response is discarded, never read into the error.
  */
-export async function postJson(
+export async function send(
   fetchImpl: Fetch,
   url: string,
-  headers: Record<string, string>,
-  body: unknown,
+  init: RequestInit,
   signal: AbortSignal,
-): Promise<unknown> {
+): Promise<Response> {
   let response: Response;
   try {
-    response = await fetchImpl(url, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', ...headers },
-      body: JSON.stringify(body),
-      redirect: 'error',
-      signal,
-    });
+    response = await fetchImpl(url, { ...init, redirect: 'error', signal });
   } catch (error) {
     const name = error instanceof Error ? error.name : '';
     throw new AiProviderError(
@@ -35,6 +28,31 @@ export async function postJson(
     await response.body?.cancel().catch(() => undefined);
     throw new AiProviderError(kindOfStatus(response.status), response.status);
   }
+  return response;
+}
+
+/** POSTs JSON and returns the parsed body (non-JSON answers are `invalid_response`). */
+export async function postJson(
+  fetchImpl: Fetch,
+  url: string,
+  headers: Record<string, string>,
+  body: unknown,
+  signal: AbortSignal,
+): Promise<unknown> {
+  const response = await send(
+    fetchImpl,
+    url,
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers },
+      body: JSON.stringify(body),
+    },
+    signal,
+  );
+  return readJson(response);
+}
+
+export async function readJson(response: Response): Promise<unknown> {
   try {
     return await response.json();
   } catch {

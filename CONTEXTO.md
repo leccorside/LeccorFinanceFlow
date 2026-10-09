@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 16 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 17 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,38 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Voz implementada no PASSO 17:
+
+- Backend `src/voice`:
+  - `voice.service.ts` (`capabilities`, `transcribe`, `speak`, `withProviders`, `speakable`), `voice.controller.ts`, `voice.module.ts`, `voice.types.ts` (`VOICE_CLIENTS`);
+  - `audio.ts` (`acceptedType`, `matchesSignature`, `extensionOf`, `pcmToWav`);
+  - `providers/openai-voice.client.ts` e `providers/gemini-voice.client.ts`.
+- Infraestrutura alterada:
+  - `config/env.ts`: `VOICE` com `transcription`/`speech` (cadeias `VoiceProviderConfig`), `maxAudioBytes`, `maxAudioSeconds` e `timeoutMs` (usa `AI_REQUEST_TIMEOUT_MS`); `VOICE_RATE_LIMIT_MAX_REQUESTS`;
+  - `configure-app.ts`: parser `raw` para `audio/*` com limite `maxAudioBytes`;
+  - política de rate limit `voice`;
+  - `ai/providers/http.ts`: `send()` e `readJson()` compartilhados (`postJson` usa os dois).
+- Frontend:
+  - `services/voice.ts`;
+  - `features/assistant/voice/useRecorder.ts` e `useSpeech.ts`;
+  - `Composer` com `VoiceInput`, `MessageItem` com `speech`, `OrbState` `transcribing`;
+  - `AssistantPage`: `transcription`, `recorder` e `speech`; `freshRef`.
+- Testes:
+  - `src/voice/voice.spec.ts`, `env.spec.ts` (+3);
+  - `test/integration/voice.int-spec.ts` (14) com `fake-voice.ts`; `createTestApp` ganhou o 6º parâmetro `voice`;
+  - `AssistantVoice.test.tsx` (10).
+
+## Decisões do PASSO 17
+
+- **Duas chamadas em vez de uma rota "mensagem por voz"**: transcrever e depois enviar pelo `POST /assistant/messages`. Reaproveita todo o pipeline (confirmações, fallback, idioma) e permite mostrar "Interpretando" e "Executando" separadamente.
+- **Áudio como corpo cru** (`audio/*`) em vez de multipart: sem multer, limite no próprio parser (413 antes de qualquer provedor), menos superfície.
+- **MIME e assinatura dos bytes**: um arquivo renomeado ou um texto com `Content-Type: audio/webm` é recusado.
+- **Duração**: limitada pelo gravador (`MAX_AUDIO_DURATION_SECONDS`). O servidor não decodifica áudio, então a garantia dele é o tamanho.
+- **Fala só por `messageId`**: a rota não sintetiza texto arbitrário. Não é um TTS gratuito, e o dono da conversa é conferido.
+- **Velocidade aplicada no navegador** (`playbackRate`), igual para qualquer provedor. A voz (gênero) é escolhida no servidor a partir do perfil.
+- **Chaves da voz pelo ambiente**, não pela tela de administração de IA (que é por finalidade de chat). Avaliar unificar no PASSO 20.
+- **Fallback de fala no navegador (`speechSynthesis`) não foi feito**: o gênero da voz não é confiável entre sistemas. Sem TTS, a resposta fica no texto.
 
 Interface conversacional implementada no PASSO 16 (`apps/frontend/src/features/assistant`):
 
@@ -448,6 +480,13 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 17:
+  - **Bug real**: numa conversa nova, uma resposta que chega antes de o React renderizar (a voz envia a mensagem de dentro de outro callback) gravava o cache só com a resposta, e a pergunta do usuário sumia. Corrigido com `freshRef`, espelho síncrono das mensagens locais. Só o teste E2E de voz reproduz; o fluxo digitado não.
+  - `AudioContext` suspenso pela política de autoplay deixaria a fala muda quando roteada pelo analisador. Agora se tenta `resume()` e, se não rodar, toca sem o analisador.
+  - O `@Body()` sem parser devolve `{}` para um tipo aceito sem corpo; tratado como `audio_empty` (400) em vez de 415.
+  - Nos testes de integração da voz, os provedores de IA do seed começam inativos: ativar antes de usar o chat.
+  - Intermitente observado uma vez: `undo.int-spec` "installments and recurrences come back…" falhou na primeira rodada completa logo após o Docker Desktop reiniciar. Não se repetiu em 2 rodadas completas e 3 isoladas. Se voltar, investigar a ordem de `createdAt` no histórico sob carga.
+  - O Docker Desktop caiu no meio da sessão (pipe `dockerDesktopLinuxEngine` ausente) e voltou sozinho.
 - PASSO 16:
   - O teste de Shift+Enter verificava `sendMessage` antes de a mutação assíncrona rodar, e a mutação "enviar com Shift" sobreviveu. Corrigido verificando que a caixa não foi limpa e esperando a fila.
   - `.topbar a` vencia `.brand` por especificidade e o gradiente da marca não aparecia; resolvido com `.topbar .brand`.
@@ -520,15 +559,20 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 16 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 17 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 17`
+`INICIE O PASSO 18`
 
-Quando autorizado, executar apenas o PASSO 17 de `PASSOS.md`: voz completa (ouvir → transcrever → executar → responder → falar).
+Quando autorizado, executar apenas o PASSO 18 de `PASSOS.md`: dashboard e insights financeiros.
 
-- Microfone no `Composer` (hoje desabilitado).
-- Estado `listening` do `VoiceOrb` e o `analyser` real (`AnalyserNode`) para o espectro do microfone e da fala.
-- Preferências `voice.*` do perfil.
+- Consumir `/finance/*`, `/accounts`, `/installments` e `/investments/summary`.
+- Usar `weekStartsOn` nos calendários.
+
+Pendências ligadas ao PASSO 17:
+
+- Smoke real de voz com chaves de teste (OpenAI e Gemini): confirmar a transcrição de `audio/webm` no Gemini, que não está na lista oficial de formatos dele, e os modelos padrão.
+- PASSO 20: decidir se a voz passa a usar as chaves cifradas da administração (hoje só o ambiente) e mostrar o estado da voz no painel admin.
+- Rate limit da voz é por IP, como o resto; avaliar por usuário.
 
 Pendências ligadas ao PASSO 16:
 
@@ -543,7 +587,6 @@ Pendências ligadas ao PASSO 15:
 
 Pendências ligadas ao PASSO 14:
 
-- PASSO 17: a voz usa o mesmo `AssistantService.send` com o texto transcrito.
 - Smoke com modelos reais (`RUN_AI_INTEGRATION_TESTS`) ainda não existe: com chaves de teste, rodar o corpus do PROMPT contra cada provedor.
 
 Pendências ligadas ao PASSO 13:
@@ -604,9 +647,8 @@ Pendências conhecidas para passos futuros:
 
 - PASSO 21: desconexão já não apaga planilhas; definir a exclusão explícita de planilhas e a revogação na exclusão de conta.
 - A conexão real com o Google ainda não foi testada ponta a ponta (sem credenciais): ao configurar, confirmar o refresh token e a granularidade de escopos na tela do Google.
-- PASSO 17: usar `voice.gender`/`autoSpeak`/`speakingRate` do perfil na síntese de voz; o comando por conversa "troque sua voz" vai usar `ProfileService.update`.
 - `packages/contracts` ainda não é usado: os tipos de perfil existem no backend e no frontend. Avaliar mover os contratos públicos para lá quando o build do pacote estiver integrado ao Docker.
-- PASSO 14/17: usar `@RateLimit` com `ASSISTANT_RATE_LIMIT_MAX_REQUESTS`/`VOICE_RATE_LIMIT_MAX_REQUESTS` (já no `.env.example`, ainda não validados no `env.ts`), de preferência por usuário.
+- Rate limits do assistente e da voz são por IP; avaliar por usuário.
 - PASSO 20: ao bloquear um usuário, chamar `AuthService.revokeAllSessions`; promoção e rebaixamento de admins.
 - Rate limit pelo proxy do Vite: todo o tráfego do navegador chega com o IP do container do frontend (um único bucket); em produção, configurar `TRUST_PROXY` atrás do proxy reverso.
 - Login real com Google ainda não foi testado ponta a ponta (sem credenciais). Ao configurar, confirmar que o `iss` do ID token é `https://accounts.google.com` (o Google às vezes usa `accounts.google.com` sem esquema em outros fluxos).
@@ -616,7 +658,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`) e 15 (`3142bfd`) commitados; o PASSO 16 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`) e 16 (`24ec4a3`) commitados; o PASSO 17 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -801,4 +843,31 @@ Pendências conhecidas para passos futuros:
   - Pensando → Respondendo → Pronto;
   - gaveta com foco devolvido ao botão;
   - erro 429, tema claro, botão flutuante e movimento reduzido.
+- `pnpm quality` passou por completo; resta só o aviso de bundle acima de 500 kB.
+
+## Evidências do PASSO 17
+
+- Backend: 315 testes unitários e 278 de integração (14 de voz):
+  - capacidades;
+  - transcrição com chave, modelo e idioma do perfil;
+  - webm, ogg e mp4 aceitos;
+  - tipo, disfarce, vazio e tamanho recusados antes do provedor;
+  - CSRF;
+  - fallback, indisponível, recusa sem fallback e "nada entendido";
+  - fala com a voz trocada pela conversa;
+  - exclusão por voz ainda pede confirmação;
+  - posse da mensagem e fallback da fala;
+  - voz desligada.
+- Frontend: 107 testes, 10 deles de voz com APIs do navegador simuladas.
+- Mutações detectadas:
+  - assinatura ignorada;
+  - buffer não zerado;
+  - fala de mensagem de outro usuário;
+  - mensagem perdida numa resposta imediata.
+- Chrome real com microfone falso:
+  - ciclo completo em 375 e 1280;
+  - upload `audio/webm` legítimo com CSRF;
+  - fala tocada até o fim;
+  - permissão negada em 320 e voz desligada.
+- Containers: 315 + 278 + 107 (uma falha intermitente em `undo.int-spec` na primeira rodada; ver erros conhecidos).
 - `pnpm quality` passou por completo; resta só o aviso de bundle acima de 500 kB.

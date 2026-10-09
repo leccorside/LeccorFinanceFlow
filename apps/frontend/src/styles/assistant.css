@@ -1023,3 +1023,203 @@
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ───────────── Voice (PASSO 17) ───────────── */
+.mic-button {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: var(--surface-sunken);
+  cursor: pointer;
+  transition:
+    transform 0.15s,
+    box-shadow 0.2s,
+    border-color 0.2s,
+    color 0.2s;
+}
+
+.mic-button svg {
+  width: 20px;
+  height: 20px;
+  fill: currentColor;
+}
+
+.mic-button:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text);
+  box-shadow: var(--glow);
+}
+
+.mic-button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Empty box: the microphone is the main action. */
+.mic-button--primary {
+  border: 0;
+  color: var(--accent-contrast);
+  background: var(--accent-gradient);
+  box-shadow: var(--glow);
+}
+
+.mic-button--primary:hover:not(:disabled) {
+  transform: scale(1.06);
+}
+
+@media (max-width: 899.98px) {
+  .mic-button--primary {
+    width: 52px;
+    height: 52px;
+  }
+
+  .mic-button--primary svg {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* Recording: pulsing halo around the stop button. */
+.mic-button--live {
+  position: relative;
+  background: linear-gradient(120deg, var(--accent-3), var(--accent-2));
+}
+
+.mic-button--live::after {
+  position: absolute;
+  inset: -6px;
+  border: 2px solid var(--accent-3);
+  border-radius: 999px;
+  animation: mic-pulse 1.4s ease-out infinite;
+  content: '';
+}
+
+.composer--recording {
+  border-color: color-mix(in srgb, var(--accent-3) 60%, transparent);
+  box-shadow:
+    var(--shadow),
+    0 0 26px color-mix(in srgb, var(--accent-3) 35%, transparent);
+}
+
+.recording-strip {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.recording-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--accent-3);
+  box-shadow: 0 0 10px var(--accent-3);
+  animation: caret-blink 1s steps(2) infinite;
+}
+
+.recording-label {
+  color: var(--text);
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.recording-bars {
+  display: flex;
+  flex: 1;
+  gap: 3px;
+  align-items: center;
+  min-width: 0;
+  height: 26px;
+  overflow: hidden;
+}
+
+.recording-bars span {
+  width: 3px;
+  height: 100%;
+  flex: none;
+  border-radius: 2px;
+  background: linear-gradient(var(--accent-3), var(--accent-2));
+  transform-origin: center;
+  animation: eq-bounce 0.8s ease-in-out infinite;
+}
+
+.recording-bars span:nth-child(3n) {
+  animation-delay: -0.3s;
+}
+
+.recording-bars span:nth-child(3n + 1) {
+  animation-delay: -0.55s;
+}
+
+.recording-bars span:nth-child(4n) {
+  animation-duration: 1.1s;
+}
+
+.recording-time {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Read-aloud toggle on each reply. */
+.listen-button {
+  display: inline-grid;
+  width: 32px;
+  height: 32px;
+  margin: -6px -8px -6px 0;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-muted);
+  background: transparent;
+  cursor: pointer;
+}
+
+.listen-button svg {
+  width: 18px;
+  height: 18px;
+  fill: currentColor;
+}
+
+.listen-button:hover,
+.listen-button--on {
+  color: var(--accent);
+  background: var(--surface-raised);
+}
+
+.listen-button[aria-busy='true'] {
+  animation: caret-blink 0.8s steps(2) infinite;
+}
+
+.icon-button--live {
+  border-color: var(--accent);
+  color: var(--accent);
+  box-shadow: var(--glow);
+}
+
+.voice-note {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  text-align: center;
+}
+
+@keyframes mic-pulse {
+  from {
+    opacity: 0.8;
+    transform: scale(0.9);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}

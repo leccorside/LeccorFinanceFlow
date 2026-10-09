@@ -228,10 +228,10 @@ const ptBR = {
   'assistant.input.hint': 'Enter envia; Shift+Enter quebra a linha.',
   'assistant.input.count': '{count} de {max} caracteres',
   'assistant.send': 'Enviar',
-  'assistant.mic': 'Falar (a voz chega no próximo passo)',
+  'assistant.mic': 'Falar',
   'assistant.state.idle': 'Pronto para ouvir',
   'assistant.state.listening': 'Ouvindo…',
-  'assistant.state.thinking': 'Pensando…',
+  'assistant.state.thinking': 'Executando…',
   'assistant.state.speaking': 'Respondendo…',
   'assistant.state.error': 'Algo deu errado',
   'assistant.you': 'Você',
@@ -329,6 +329,41 @@ const ptBR = {
   'assistant.field.googleDriveTrash': 'Vai para a lixeira do Drive',
   'assistant.field.spreadsheetsStayInGoogleDrive': 'Planilhas continuam no Drive',
   'assistant.field.isActive': 'Ativa',
+
+  'assistant.state.transcribing': 'Interpretando…',
+  'assistant.input.hintVoice':
+    'Toque no microfone para falar, ou escreva. Enter envia; Shift+Enter quebra a linha.',
+  'assistant.mic.stop': 'Parar e enviar',
+  'assistant.mic.cancel': 'Descartar gravação',
+  'assistant.mic.hint': 'Fale normalmente. Esc descarta; o áudio não é guardado.',
+  'assistant.mic.unsupported': 'Este navegador não grava áudio. Use o texto.',
+  'assistant.mic.unavailable': 'Voz indisponível neste ambiente. Use o texto.',
+  'assistant.voice.denied':
+    'O microfone foi bloqueado. Libere o acesso nas configurações do navegador ou continue escrevendo.',
+  'assistant.voice.no_device':
+    'Nenhum microfone encontrado. Conecte um ou continue escrevendo.',
+  'assistant.voice.unsupported': 'Este navegador não grava áudio. Continue escrevendo.',
+  'assistant.voice.too_short':
+    'A gravação ficou curta demais. Segure um pouco mais enquanto fala.',
+  'assistant.voice.failed': 'A gravação falhou. Tente de novo ou escreva.',
+  'assistant.voice.dismiss': 'Entendi',
+  'assistant.voice.speechFailed':
+    'Não consegui ler a resposta em voz alta; ela está no chat.',
+  'assistant.listen': 'Ouvir resposta',
+  'assistant.listenStop': 'Parar a fala',
+  'assistant.error.voice_unavailable':
+    'A voz não respondeu agora. Continue por texto e tente de novo depois.',
+  'assistant.error.voice_not_configured':
+    'A voz não está configurada neste ambiente. Use o texto.',
+  'assistant.error.voice_no_speech':
+    'Não consegui entender o áudio. Fale de novo ou escreva.',
+  'assistant.error.voice_request_rejected':
+    'O serviço de voz recusou esse áudio. Tente de novo ou escreva.',
+  'assistant.error.audio_unsupported_type':
+    'Formato de áudio não aceito por este navegador. Use o texto.',
+  'assistant.error.audio_empty': 'Nenhum som foi gravado. Tente de novo.',
+  'assistant.error.payload_too_large':
+    'A gravação passou do tamanho permitido. Fale em partes menores.',
 
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',
@@ -565,10 +600,10 @@ const enUS: Messages = {
   'assistant.input.hint': 'Enter sends; Shift+Enter adds a line.',
   'assistant.input.count': '{count} of {max} characters',
   'assistant.send': 'Send',
-  'assistant.mic': 'Speak (voice is coming next)',
+  'assistant.mic': 'Speak',
   'assistant.state.idle': 'Ready',
   'assistant.state.listening': 'Listening…',
-  'assistant.state.thinking': 'Thinking…',
+  'assistant.state.thinking': 'Working on it…',
   'assistant.state.speaking': 'Answering…',
   'assistant.state.error': 'Something went wrong',
   'assistant.you': 'You',
@@ -666,6 +701,37 @@ const enUS: Messages = {
   'assistant.field.googleDriveTrash': 'Goes to the Drive trash',
   'assistant.field.spreadsheetsStayInGoogleDrive': 'Spreadsheets stay in Drive',
   'assistant.field.isActive': 'Active',
+
+  'assistant.state.transcribing': 'Interpreting…',
+  'assistant.input.hintVoice':
+    'Tap the microphone to speak, or type. Enter sends; Shift+Enter adds a line.',
+  'assistant.mic.stop': 'Stop and send',
+  'assistant.mic.cancel': 'Discard recording',
+  'assistant.mic.hint': 'Speak normally. Esc discards; the audio is not kept.',
+  'assistant.mic.unsupported': 'This browser cannot record audio. Use text.',
+  'assistant.mic.unavailable': 'Voice is not available here. Use text.',
+  'assistant.voice.denied':
+    'The microphone is blocked. Allow access in the browser settings or keep typing.',
+  'assistant.voice.no_device': 'No microphone found. Connect one or keep typing.',
+  'assistant.voice.unsupported': 'This browser cannot record audio. Keep typing.',
+  'assistant.voice.too_short':
+    'The recording was too short. Keep it going while you speak.',
+  'assistant.voice.failed': 'Recording failed. Try again or type.',
+  'assistant.voice.dismiss': 'Got it',
+  'assistant.voice.speechFailed': 'I could not read the answer aloud; it is in the chat.',
+  'assistant.listen': 'Listen to the answer',
+  'assistant.listenStop': 'Stop speaking',
+  'assistant.error.voice_unavailable':
+    'Voice is not responding right now. Use text and try again later.',
+  'assistant.error.voice_not_configured': 'Voice is not configured here. Use text.',
+  'assistant.error.voice_no_speech':
+    'I could not understand the audio. Speak again or type.',
+  'assistant.error.voice_request_rejected':
+    'The voice service refused this audio. Try again or type.',
+  'assistant.error.audio_unsupported_type': 'Audio format not accepted. Use text.',
+  'assistant.error.audio_empty': 'No sound was recorded. Try again.',
+  'assistant.error.payload_too_large':
+    'The recording is larger than allowed. Speak in shorter parts.',
 
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',
@@ -904,10 +970,10 @@ const esES: Messages = {
   'assistant.input.hint': 'Enter envía; Shift+Enter añade una línea.',
   'assistant.input.count': '{count} de {max} caracteres',
   'assistant.send': 'Enviar',
-  'assistant.mic': 'Hablar (la voz llega pronto)',
+  'assistant.mic': 'Hablar',
   'assistant.state.idle': 'Listo',
   'assistant.state.listening': 'Escuchando…',
-  'assistant.state.thinking': 'Pensando…',
+  'assistant.state.thinking': 'Ejecutando…',
   'assistant.state.speaking': 'Respondiendo…',
   'assistant.state.error': 'Algo salió mal',
   'assistant.you': 'Tú',
@@ -1006,6 +1072,39 @@ const esES: Messages = {
   'assistant.field.googleDriveTrash': 'Va a la papelera de Drive',
   'assistant.field.spreadsheetsStayInGoogleDrive': 'Las hojas siguen en Drive',
   'assistant.field.isActive': 'Activa',
+
+  'assistant.state.transcribing': 'Interpretando…',
+  'assistant.input.hintVoice':
+    'Toca el micrófono para hablar, o escribe. Enter envía; Shift+Enter añade una línea.',
+  'assistant.mic.stop': 'Detener y enviar',
+  'assistant.mic.cancel': 'Descartar grabación',
+  'assistant.mic.hint': 'Habla con normalidad. Esc descarta; el audio no se guarda.',
+  'assistant.mic.unsupported': 'Este navegador no graba audio. Usa el texto.',
+  'assistant.mic.unavailable': 'La voz no está disponible aquí. Usa el texto.',
+  'assistant.voice.denied':
+    'El micrófono está bloqueado. Permite el acceso en el navegador o sigue escribiendo.',
+  'assistant.voice.no_device':
+    'No se encontró micrófono. Conecta uno o sigue escribiendo.',
+  'assistant.voice.unsupported': 'Este navegador no graba audio. Sigue escribiendo.',
+  'assistant.voice.too_short':
+    'La grabación fue demasiado corta. Mantenla mientras hablas.',
+  'assistant.voice.failed': 'La grabación falló. Inténtalo de nuevo o escribe.',
+  'assistant.voice.dismiss': 'Entendido',
+  'assistant.voice.speechFailed':
+    'No pude leer la respuesta en voz alta; está en el chat.',
+  'assistant.listen': 'Escuchar respuesta',
+  'assistant.listenStop': 'Detener la voz',
+  'assistant.error.voice_unavailable':
+    'La voz no responde ahora. Usa el texto e inténtalo más tarde.',
+  'assistant.error.voice_not_configured':
+    'La voz no está configurada aquí. Usa el texto.',
+  'assistant.error.voice_no_speech': 'No entendí el audio. Habla de nuevo o escribe.',
+  'assistant.error.voice_request_rejected':
+    'El servicio de voz rechazó este audio. Inténtalo de nuevo o escribe.',
+  'assistant.error.audio_unsupported_type': 'Formato de audio no aceptado. Usa el texto.',
+  'assistant.error.audio_empty': 'No se grabó ningún sonido. Inténtalo de nuevo.',
+  'assistant.error.payload_too_large':
+    'La grabación supera el tamaño permitido. Habla en partes más cortas.',
 
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',

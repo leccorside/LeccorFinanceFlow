@@ -76,7 +76,9 @@ function drawFrame(
   ctx.strokeStyle = gradient;
   ctx.lineCap = 'round';
   ctx.lineWidth = Math.max(1.5, size / 110);
-  const rotation = state === 'thinking' ? t * 0.6 : t * 0.08;
+  // Interpreting speech spins the comet the other way, so the two phases read differently.
+  const rotation =
+    state === 'thinking' ? t * 0.6 : state === 'transcribing' ? -t * 0.9 : t * 0.08;
   for (let i = 0; i < levels.length; i += 1) {
     const angle = (i / levels.length) * Math.PI * 2 + rotation;
     const length = 2 + (levels[i] ?? 0) * maxBar;
