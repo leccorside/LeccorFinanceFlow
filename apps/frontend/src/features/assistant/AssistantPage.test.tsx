@@ -171,6 +171,42 @@ describe('AssistantPage', () => {
     expect(getMessages).not.toHaveBeenCalled();
   });
 
+  it('shows when a write did not reach the spreadsheet, with the server notice', async () => {
+    const notice =
+      'Observação: a alteração foi salva, mas a planilha do Google ainda não foi atualizada.';
+    vi.mocked(sendMessage).mockResolvedValueOnce(
+      turn({
+        reply: {
+          ...turn().reply,
+          content: `Registrei R$ 50,00 em Mercado.\n\n${notice}`,
+        },
+        actions: [
+          { tool: 'create_transaction', status: 'ok', sync: 'PENDING_SYNC' },
+          { tool: 'update_transaction', status: 'ok', sync: 'CONFLICT' },
+        ],
+      }),
+    );
+    renderWithProviders(<AssistantPage firstName={null} />);
+    sendWithEnter('gastei 50 no mercado');
+
+    await screen.findByText(new RegExp(notice.slice(0, 40)), {
+      selector: '.visually-hidden',
+    });
+    const log = screen.getByRole('log', { name: 'Mensagens da conversa' });
+    // The longer reply takes longer to be "written" before the chips appear.
+    await waitFor(
+      () => expect(screen.getByRole('status')).toHaveTextContent('Pronto para ouvir'),
+      { timeout: 8000 },
+    );
+    expect(
+      within(log).getByText('Novo lançamento · feito · planilha pendente'),
+    ).toBeInTheDocument();
+    expect(within(log).getByText(/· feito · conflito na planilha$/)).toBeInTheDocument();
+    // Visible text and the screen-reader copy both carry the notice.
+    expect(within(log).getAllByText(notice, { exact: false }).length).toBeGreaterThan(0);
+    expect(within(log).queryByText(/planilha atualizada/)).not.toBeInTheDocument();
+  });
+
   it('keeps Shift+Enter as a line break and ignores blank messages', async () => {
     renderWithProviders(<AssistantPage firstName={null} />);
 

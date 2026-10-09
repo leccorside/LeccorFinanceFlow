@@ -726,7 +726,7 @@ Relatórios entram no PASSO 19, junto com a geração; desfazer, no PASSO 15.
    - mais de um candidato gera `ambiguous` com até 5 candidatos (campos seguros), e nada é executado;
    - um único alvo gera `confirmation_required`, com resumo e um token salvo em `assistant_confirmations`.
 6. **Execução** pelo serviço de domínio, com todas as regras, o ownership (`404` para id de outra pessoa) e o `ActionHistory`, que inclui o `conversationId`.
-7. **Sincronização** da planilha ativa depois de escritas: `sync` = `SYNCED`, `PENDING_SYNC` (Google falhou; a escrita continua valendo), `CONFLICT` ou `NO_SPREADSHEET`.
+7. **Sincronização** da planilha ativa depois de escritas: `sync` = `SYNCED`, `PENDING_SYNC` (Google falhou; a escrita continua valendo), `CONFLICT` ou `NO_SPREADSHEET`. Desde o PASSO 22, quando alguma ação do turno fica `PENDING_SYNC` ou `CONFLICT`, o **backend** acrescenta à resposta um aviso fixo no idioma da pessoa (`TurnBuilder.withSyncNotice`). O texto do modelo nunca consegue anunciar uma sincronização que falhou.
 8. **Resultado sempre estruturado**: `ok`, `confirmation_required`, `ambiguous`, `rejected` ou `error` (código do domínio, sem detalhe interno).
    - `toModelContent` serializa em JSON com o aviso de que textos em `data`/`candidates` são dados do usuário, nunca instruções.
    - Um texto não consegue "fechar" o JSON e injetar campos.
@@ -1407,16 +1407,49 @@ Erros:
   - histórico com "Baixar" só para os disponíveis.
 - **Chat**: o turno do assistente traz `attachments` (`kind: 'report'`, `url`, `fileName`, `expiresAt`), e a bolha mostra um cartão "Baixar". O anexo não fica no histórico da conversa; os relatórios continuam na página.
 
+## Produção (PASSO 22)
+
+Imagens e Compose próprios, separados do ambiente de desenvolvimento. O passo a passo de operação (implantação, atualização, backup e restauração, rotação de segredos, problemas comuns) está em **`RUNBOOK.md`**.
+
+- `docker-compose.prod.yml`, projeto `leccor-finance-flow-prod`:
+  - `postgres`;
+  - `migrate`: execução única com `prisma migrate deploy` e seed idempotente; o backend só sobe se ele terminar com 0;
+  - `backend`: `node dist/main.js`, não-root, só dependências de produção, sem porta publicada;
+  - `web`: nginx não-root na 8080, com a SPA e o proxy `/api`.
+- Variáveis em `.env.production` (modelo em `.env.production.example`), passadas com `--env-file`. `FRONTEND_URL` e `POSTGRES_PASSWORD` são obrigatórias.
+- O nginx envia os mesmos headers de `apps/frontend/security-headers.ts` (CSP sem script inline). `nginx-headers.test.ts` falha se os dois divergirem, ou se algum `location` com `add_header` esquecer o snippet (o nginx descarta headers herdados nesse caso).
+- Assets com hash no nome: `Cache-Control: public, max-age=31536000, immutable`. `index.html` e rotas da SPA: `no-cache`. gzip ligado.
+- `TRUST_PROXY=1` por padrão (o nginx). Some 1 para cada proxy na frente.
+- Validado do zero: 10 migrations aplicadas, seed, healthchecks, E2E completo, backup com `pg_dump` restaurado com contagens idênticas, rotação de chaves com `node dist/scripts/rotate-credentials.js` na imagem final.
+- Tamanhos: `web` 83 MB; `backend` 726 MB, a maior parte do `@prisma/client`, que puxa o CLI do Prisma como peer dependency (limitação registrada).
+
 ## Testes
 
-Estratégia planejada:
+| Camada             | Ferramenta                                  | Onde                                                     | Como rodar                                                                    |
+| ------------------ | ------------------------------------------- | -------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| Unitários backend  | Vitest                                      | `apps/backend/src/**/*.spec.ts`                          | `pnpm --filter @leccor/backend test` (também no `pnpm quality`)               |
+| Integração backend | Vitest + Supertest + PostgreSQL descartável | `apps/backend/test/integration`                          | `TEST_DATABASE_URL=… pnpm --filter @leccor/backend test:integration`          |
+| Frontend           | Vitest + Testing Library (jsdom)            | `apps/frontend/src/**/*.test.tsx`, `apps/frontend/nginx` | `pnpm --filter @leccor/frontend test` (também no `pnpm quality`)              |
+| E2E (navegador)    | Playwright + Chrome + axe-core              | `e2e/*.e2e.ts`                                           | stack de produção + `E2E_DATABASE_URL=… pnpm e2e` (ver `RUNBOOK.md` §10)      |
+| Segurança          | `pnpm audit`, scanner de segredos           | `scripts/scan-secrets.mjs`                               | `pnpm security:audit`, `pnpm security:scan`                                   |
+| Smoke real Google  | Vitest (opt-in)                             | `vitest.google.config.ts`                                | `RUN_GOOGLE_INTEGRATION_TESTS=true pnpm --filter @leccor/backend test:google` |
 
-- backend: Jest, Supertest e PostgreSQL de teste em Docker;
-- frontend: Vitest, Testing Library e ferramenta E2E definida na etapa correspondente;
-- adapters externos: fakes determinísticos por padrão;
-- smoke real Google/IA: manual ou opt-in por variável de ambiente.
+Os adaptadores externos (Google, IA, voz) são fakes determinísticos nos testes. Provedores reais só entram em smokes opt-in, que ainda não rodaram por falta de credenciais (ver `RASTREABILIDADE.md`).
 
-Cobertura crítica inclui autenticação, autorização, isolamento, tools, transações, parcelas, recorrências, sincronização, fallback, relatórios, confirmações e undo.
+### E2E (PASSO 22)
+
+A suíte `e2e/` roda **contra a stack de produção** (`docker-compose.prod.yml`: nginx, backend compilado e PostgreSQL), não contra o Vite. Como o login real do Google não roda sem uma pessoa, `e2e/support.ts` cria usuário, perfil, papéis e sessão direto no banco da stack: as mesmas linhas que um login gera, com tokens aleatórios guardados como hash. O app não tem nenhum atalho de teste. O override `e2e/docker-compose.e2e.yml` publica o PostgreSQL só para isso.
+
+| Arquivo                | Cobre                                                                                                                                                                                        |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `visitor.e2e.ts`       | Landing, redirecionamento das rotas privadas ao login, 401 sem vazamento, 503 explícito do Google não configurado, headers de produção e cache dos assets.                                   |
+| `journey.e2e.ts`       | Chat sem provedor de IA (resposta segura), lançamentos no painel com os valores exatos, PDF baixado, perfil (idioma muda a interface), exportação, exclusão de dados financeiros e da conta. |
+| `admin.e2e.ts`         | Usuário comum barrado (UI e API 403), bloqueio que derruba a sessão na hora e aparece na trilha, pausa do assistente valendo para todos.                                                     |
+| `responsive.e2e.ts`    | As 11 telas (logado e visitante) em 320, 375, 768 e 1280 px sem rolagem horizontal; botão de voz/enviar ≥ 44 px no celular.                                                                  |
+| `accessibility.e2e.ts` | axe (WCAG 2.1 A/AA) em todas as telas e na confirmação, temas claro e escuro, sem violação; exclusão e cancelamento só pelo teclado; foco visível.                                           |
+| `performance.e2e.ts`   | Orçamentos: LCP < 2,5 s (medido: 0,16 a 1 s), JS inicial do chat < 250 KB comprimido (medido: 229 KB), p95 < 500 ms nas leituras principais (medido: 9 a 44 ms).                             |
+
+Os orçamentos de desempenho valem para a stack local, sem limitação de rede. Eles pegam regressões (dependência pesada no primeiro bundle, consulta lenta), não medem a experiência numa rede móvel.
 
 ## Desenvolvimento incremental
 

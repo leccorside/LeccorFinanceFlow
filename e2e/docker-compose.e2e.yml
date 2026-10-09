@@ -1,0 +1,9 @@
+# E2E override for docker-compose.prod.yml: publishes PostgreSQL on localhost so the tests
+# can create users and sessions (Google sign-in cannot run unattended). Never use in production.
+#
+#   docker compose --env-file <env> -f docker-compose.prod.yml -f e2e/docker-compose.e2e.yml up -d --build
+
+services:
+  postgres:
+    ports:
+      - '127.0.0.1:${E2E_POSTGRES_PORT:-55433}:5432'

@@ -9,6 +9,7 @@ export default tseslint.config(
     ignores: [
       '**/dist/**',
       '**/coverage/**',
+      'test-results/**',
       '**/node_modules/**',
       'apps/backend/src/generated/**',
       '*.config.js',
@@ -18,7 +19,12 @@ export default tseslint.config(
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   {
-    files: ['apps/backend/**/*.ts', 'packages/**/*.ts', 'scripts/**/*.mjs'],
+    files: [
+      'apps/backend/**/*.ts',
+      'packages/**/*.ts',
+      'scripts/**/*.mjs',
+      'e2e/**/*.ts',
+    ],
     languageOptions: {
       globals: {
         ...globals.node,

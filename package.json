@@ -11,13 +11,14 @@
     "dev": "concurrently -n backend,frontend -c blue,green \"pnpm --filter @leccor/backend dev\" \"pnpm --filter @leccor/frontend dev\"",
     "build": "pnpm --filter @leccor/contracts build && pnpm --filter @leccor/backend build && pnpm --filter @leccor/frontend build",
     "lint": "eslint .",
-    "typecheck": "pnpm --filter @leccor/contracts typecheck && pnpm --filter @leccor/backend typecheck && pnpm --filter @leccor/frontend typecheck",
+    "typecheck": "pnpm --filter @leccor/contracts typecheck && pnpm --filter @leccor/backend typecheck && pnpm --filter @leccor/frontend typecheck && tsc -p e2e/tsconfig.json",
     "test": "pnpm --filter @leccor/contracts test && pnpm --filter @leccor/backend test && pnpm --filter @leccor/frontend test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "quality": "pnpm format:check && pnpm lint && pnpm security:scan && pnpm typecheck && pnpm test && pnpm build",
     "security:scan": "node scripts/scan-secrets.mjs",
-    "security:audit": "pnpm audit"
+    "security:audit": "pnpm audit",
+    "e2e": "playwright test -c e2e/playwright.config.ts"
   },
   "engines": {
     "node": ">=22.12.0",
@@ -25,12 +26,17 @@
   },
   "packageManager": "pnpm@11.25.0",
   "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
     "@eslint/js": "^10.0.1",
+    "@playwright/test": "1.64.0",
+    "@types/node": "^26.6.4",
+    "@types/pg": "^8.23.1",
     "concurrently": "^9.2.1",
     "eslint": "^10.12.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",
     "globals": "^17.13.0",
+    "pg": "^8.23.1",
     "prettier": "^3.9.9",
     "typescript": "^6.0.3",
     "typescript-eslint": "^8.71.1"

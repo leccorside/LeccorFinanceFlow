@@ -51,6 +51,9 @@ type Texts = {
   unavailable: string;
   notConfigured: string;
   rejected: string;
+  /** Appended by the backend (never left to the model) when a write did not reach the sheet. */
+  syncPending: string;
+  syncConflict: string;
   blocked: string;
   tooManySteps: string;
   ungrounded: string;
@@ -70,6 +73,10 @@ const TEXTS: Record<LocaleTag, Texts> = {
     notConfigured:
       'O assistente ainda não está configurado. Peça a um administrador para ativar um provedor de IA.',
     rejected: 'Não consegui processar esse pedido. Pode reformular?',
+    syncPending:
+      'Observação: a alteração foi salva, mas a planilha do Google ainda não foi atualizada. Vou tentar de novo na próxima sincronização.',
+    syncConflict:
+      'Observação: a alteração foi salva, mas a planilha tem uma edição diferente desse registro. Revise o conflito antes de sincronizar.',
     blocked: 'Não posso ajudar com esse conteúdo. Pode reformular o pedido?',
     tooManySteps:
       'Esse pedido ficou complexo demais para concluir de uma vez. Pode dividir em partes menores?',
@@ -105,6 +112,10 @@ const TEXTS: Record<LocaleTag, Texts> = {
     notConfigured:
       'The assistant is not configured yet. Ask an administrator to enable an AI provider.',
     rejected: 'I could not process that request. Could you rephrase it?',
+    syncPending:
+      'Note: the change was saved, but the Google spreadsheet has not been updated yet. I will try again on the next sync.',
+    syncConflict:
+      'Note: the change was saved, but the spreadsheet has a different edit of this record. Review the conflict before syncing.',
     blocked: 'I cannot help with that content. Could you rephrase the request?',
     tooManySteps: 'That request got too complex to finish at once. Could you split it?',
     ungrounded: 'I could not confirm those amounts with your data. Could you rephrase?',
@@ -138,6 +149,10 @@ const TEXTS: Record<LocaleTag, Texts> = {
     notConfigured:
       'El asistente aún no está configurado. Pide a un administrador que active un proveedor de IA.',
     rejected: 'No pude procesar esa petición. ¿Puedes reformularla?',
+    syncPending:
+      'Nota: el cambio se guardó, pero la hoja de Google aún no se actualizó. Lo intentaré de nuevo en la próxima sincronización.',
+    syncConflict:
+      'Nota: el cambio se guardó, pero la hoja tiene una edición distinta de este registro. Revisa el conflicto antes de sincronizar.',
     blocked: 'No puedo ayudar con ese contenido. ¿Puedes reformular la petición?',
     tooManySteps:
       'La petición se volvió demasiado compleja para terminarla de una vez. ¿Puedes dividirla?',

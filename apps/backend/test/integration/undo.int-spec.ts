@@ -95,6 +95,18 @@ async function transaction(actor: Actor, body: Json = {}) {
   ).body as Json & { id: string; version: number };
 }
 
+/**
+ * Like supertest's `.expect(code)`, but a failure also shows the route and the response body.
+ * Added after a one-off failure of "expired confirmations never run" seen only on a cold
+ * container (PASSO 22), so a next occurrence explains itself.
+ */
+async function status(req: request.Test, code: number): Promise<request.Response> {
+  const response = await req;
+  const route = `${req.method} ${new URL(req.url).pathname}`;
+  expect(response.status, `${route} → ${JSON.stringify(response.body)}`).toBe(code);
+  return response;
+}
+
 const tx = (id: string) => db.client.transaction.findUnique({ where: { id } });
 const confirm = (actor: Actor, id: string) =>
   http(actor, 'post', `/assistant/confirmations/${id}/confirm`);
@@ -472,7 +484,7 @@ describe('confirmation of simple deletions is configurable', () => {
 
 describe('high-impact deletions', () => {
   const ask = async (actor: Actor, body: Json) =>
-    (await http(actor, 'post', '/assistant/data-deletions').send(body).expect(200))
+    (await status(http(actor, 'post', '/assistant/data-deletions').send(body), 200))
       .body as ToolOutcome & {
       confirmation: { id: string; summary: Json };
     };
@@ -662,18 +674,20 @@ describe('high-impact deletions', () => {
         expiresAt: new Date(Date.now() - 1000),
       },
     });
-    await confirm(actor, asked.confirmation.id).expect(410);
+    await status(confirm(actor, asked.confirmation.id), 410);
     for (const body of [
       { scope: 'everything' },
       { scope: 'conversations', spreadsheetId: actor.id },
       { scope: 'account', confirmed: true },
     ]) {
-      await http(actor, 'post', '/assistant/data-deletions').send(body).expect(400);
+      await status(http(actor, 'post', '/assistant/data-deletions').send(body), 400);
     }
-    await request(app.getHttpServer())
-      .post('/api/v1/assistant/data-deletions')
-      .send({ scope: 'account' })
-      .expect(401);
+    await status(
+      request(app.getHttpServer())
+        .post('/api/v1/assistant/data-deletions')
+        .send({ scope: 'account' }),
+      401,
+    );
     expect(await db.client.user.count({ where: { id: actor.id } })).toBe(1);
   });
 });

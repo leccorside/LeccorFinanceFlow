@@ -23,3 +23,19 @@ RUN chown node:node apps/frontend apps/frontend/node_modules
 USER node
 EXPOSE 5173
 CMD ["pnpm", "--filter", "@leccor/frontend", "dev"]
+
+# ─────────────────────────── Production (docker-compose.prod.yml) ───────────────────────────
+
+FROM deps AS build
+COPY tsconfig.base.json ./
+COPY apps/frontend apps/frontend
+RUN pnpm --filter @leccor/frontend build
+
+# Static files + /api reverse proxy. Unprivileged image: listens on 8080 as a non-root user.
+# The security headers (CSP…) are the same as apps/frontend/security-headers.ts; a unit test
+# keeps nginx/security-headers.conf in sync with it.
+FROM nginxinc/nginx-unprivileged:1.28-alpine AS production
+COPY apps/frontend/nginx/default.conf /etc/nginx/conf.d/default.conf
+COPY apps/frontend/nginx/security-headers.conf /etc/nginx/snippets/security-headers.conf
+COPY --from=build /app/apps/frontend/dist /usr/share/nginx/html
+EXPOSE 8080

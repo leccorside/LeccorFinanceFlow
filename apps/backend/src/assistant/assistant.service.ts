@@ -197,7 +197,7 @@ export class AssistantService {
       }
       const reply = await this.conversations.addAssistant(
         conversation.id,
-        text,
+        turn.withSyncNotice(text),
         provider,
       );
       return turn.build(reply, provider);
@@ -233,10 +233,12 @@ export class AssistantService {
     turn.record(outcome);
     const content =
       outcome.status === 'ok'
-        ? confirmedText(
-            locale,
-            outcome.tool,
-            (outcome.data ?? {}) as Record<string, unknown>,
+        ? turn.withSyncNotice(
+            confirmedText(
+              locale,
+              outcome.tool,
+              (outcome.data ?? {}) as Record<string, unknown>,
+            ),
           )
         : texts(locale).actionFailed(
             outcome.status === 'error' ? outcome.message : texts(locale).rejected,
@@ -368,6 +370,21 @@ class TurnBuilder {
         });
       }
     }
+  }
+
+  /**
+   * The reply plus a fixed notice when a write of this turn did not reach the spreadsheet.
+   * Deterministic on purpose: the model's wording can never announce a sync that failed.
+   */
+  withSyncNotice(content: string): string {
+    const states = new Set(this.actions.map((action) => action.sync));
+    const words = texts(this.locale);
+    const notice = states.has('CONFLICT')
+      ? words.syncConflict
+      : states.has('PENDING_SYNC')
+        ? words.syncPending
+        : null;
+    return notice ? `${content}\n\n${notice}` : content;
   }
 
   build(

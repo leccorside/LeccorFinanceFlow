@@ -277,11 +277,11 @@ O chat é a interface principal. Dashboard e listas são de leitura/consulta; cr
 
 ## 13. API e contrato de erros
 
-Base prevista: `/api/v1`. Respostas de erro terão `code`, `message`, `details` seguros, `requestId` efêmero para correlação em memória durante a requisição e timestamp. O `requestId` não será armazenado em log.
+Base prevista: `/api/v1`. Respostas de erro terão `code`, `message`, `details` seguros, `requestId` (também no header `X-Request-Id`) e timestamp. Desde o PASSO 21, só erros inesperados (5xx) geram uma linha de log em stdout com o `requestId` e a mensagem mascarada; nada é armazenado em banco.
 
-Grupos: `/auth`, `/users`, `/profile`, `/google`, `/spreadsheets`, `/transactions`, `/accounts`, `/categories`, `/investments`, `/assistant`, `/voice`, `/reports`, `/dashboard`, `/admin/users`, `/admin/ai-providers` e `/admin/settings`.
+Grupos: `/auth` (inclui `/auth/me`), `/profile`, `/google`, `/spreadsheets`, `/transactions`, `/accounts`, `/categories`, `/investments`, `/assistant`, `/voice`, `/reports`, `/dashboard`, `/privacy`, `/admin/overview`, `/admin/users`, `/admin/ai-providers`, `/admin/settings` e `/admin/audit`. Não existe `/users`: a identidade fica em `/auth/me` e `/profile`, e a gestão em `/admin/users`.
 
-Swagger/OpenAPI será gerado a partir dos DTOs e disponibilizado apenas conforme configuração do ambiente.
+Swagger/OpenAPI não foi implementado: o contrato está documentado em `DOCUMENTACAO.md` e coberto pelos testes de integração. A variável `SWAGGER_ENABLED` do `.env.example` está reservada.
 
 ## 14. Privacidade e LGPD
 
@@ -290,7 +290,7 @@ Swagger/OpenAPI será gerado a partir dos DTOs e disponibilizado apenas conforme
 - Exportação e exclusão pelo titular.
 - Desconexão revoga acesso quando suportado e elimina tokens locais.
 - Exclusão de conta remove dados pessoais, financeiros, conversas, relatórios e vínculos externos segundo uma ordem transacional documentada.
-- Backups e retenção de infraestrutura deverão ser definidos antes de produção.
+- Retenção automática (PASSO 21) e backups com expiração de até 35 dias (`RUNBOOK.md`).
 - Segredos nunca entram em planilhas, frontend, mensagens de erro ou documentação versionada.
 
 ## 15. Testes arquiteturais obrigatórios
@@ -298,8 +298,12 @@ Swagger/OpenAPI será gerado a partir dos DTOs e disponibilizado apenas conforme
 - Unitários: regras financeiras, datas, moeda, parcelas, recorrências, confirmação e fallback.
 - Integração: Prisma/PostgreSQL, Google adapters simulados, providers simulados e relatórios.
 - API: autenticação, RBAC, IDOR, validação, rate limit e exclusões.
-- E2E: login simulado, chat -> tool -> banco -> sync, voz, dashboard e mobile.
+- E2E (PASSO 22, `e2e/`): navegador real contra a stack de produção, com sessões semeadas no banco. Cobre jornada, administração, responsividade, acessibilidade e desempenho. Chat com IA e voz ficam nos testes de integração e de componente.
 - Contratos: schemas de ferramentas e providers.
 - Segurança: prompt injection, mass assignment, tokens ausentes/revogados, arquivos e dados cruzados.
 
 Testes que dependem de Google/IA reais serão opt-in e nunca necessários para a suíte padrão.
+
+## 16. Implantação (PASSO 22)
+
+Produção usa `docker-compose.prod.yml`: nginx (`web`, SPA + proxy `/api`, CSP) → backend compilado (`node dist/main.js`, não publicado) → PostgreSQL. Um serviço `migrate` de execução única aplica migrations e seed antes de o backend subir. Uma única origem dispensa CORS. TLS termina antes do nginx. Operação, backup e rotação de segredos em `RUNBOOK.md`.

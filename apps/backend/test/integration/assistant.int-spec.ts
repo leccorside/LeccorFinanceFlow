@@ -9,12 +9,21 @@ import {
   type DisposableDatabase,
 } from './disposable-database.js';
 import { FakeAiClients } from './fake-ai.js';
-import { createTestApp, FakeGoogle, loginAs, type Session, testEnv } from './support.js';
+import { FakeWorkspace } from './fake-workspace.js';
+import {
+  connectGoogle,
+  createTestApp,
+  FakeGoogle,
+  loginAs,
+  type Session,
+  testEnv,
+} from './support.js';
 
 let db: DisposableDatabase;
 let app: NestExpressApplication;
 let google: FakeGoogle;
 let ai: FakeAiClients;
+let workspace: FakeWorkspace;
 let providers: Record<'OPENAI' | 'GEMINI' | 'ANTHROPIC', string>;
 
 type Json = Record<string, unknown>;
@@ -101,7 +110,8 @@ beforeAll(async () => {
   testEnv(db.url, { OPENAI_API_KEY: 'sk-env-openai', GEMINI_API_KEY: 'gm-env' });
   google = new FakeGoogle();
   ai = new FakeAiClients();
-  app = await createTestApp(google, [], undefined, undefined, ai);
+  workspace = new FakeWorkspace();
+  app = await createTestApp(google, [], undefined, workspace, ai);
   const rows = await db.client.aIProvider.findMany();
   providers = Object.fromEntries(
     rows.map((row) => [row.type, row.id]),
@@ -133,6 +143,54 @@ beforeEach(async () => {
 // ───────────────────────────── The main flow ─────────────────────────────
 
 describe('conversation with tools', () => {
+  it('never lets the reply claim a sync that failed: the backend adds a fixed notice', async () => {
+    const actor = await newUser();
+    await connectGoogle(app, actor);
+    await http(actor, 'post', '/spreadsheets').send({}).expect(200);
+    // A model that always claims the spreadsheet is up to date.
+    ai.OPENAI.handler = (req) =>
+      toolResults(req).length === 0
+        ? {
+            toolCalls: [
+              call('create_transaction', {
+                type: 'EXPENSE',
+                description: 'Padaria',
+                amount: '12',
+              }),
+            ],
+          }
+        : { text: 'Pronto, registrei e a planilha já está atualizada.' };
+
+    const synced = await say(actor, 'Gastei 12 na padaria.');
+    expect(synced.actions).toMatchObject([
+      { tool: 'create_transaction', sync: 'SYNCED' },
+    ]);
+    expect(synced.reply.content).toBe(
+      'Pronto, registrei e a planilha já está atualizada.',
+    );
+
+    workspace.failOnce.values = 'unavailable';
+    const pending = await say(actor, 'Gastei 12 na padaria de novo.');
+    expect(pending.actions).toMatchObject([
+      { tool: 'create_transaction', status: 'ok', sync: 'PENDING_SYNC' },
+    ]);
+    expect(pending.reply.content).toBe(
+      'Pronto, registrei e a planilha já está atualizada.\n\n' +
+        'Observação: a alteração foi salva, mas a planilha do Google ainda não foi atualizada. ' +
+        'Vou tentar de novo na próxima sincronização.',
+    );
+    // The stored conversation carries the same notice.
+    const stored = await db.client.conversationMessage.findFirstOrThrow({
+      where: {
+        conversationId: pending.conversationId,
+        role: 'ASSISTANT',
+        toolName: null,
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(stored.content).toContain('ainda não foi atualizada');
+  });
+
   it('"Gastei 89 reais de gasolina hoje": the model calls a tool and answers with its values', async () => {
     const actor = await newUser();
     ai.OPENAI.handler = (req) => {

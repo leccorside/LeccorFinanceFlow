@@ -6,9 +6,11 @@ apps/backend/src/generated/
 .env
 .env.*
 !.env.example
+!.env.production.example
 *.local
 *.log
 .DS_Store
 Thumbs.db
 .idea/
 .vscode/
+test-results/

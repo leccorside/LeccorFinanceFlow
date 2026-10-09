@@ -1,0 +1,88 @@
+# Production-like stack (see RUNBOOK.md). Values come from an env file passed explicitly:
+#
+#   docker compose --env-file .env.production -f docker-compose.prod.yml up -d --build
+#
+# One origin: nginx (web) serves the SPA and proxies /api to the backend, which is not
+# published. TLS terminates in front of `web` (host reverse proxy or load balancer).
+
+name: leccor-finance-flow-prod
+
+x-database-url: &database-url postgresql://${POSTGRES_USER:-leccor}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-leccor_finance_flow}?schema=public
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-leccor_finance_flow}
+      POSTGRES_USER: ${POSTGRES_USER:-leccor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # Applies pending migrations and the idempotent seed, then exits. The API waits for it.
+  migrate:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      target: migrate
+    restart: 'no'
+    environment:
+      DATABASE_URL: *database-url
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      target: production
+    init: true
+    restart: unless-stopped
+    env_file:
+      - path: ${LECCOR_ENV_FILE:-.env.production}
+        required: true
+    environment:
+      NODE_ENV: production
+      BACKEND_PORT: 3000
+      DATABASE_URL: *database-url
+      FRONTEND_URL: ${FRONTEND_URL:?set FRONTEND_URL (public URL of the app)}
+      # nginx is one proxy hop; add one per proxy in front of it (load balancer…).
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:3000/api/v1/health/ready']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: production
+    restart: unless-stopped
+    ports:
+      - '${WEB_BIND:-127.0.0.1}:${WEB_PORT:-8080}:8080'
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-qO-', 'http://127.0.0.1:8080/api/v1/health']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+volumes:
+  postgres-data:

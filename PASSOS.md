@@ -829,7 +829,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: conclui privacidade, exclusão e endurecimento de segurança`
 
-## [ ] PASSO 22 — Validação final e preparação de entrega
+## [x] PASSO 22 — Validação final e preparação de entrega
 
 **Objetivo:** validar o produto completo em Docker e preparar operação.
 
@@ -841,4 +841,17 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** lint, typecheck, unit, integration, E2E, build, Docker smoke, segurança, mobile e acessibilidade.
 
-**Sugestão de commit:** `chore: validate release readiness`
+**Evidências:**
+
+- **Compose do zero**: `docker-compose.prod.yml` (imagens de produção, `migrate` de execução única, nginx com CSP) construído num projeto e volume novos. 10 migrations, seed e healthchecks OK.
+- **E2E**: `e2e/` com 25 testes no Chrome contra a stack de produção, verdes:
+  - visitante, jornada completa (chat, painel, PDF, perfil, exportação, exclusões), administração;
+  - responsividade em 320/375/768/1280;
+  - axe WCAG 2.1 AA sem violações nos temas claro e escuro, e navegação só por teclado;
+  - orçamentos de desempenho.
+- **Suítes**: backend 339 unitários e 323 de integração; frontend 142; `pnpm quality`, `pnpm audit` e `pnpm security:scan` limpos.
+- **Operação**: `RUNBOOK.md` com backup e restauração testados de verdade e rotação de chaves na imagem final.
+- **Rastreabilidade**: `RASTREABILIDADE.md` com 144 requisitos. Os únicos críticos sem evidência completa dependem de credenciais externas (Google, IA e voz reais) e estão listados com o que falta.
+- **Requisito crítico fechado no passo**: o aviso de planilha pendente agora é determinístico, gerado pelo backend.
+
+**Sugestão de commit:** `chore: valida a entrega e prepara a produção`

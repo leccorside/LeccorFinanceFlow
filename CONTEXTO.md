@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 21 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 22 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -60,6 +60,29 @@ Proteção da API implementada no PASSO 05:
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
 
+Validação final e preparação de entrega no PASSO 22:
+
+- Produção:
+  - alvos `production` e `migrate` em `apps/backend/Dockerfile`; `production` (nginx não-root) em `apps/frontend/Dockerfile`;
+  - `apps/frontend/nginx/default.conf` e `security-headers.conf` (+ `nginx-headers.test.ts`);
+  - `docker-compose.prod.yml`, `.env.production.example` (exceção no `.gitignore`), `RUNBOOK.md`.
+- E2E:
+  - `e2e/` (Playwright 1.64 com o Chrome instalado e `@axe-core/playwright`): `support.ts` (sessões semeadas no banco), `pages.ts` e seis arquivos `*.e2e.ts`;
+  - `e2e/docker-compose.e2e.yml` (publica o PostgreSQL só para o E2E); scripts `pnpm e2e` e `tsc -p e2e/tsconfig.json` no `typecheck`;
+  - devDependencies na raiz (não é pacote de workspace, para não mexer no `--frozen-lockfile` filtrado das imagens).
+- Aviso determinístico de planilha pendente no assistente (`TurnBuilder.withSyncNotice`, textos `syncPending`/`syncConflict` nos 3 idiomas), com testes de integração e de UI do chip.
+- `RASTREABILIDADE.md`: 144 requisitos do PROMPT → implementação → evidência.
+
+## Decisões do PASSO 22
+
+- **E2E contra a stack de produção**, não contra o Vite: valida nginx, CSP, `dist` compilado e migrations de uma vez.
+- **Sessões semeadas no banco** em vez de rota de login de teste: o app não ganha nenhum atalho que possa vazar para produção.
+- **`migrate` como serviço separado**, com o CLI do Prisma e `tsx`. O backend de produção fica sem ferramentas de build.
+- **nginx na frente** (uma única origem: sem CORS em produção), com os headers num snippet incluído em cada `location`.
+- **Chrome instalado** em vez de baixar navegadores do Playwright (`E2E_BROWSER=chromium` continua possível).
+- **Orçamentos de desempenho** como detector de regressão, não como métrica de rede real.
+- **Requisitos que dependem de credenciais** (Google real, IA e voz reais) ficam explicitamente "NÃO ATENDIDO" na matriz, em vez de marcados como feitos.
+
 Privacidade e endurecimento implementados no PASSO 21:
 
 - Backend:
@@ -88,7 +111,7 @@ Privacidade e endurecimento implementados no PASSO 21:
 - **Retenção sem fila**: deletes limitados num `setInterval` com `unref`, mais uma rodada ao iniciar. Testes desligam o timer e chamam `sweep(now)`.
 - **Rate limit de rota por usuário** e global por IP: o global continua barrando inundação antes de qualquer consulta ao banco.
 - **Log só de erro inesperado**, mascarado. 503 intencional vira aviso com código; 4xx não gera log. UUIDs não são mascarados (não são segredo e são o que a investigação precisa).
-- **CSP num módulo próprio do frontend**, porque ainda não existe servidor de produção. O deploy deve reutilizar `productionHeaders`.
+- **CSP num módulo próprio do frontend**, porque ainda não existe servidor de produção. O deploy deve reutilizar `productionHeaders` (feito no PASSO 22 com nginx e teste de sincronia).
 - **Dependências**: `overrides` em vez de esperar os pacotes pais. Cada linha deve sair quando o pai trouxer a versão corrigida.
 - **Scanner próprio** (sem gitleaks): sem binário externo, roda no `quality` e nunca imprime o valor.
 
@@ -594,6 +617,16 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 22:
+  - **Fixtures do Playwright só existem quando pedidas**: os testes que não usavam `person` rodavam sem sessão e caíam no login. Os testes de navegador agora pedem a fixture explicitamente.
+  - **axe mediu o contraste no meio do fade** de entrada da confirmação (botão vermelho a ~30% de opacidade, 1,52:1). Com opacidade 1 o contraste passa. O teste espera as animações terminarem antes de analisar; o app já respeitava `prefers-reduced-motion`.
+  - O teste de teclado apertava Tab antes de a página lazy aparecer; agora espera o título.
+  - `finance/summary` exige `from`/`to` (400 no primeiro orçamento de API).
+  - Faltava `@types/node` na raiz para o typecheck do `e2e/`.
+  - Os headers do nginx pareceram ausentes por um `grep` errado meu (`content-security:`); conferidos por inteiro e cobertos por teste E2E.
+  - O teste do chip `PENDING_SYNC` precisou esperar a "digitação" da resposta, que é mais longa por causa do aviso.
+  - **Intermitente do `undo.int-spec`** (PASSOS 17/18): 12 execuções isoladas seguidas passaram, e a suíte completa também, no host e no container. Não reproduzido. Continua registrado; o teste guarda o diagnóstico na mensagem de falha.
+  - **Segundo intermitente**: `undo.int-spec > expired confirmations never run…` falhou **uma vez**, na primeira rodada da suíte completa logo depois de recriar o container de dev (frio). Não reproduziu em 3 rodadas completas seguidas no container nem em 3 isoladas. A saída salva não tinha a mensagem, então nada foi corrigido às cegas. O teste agora usa `status(req, code)`, que registra rota e corpo da resposta na falha, para a próxima ocorrência se explicar sozinha.
 - PASSO 21:
   - **Bug real pego pelo teste**: a exportação pedia `before`/`after` no `ActionHistory`, mas os campos são `beforeState`/`afterState` → 500. O `tsc` **não acusou** a chave inválida no `select` dentro do `Promise.all` (o tipo do Prisma não restringe excesso nesse contexto). Só o teste de integração garante consultas com `select`/`omit`.
   - **Redaction incompleta**: `password=hunter2` aparecia no log (visto na saída da `quality`); nova regra para pares chave=valor com nome de segredo.
@@ -706,14 +739,19 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 21 está concluído. Para continuar, aguardar o usuário autorizar:
+Os 22 passos de `PASSOS.md` estão concluídos. O produto está pronto para validação com credenciais reais e implantação (`RUNBOOK.md`).
 
-`INICIE O PASSO 22`
+Próximas ações, fora do roteiro e só com autorização do usuário:
 
-Quando autorizado, executar apenas o PASSO 22 de `PASSOS.md`: validação final e preparação de entrega.
+1. Com credenciais de teste: login e consentimento Google reais, `pnpm test:google` estendido à sincronização, smoke de IA (OpenAI, Gemini, Anthropic) e de voz. São os críticos ainda "NÃO ATENDIDO" em `RASTREABILIDADE.md`.
+2. Tela de conflitos da planilha (a API existe).
+3. Imagem do backend menor (evitar o CLI do Prisma como peer dependency).
 
-- Compose do zero, migrations, suíte total, E2E, QA responsiva, acessibilidade, performance, runbook e matriz de rastreabilidade.
-- Servidor de produção do frontend enviando `productionHeaders` (CSP) e política de backup alinhada à retenção (até 35 dias).
+Pendências ligadas ao PASSO 22:
+
+- Os itens 1 a 3 acima.
+- Investigar o intermitente do `undo.int-spec` se voltar a aparecer (não reproduziu em 12 rodadas).
+- E2E não cobre voz (microfone real) nem o chat com IA; os dois são cobertos por testes de integração e de componente.
 
 Pendências ligadas ao PASSO 21:
 
@@ -824,8 +862,8 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`), 17 (`30f054a`), 18 (`a0d428e`), 19 (`428f929`) e 20 (`49ad7e5`) commitados; o PASSO 21 aguarda commit manual do usuário.
-- Ainda não existe imagem de produção.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`), 17 (`30f054a`), 18 (`a0d428e`), 19 (`428f929`) e 20 (`49ad7e5`) e 21 (`15c49d6`) commitados; o PASSO 22 aguarda commit manual do usuário.
+- Imagens de produção e operação: `docker-compose.prod.yml` e `RUNBOOK.md` (PASSO 22).
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
 - O `.env.example` continua sendo um contrato preliminar e deve ser ajustado conforme adapters reais forem implementados.
@@ -1110,4 +1148,22 @@ Pendências conhecidas para passos futuros:
 - `pnpm security:scan`: 320 arquivos limpos; controle positivo acusado.
 - Docker real: CSP no frontend, exportação com anexo e sem segredos, auditoria de bloqueio/desbloqueio, exclusão da conta confirmada (`googleRevocation`, `reportFiles: removed`), zero órfãos, trilha do admin preservada, sessão 401, migration aplicada, retenção ao iniciar sem erros.
 - Suítes dentro dos containers: backend 322 de integração e frontend 139 (após corrigir o intermitente descrito em "Erros e correções").
+- `pnpm quality` passou por completo.
+
+## Evidências do PASSO 22
+
+- **Compose do zero** (projeto e volume novos): `migrate` aplicou as 10 migrations e o seed e saiu com 0; `postgres`, `backend` e `web` ficaram healthy; readiness 200 pelo nginx. Num segundo `up`, o `migrate` foi idempotente.
+- **E2E**: 25 testes contra a stack de produção, no Chrome, todos verdes:
+  - visitante, jornada completa, administração;
+  - responsividade (11 telas × 4 larguras);
+  - acessibilidade (axe sem violações nos dois temas, teclado);
+  - desempenho (LCP 0,16–1 s, JS inicial 229 KB, p95 da API 9–44 ms).
+- **Suítes**: backend 339 unitários e 323 de integração; frontend 142.
+  - No host, todas verdes.
+  - Nos containers de dev reconstruídos: unitários 339 e frontend 142 verdes. Na integração, a primeira rodada a frio teve 1 falha intermitente (ver "Erros e correções"); as 3 rodadas seguintes deram 323/323.
+- **Operação**:
+  - backup `pg_dump` restaurado num banco separado com contagens idênticas (usuários, lançamentos, migrations e tabelas);
+  - rotação de chaves compilada rodando na imagem final.
+- **Segurança**: `pnpm audit` sem vulnerabilidades; `pnpm security:scan` limpo.
+- **Rastreabilidade**: 144 requisitos, nenhum crítico sem evidência, exceto os que dependem de credenciais externas (3 NÃO ATENDIDO e 2 PARCIAL, explicados em `RASTREABILIDADE.md`).
 - `pnpm quality` passou por completo.

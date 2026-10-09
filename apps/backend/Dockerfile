@@ -30,3 +30,43 @@ RUN chown -R node:node apps/backend/src/generated \
 USER node
 EXPOSE 3000
 CMD ["pnpm", "--filter", "@leccor/backend", "dev"]
+
+# ─────────────────────────── Production (docker-compose.prod.yml) ───────────────────────────
+
+# Compiles TypeScript (including the generated Prisma Client) to dist/.
+FROM deps AS build
+COPY tsconfig.base.json ./
+COPY apps/backend apps/backend
+RUN pnpm --filter @leccor/backend build
+
+# Runtime dependencies only. Scripts are skipped: the Prisma Client is already compiled
+# into dist/generated, and the Prisma CLI (a dev dependency) is not needed to serve.
+FROM base AS prod-deps
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY apps/backend/package.json apps/backend/
+COPY apps/frontend/package.json apps/frontend/
+COPY packages/contracts/package.json packages/contracts/
+RUN pnpm install --frozen-lockfile --prod --ignore-scripts --filter "@leccor/backend..."
+
+# One-shot job: applies migrations and the idempotent seed, then exits.
+# Has the Prisma CLI and tsx; never serves traffic.
+FROM deps AS migrate
+COPY tsconfig.base.json ./
+COPY apps/backend apps/backend
+USER node
+CMD ["sh", "-c", "pnpm --filter @leccor/backend db:deploy && pnpm --filter @leccor/backend db:seed"]
+
+# The API: compiled code + runtime dependencies, as the unprivileged `node` user.
+FROM node:24-alpine AS production
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=prod-deps /app/node_modules ./node_modules
+COPY --from=prod-deps /app/apps/backend/node_modules ./apps/backend/node_modules
+COPY --from=build /app/apps/backend/dist ./apps/backend/dist
+COPY apps/backend/package.json ./apps/backend/
+# Report files live here until they expire; private to the process user.
+RUN mkdir -p /tmp/leccor-finance-flow/reports && chown -R node:node /tmp/leccor-finance-flow
+USER node
+WORKDIR /app/apps/backend
+EXPOSE 3000
+CMD ["node", "dist/main.js"]
