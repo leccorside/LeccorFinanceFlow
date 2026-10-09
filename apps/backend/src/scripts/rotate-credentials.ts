@@ -6,6 +6,7 @@
  *   3. Run `pnpm credentials:rotate`.
  *   4. When it reports nothing left to rotate, V1 can be removed from the environment.
  */
+import { rotateAiCredentials } from '../ai/ai.service.js';
 import { CredentialVault } from '../common/crypto/credential-vault.js';
 import { loadEnv } from '../config/env.js';
 import { createPrismaClientOptions } from '../database/prisma-options.js';
@@ -22,10 +23,12 @@ async function main(): Promise<void> {
 
   try {
     const google = await rotateGoogleCredentials(prisma, vault);
+    const ai = await rotateAiCredentials(prisma, vault);
     console.info(
-      `Active key ${vault.activeVersion}. Google connections: ${google.checked} checked, ${google.rotated} re-encrypted, ${google.failed} unreadable.`,
+      `Active key ${vault.activeVersion}. Google connections: ${google.checked} checked, ${google.rotated} re-encrypted, ${google.failed} unreadable. ` +
+        `AI keys: ${ai.checked} checked, ${ai.rotated} re-encrypted, ${ai.failed} unreadable.`,
     );
-    if (google.failed > 0) {
+    if (google.failed + ai.failed > 0) {
       console.error(
         'Some credentials could not be decrypted with the configured keys and were left untouched. ' +
           'Do not remove old key versions until this reports 0.',

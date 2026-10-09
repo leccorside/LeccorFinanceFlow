@@ -2,6 +2,7 @@ import { type Type } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Test } from '@nestjs/testing';
 import request from 'supertest';
+import { AI_PROVIDER_CLIENTS, type AiProviderClients } from '../../src/ai/ai.types.js';
 import { AppModule } from '../../src/app.module.js';
 import {
   type AuthorizationRequest,
@@ -25,6 +26,7 @@ import {
   GOOGLE_WORKSPACE_CLIENT,
   type GoogleWorkspaceClient,
 } from '../../src/spreadsheets/google-workspace.client.js';
+import { FakeAiClients } from './fake-ai.js';
 import { FakeWorkspace } from './fake-workspace.js';
 
 export const FRONTEND = 'http://localhost:5173';
@@ -154,6 +156,7 @@ export async function createTestApp(
   extraModules: Type[] = [],
   oauth: GoogleOAuthClient | null = new FakeGoogleOAuth(),
   workspace: GoogleWorkspaceClient = new FakeWorkspace(),
+  ai: AiProviderClients = new FakeAiClients(),
 ): Promise<NestExpressApplication> {
   const moduleRef = await Test.createTestingModule({
     imports: [AppModule, ...extraModules],
@@ -164,6 +167,8 @@ export async function createTestApp(
     .useValue(oauth)
     .overrideProvider(GOOGLE_WORKSPACE_CLIENT)
     .useValue(workspace)
+    .overrideProvider(AI_PROVIDER_CLIENTS)
+    .useValue(ai)
     .compile();
   const app = moduleRef.createNestApplication<NestExpressApplication>();
   configureApp(app, loadEnv(process.env));

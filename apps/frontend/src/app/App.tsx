@@ -9,6 +9,7 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
+import { AiProvidersPage } from '../features/admin/AiProvidersPage';
 import { LoginPage } from '../features/auth/LoginPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
 import { useI18n } from '../i18n/context';
@@ -81,6 +82,20 @@ function RequireAuth({ children }: { children: ReactNode }) {
   return children;
 }
 
+/** UI gate only: the API enforces the ADMIN role on every /admin route. */
+function RequireAdmin({ children }: { children: ReactNode }) {
+  const { t } = useI18n();
+  const me = useCurrentUser();
+  if (!me.data?.roles.includes('ADMIN')) {
+    return (
+      <p role="alert" className="alert">
+        {t('admin.ai.forbidden')}
+      </p>
+    );
+  }
+  return children;
+}
+
 function Header() {
   const { t } = useI18n();
   const me = useCurrentUser();
@@ -103,6 +118,9 @@ function Header() {
         {me.data ? (
           <>
             <Link to="/profile">{t('nav.profile')}</Link>
+            {me.data.roles.includes('ADMIN') && (
+              <Link to="/admin/ai">{t('nav.admin')}</Link>
+            )}
             <button
               type="button"
               className="link-button"
@@ -133,6 +151,16 @@ export function App() {
             element={
               <RequireAuth>
                 <ProfilePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/admin/ai"
+            element={
+              <RequireAuth>
+                <RequireAdmin>
+                  <AiProvidersPage />
+                </RequireAdmin>
               </RequireAuth>
             }
           />

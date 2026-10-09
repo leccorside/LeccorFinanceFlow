@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 11 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 12 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,32 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Camada de IA implementada no PASSO 12 (`src/ai`, `src/admin`, frontend `features/admin`):
+
+- `ai.types.ts`: `ChatRequest`/`ChatResult`/`ToolCall`/`ToolDefinition`, `AiProviderClient` (`chat(apiKey, request, signal)`), `AI_PROVIDER_CLIENTS` (token, sobrescrito nos testes), `AiErrorKind` + `isRecoverable` + `kindOfStatus`.
+- `providers/`: adaptadores `OpenAiClient`, `GeminiClient` e `AnthropicClient` (fetch injetável) e `http.ts` (`postJson`, `argumentsObject`, `resultObject`).
+- `AiService.chat(purpose, request)`: devolve `{ result, provider, model, configurationId, attempts }`. Também `probe(configurationId)` e `apiKeyContext(id)`.
+- `AiProvidersService` e `AiProvidersController` (`/admin/...`, `@Roles('ADMIN')` na classe). A visão de configuração é uma lista explícita de campos, que nunca inclui `apiKeyEncrypted`.
+- Seed: `DEFAULT_AI_PROVIDERS` (cria se faltar, sem mexer em ativação e nome). `env.AI`: `timeoutMs`, `environmentKeys` e `defaultModels`.
+- Frontend: `services/aiProviders.ts` e `features/admin/AiProvidersPage.tsx`. `RequireAdmin` no `App.tsx` é só um portão de UI; quem barra de fato é o backend.
+- Testes: `providers.spec.ts` (44), `env.spec.ts` (+1), `test/integration/ai.int-spec.ts` (20) com `fake-ai.ts` (`FakeAiClients`, comportamento `ok`/`hang`/`<kind>`) e `AiProvidersPage.test.tsx` (8) + `App.test.tsx` (+1).
+
+## Decisões do PASSO 12
+
+- **HTTP direto, sem SDKs** (como o Google no PASSO 08): três endpoints, tipados e testáveis com fetch falso, sem dependências novas.
+- **Recuperável = "este provedor não pode atender agora"**: indisponível, timeout, limite, chave ou modelo recusados por ele e resposta malformada.
+  - **Não recuperável = "a requisição não é aceitável"**: `invalid_request` e `content_blocked`, que outro provedor não tornaria válida.
+  - `credential_rejected` faz fallback porque é configuração do provedor, não autorização do usuário.
+- **Chave só de escrita**: nunca devolvida, nem mascarada; a API mostra só `keySource` e `keyVersion`.
+  - Cifrada com AAD ligada ao id da configuração; por isso a criação grava primeiro a linha e depois a chave, na mesma transação.
+  - Chave ilegível é pulada como `credential_unreadable` (nunca apagada).
+- **Chaves do `.env` só como reserva** de configuração sem chave guardada (bootstrap e ambientes sem banco configurado). Modelos padrão do `.env` só preenchem o formulário.
+- **Uma configuração por provedor e finalidade, prioridade única por finalidade** (unique do schema do PASSO 03). A reordenação é feita em duas fases (1000+i, depois i+1) para não violar a unique no meio.
+- **Provedores semeados inativos**: nada chama uma API paga sem ação explícita do admin.
+- **Sem log técnico**: o que fica é o `attempts` da resposta. O provedor efetivamente usado será guardado na conversa (PASSO 14).
+- **Teste de conexão** é uma chamada real e paga: só daquela configuração, 16 tokens, limite de 10 por minuto.
+- **Sem migration**: `ai_providers`/`ai_configurations` e as CHECKs já existiam.
 
 Sincronização bidirecional implementada no PASSO 11 (`src/spreadsheets/sync`):
 
@@ -319,6 +345,11 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 12: sem bug de produção. Os ajustes foram:
+  - testes que esperavam o `env` completo agora incluem `AI`;
+  - dois testes de tela ajustados (texto repetido, dado assíncrono);
+  - um teste de integração desativava um provedor e não reativava;
+  - template com crases dentro de `node -e` no Git Bash vira substituição de comando: usar Edit ou script em arquivo.
 - PASSO 11: **bug real** pego pelo teste de idempotência: marcar `SYNCED` com `updateMany` do Prisma atualiza `updated_at` (`@updatedAt`), a coluna "Atualizado em" mudava e toda sincronização reescrevia todas as linhas. Corrigido com `UPDATE` em SQL direto (`setStatus`).
 - PASSO 11: comandos `node -e` longos com aspas quebram no Git Bash. Os patches grandes viraram scripts no scratchpad (`patch-fake.cjs`, `mutate.cjs`).
 - PASSO 10: nenhum bug de domínio apareceu: unitários e integração passaram de primeira, e as duas mutações injetadas foram detectadas.
@@ -370,14 +401,20 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 11 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 12 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 12`
+`INICIE O PASSO 13`
 
-Quando autorizado, executar apenas o PASSO 12 de `PASSOS.md`: abstração multi-IA (OpenAI, Gemini, Claude) e administração de provedores.
+Quando autorizado, executar apenas o PASSO 13 de `PASSOS.md`: Tool Registry e executor seguro.
 
-- Cifrar as API keys com o `CredentialVault` (contexto `ai_configurations:<id>:api_key`) e incluí-las em `credentials:rotate`.
-- Fallback só em erro recuperável.
+- As ferramentas viram `ToolDefinition` (JSON Schema) para o `AiService`.
+- O executor valida os argumentos com os DTOs Zod existentes, injeta usuário e planilha do lado do servidor, chama os serviços de domínio com `context.conversationId` e, nas escritas, `SheetSyncService.sync`.
+
+Pendências ligadas ao PASSO 12:
+
+- PASSO 14: guardar `provider`/`model` de `AiChatOutcome` na mensagem da conversa; mapear `ai_unavailable`, `ai_not_configured` e `ai_request_rejected` para respostas ao usuário; usar `ASSISTANT_RATE_LIMIT_MAX_REQUESTS`.
+- PASSO 20: o restante da administração (usuários, admins, configurações globais) entra no mesmo `AdminModule`.
+- Smoke real com chaves de teste (`RUN_AI_INTEGRATION_TESTS`) ainda não existe; os formatos das três APIs seguem a documentação e não foram exercitados contra os serviços reais.
 
 Pendências ligadas ao PASSO 11:
 
@@ -425,7 +462,6 @@ Regras para todo módulo novo:
 Pendências conhecidas para passos futuros:
 
 - PASSO 16: aplicar o tema (`preferences.theme`) e o início da semana na interface definitiva; o cliente HTTP (CSRF + refresh) já existe em `services/api.ts`.
-- PASSO 12: cifrar as API keys de IA com o mesmo `CredentialVault` (contexto `ai_configurations:<id>:api_key`) e incluí-las no script `credentials:rotate`.
 - PASSO 21: desconexão já não apaga planilhas; definir a exclusão explícita de planilhas e a revogação na exclusão de conta.
 - A conexão real com o Google ainda não foi testada ponta a ponta (sem credenciais): ao configurar, confirmar o refresh token e a granularidade de escopos na tela do Google.
 - PASSO 17: usar `voice.gender`/`autoSpeak`/`speakingRate` do perfil na síntese de voz; o comando por conversa "troque sua voz" vai usar `ProfileService.update`.
@@ -436,12 +472,11 @@ Pendências conhecidas para passos futuros:
 - Login real com Google ainda não foi testado ponta a ponta (sem credenciais). Ao configurar, confirmar que o `iss` do ID token é `https://accounts.google.com` (o Google às vezes usa `accounts.google.com` sem esquema em outros fluxos).
 - Avaliar expiração absoluta da sessão (hoje o refresh é deslizante) e uma tela de "sessões ativas".
 - PASSO 09: tratar exclusão de conta/categoria/planilha com movimentações (as FKs `NO ACTION` bloqueiam) e derivar "vencido" de `due_on`.
-- PASSO 12: semear `AIProvider` quando a administração de provedores existir.
 - Avaliar mover o projeto do disco USB para o SSD (ver erros conhecidos).
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`) e 10 (`c2a270b`) commitados; o PASSO 11 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`) e 11 (`d02f00c`) commitados; o PASSO 12 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -554,3 +589,19 @@ Pendências conhecidas para passos futuros:
   - teste manual das rotas novas com sessão sintética removida no fim: status `200`; sync sem Google configurado `503 google_connection_unavailable`, com a trava liberada e `last_error_code` gravado; `403` sem CSRF; `404` para id inexistente; `400` para corpo inválido.
 - `pnpm quality` passou por completo.
 - Não validado contra o Google real (sem conta de teste).
+
+## Evidências do PASSO 12
+
+- Backend no host e no container: 268 testes unitários (45 novos) e 217 de integração (20 de IA). Frontend: 72 testes (9 novos). Nenhum banco de teste restante.
+- Mutações detectadas:
+  - fallback depois de erro inválido;
+  - cifra devolvida na resposta admin;
+  - rota admin sem `@Roles`.
+- Docker, com sessões sintéticas removidas no fim:
+  - seed com os três provedores inativos;
+  - `403` para usuário comum;
+  - `503 encryption_unavailable` ao salvar chave sem `DATA_ENCRYPTION_KEY`, sem nada gravado;
+  - configuração sem chave e teste `not_configured`;
+  - `/admin/ai` servido pelo Vite.
+- `pnpm quality` passou por completo.
+- Não validado contra as APIs reais da OpenAI, do Google e da Anthropic (sem chaves de teste).

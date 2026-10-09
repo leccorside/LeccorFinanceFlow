@@ -370,7 +370,7 @@ Revoga no Google (melhor esforço) e apaga os tokens locais em qualquer caso (`s
 ### Cofre de credenciais (AES-256-GCM)
 
 - `CredentialVault`: AES-256-GCM com IV aleatório de 96 bits e tag de 128 bits. Formato autodescritivo `v<n>.<iv>.<tag>.<dados>` (base64url).
-- **Vínculo ao contexto**: cada valor é cifrado com AAD `google_connections:<userId>:<campo>`. Copiar o token cifrado para outro usuário ou outra coluna faz a decifragem falhar.
+- **Vínculo ao contexto**: cada valor é cifrado com AAD `google_connections:<userId>:<campo>` (chaves de IA: `ai_configurations:<id>:api_key`, PASSO 12). Copiar o token cifrado para outro usuário ou outra coluna faz a decifragem falhar.
 - **No banco**: CHECKs aceitam tokens apenas nesse formato cifrado (texto puro é recusado), exigem refresh token em conexões `ACTIVE` e proíbem tokens em conexões inativas.
 - **Chaves**: `DATA_ENCRYPTION_KEY_V<n>` (base64 de 32 bytes) e `DATA_ENCRYPTION_KEY_ACTIVE_VERSION`. Sem chave, o cofre fica desligado e a conexão Google indisponível. Erros de configuração nunca mostram a chave.
 - **Rotação**:
@@ -682,9 +682,75 @@ Para toda resposta quantitativa:
 
 Contexto conversacional guarda referências seguras, como período, categoria e IDs de resultados anteriores, sempre revalidados antes do uso.
 
-### Fallback
+### Provedores de IA e fallback (PASSO 12)
 
-OpenAI, Gemini e Claude implementarão contrato comum. A prioridade será configurável. Fallback só acontece para falhas recuperáveis de disponibilidade; erros de entrada, autorização ou regra não são ocultados por uma troca de provedor.
+Implementado em `apps/backend/src/ai` e `apps/backend/src/admin`. A IA ainda não conversa com o usuário: esta é a camada que o assistente (PASSOS 13 e 14) vai usar.
+
+**Contrato comum** (`ai.types.ts`):
+
+- `ChatRequest`: modelo, instrução de sistema, mensagens `user`/`assistant`/`tool`, ferramentas com JSON Schema, limite de tokens e temperatura.
+- `ChatResult`: texto, chamadas de ferramenta com argumentos já validados como objeto JSON, motivo de término e uso de tokens.
+
+**Adaptadores HTTP, sem SDK**:
+
+| Provedor         | API usada                                                                    | Como a chave vai                                                                  |
+| ---------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
+| OpenAI           | Chat Completions, com `tools`                                                | header `Authorization`                                                            |
+| Google Gemini    | `generateContent`, com `functionDeclarations`                                | header `x-goog-api-key`, nunca na URL; o schema é limpo de `additionalProperties` |
+| Anthropic Claude | Messages API (`anthropic-version: 2023-06-01`), com `tool_use`/`tool_result` | header `x-api-key`; `max_tokens` sempre enviado                                   |
+
+**Classificação de falhas** (`AiProviderError.kind`), sem corpo de resposta nem chave nas mensagens:
+
+| Classe                | Origem                                                                        | Troca de provedor?                  |
+| --------------------- | ----------------------------------------------------------------------------- | ----------------------------------- |
+| `unavailable`         | rede, 5xx, 529 "overloaded"                                                   | sim                                 |
+| `timeout`             | `AI_REQUEST_TIMEOUT_MS` estourado ou 408                                      | sim                                 |
+| `rate_limited`        | 429                                                                           | sim                                 |
+| `credential_rejected` | 401/403: chave recusada **por aquele provedor** (a requisição em si é válida) | sim                                 |
+| `model_not_found`     | 404: modelo configurado não existe para aquela chave                          | sim                                 |
+| `invalid_response`    | corpo não JSON, sem resposta, argumentos de ferramenta inválidos              | sim                                 |
+| `invalid_request`     | 400/413/422: a própria requisição foi recusada                                | **não** (`422 ai_request_rejected`) |
+| `content_blocked`     | filtro de segurança ou recusa do modelo                                       | **não** (`422 ai_content_blocked`)  |
+
+`credential_rejected` troca de provedor porque é um problema de configuração daquele provedor, não falta de autorização do usuário. A permissão do usuário continua sendo verificada antes, no backend, e nunca é decidida pela IA.
+
+**`AiService.chat(purpose, request)`**:
+
+- percorre as configurações ativas da finalidade (`CHAT`, `FINANCIAL_INTERPRETATION`, `ANALYSIS`) de provedores ativos, por prioridade crescente;
+- devolve a resposta, o provedor e o modelo usados e a lista de tentativas (`attempts`: provedor, modelo e resultado);
+- configuração sem chave (`not_configured`) ou com chave que não decifra (`credential_unreadable`) é pulada;
+- todas falharam: `503 ai_unavailable` com as tentativas;
+- nenhuma configurada: `503 ai_not_configured`.
+
+**Chaves de API**:
+
+- só de escrita: são cifradas com o `CredentialVault` (AAD `ai_configurations:<id>:api_key`, por isso uma cifra copiada para outra configuração não decifra);
+- nunca voltam ao cliente, nem mascaradas: a API mostra apenas `keySource` (`stored`, `environment` ou `missing`) e `keyVersion`;
+- são decifradas só no momento da chamada;
+- sem `DATA_ENCRYPTION_KEY_*`, salvar uma chave responde `503 encryption_unavailable`;
+- `OPENAI_API_KEY`, `GEMINI_API_KEY` e `ANTHROPIC_API_KEY` do servidor são reserva para configurações sem chave guardada; `*_DEFAULT_CHAT_MODEL` só preenche o formulário;
+- `credentials:rotate` também recriptografa as chaves de IA.
+
+**Rotas admin** (`@Roles('ADMIN')`: sem sessão `401`, usuário comum `403`; escritas com CSRF; DTOs estritos):
+
+| Rota                                                 | Uso                                                                                                                                                                            |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /api/v1/admin/ai-providers`                     | Provedores (semeados inativos), finalidades, modelo sugerido, chave do servidor disponível e configurações.                                                                    |
+| `PATCH /api/v1/admin/ai-providers/:id`               | `isActive`, `displayName`.                                                                                                                                                     |
+| `POST /api/v1/admin/ai-providers/:id/configurations` | `{ purpose, model, priority?, isActive?, apiKey? }`; uma por provedor e finalidade (`409 ai_configuration_exists`); prioridade única por finalidade (`409 ai_priority_taken`). |
+| `PATCH /api/v1/admin/ai-configurations/:id`          | `model`, `priority`, `isActive`, `apiKey` (texto substitui; `null` remove).                                                                                                    |
+| `DELETE /api/v1/admin/ai-configurations/:id`         | Remove a configuração.                                                                                                                                                         |
+| `POST /api/v1/admin/ai-configurations/reorder`       | `{ purpose, configurationIds }`: a lista completa daquela finalidade vira prioridades 1, 2, 3… (`422 ai_reorder_mismatch` se faltar ou sobrar).                                |
+| `POST /api/v1/admin/ai-configurations/:id/test`      | Chamada mínima só com aquela configuração, sem fallback: `{ ok, latencyMs, error }`. Limite de 10 por minuto.                                                                  |
+
+**Tela** `/admin/ai` (link "Administração" só para admins):
+
+- provedores com ativar e desativar;
+- configurações com modelo, prioridade, origem da chave, situação, testar, ativar, trocar ou remover a chave e excluir;
+- formulário de nova configuração;
+- ordem de uso por finalidade, com subir e descer.
+
+Campos de chave são `password`, `autocomplete="off"` e esvaziados assim que a chave é enviada. Textos em pt-BR, en-US e es-ES.
 
 ## Voz
 

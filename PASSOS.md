@@ -374,7 +374,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: sincroniza os dados financeiros com o google sheets`
 
-## [ ] PASSO 12 — Abstração multi-IA e administração de provedores
+## [x] PASSO 12 — Abstração multi-IA e administração de provedores
 
 **Objetivo:** configurar OpenAI, Gemini e Claude com prioridade segura.
 
@@ -386,7 +386,45 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** provider fakes, matriz de erros, RBAC admin, criptografia e ausência de vazamento.
 
-**Sugestão de commit:** `feat: add configurable ai provider fallback`
+**Evidência (09/10/2026):**
+
+- **Backend**:
+  - `src/ai`: contrato comum de chat e tool calling; adaptadores HTTP de OpenAI (Chat Completions), Gemini (`generateContent`) e Anthropic (Messages); classificação de falhas; `AiService` com prioridade e fallback; `probe`; `rotateAiCredentials`;
+  - `src/admin`: rotas `/admin/ai-providers` e `/admin/ai-configurations` com `@Roles('ADMIN')`;
+  - seed dos três provedores (inativos); `AI_REQUEST_TIMEOUT_MS` e chaves e modelos opcionais do servidor no `env`;
+  - `credentials:rotate` também cobre as chaves de IA.
+- **Frontend**: tela `/admin/ai` em pt-BR, en-US e es-ES. O link "Administração" aparece só para admins, e a rota é bloqueada para os demais.
+- **Unitários do backend**: 268 no total, 45 deste passo:
+  - os três adaptadores com fetch falso: mapeamento de mensagens, ferramentas, resultados de ferramenta e uso;
+  - chave só no header (nunca na URL ou no corpo); recusas, filtros e respostas malformadas;
+  - **matriz de erros** de 11 status × 3 provedores, com classificação e recuperabilidade, sem vazar a chave nem o prompt;
+  - rede, timeout real por `AbortSignal` e corpo não JSON;
+  - variáveis de ambiente novas.
+- **Integração**: 217 no total, 20 deste passo, com provedores falsos programáveis e Postgres real:
+  - **RBAC** (`401` anônimo, `403` usuário comum em listar, criar e reordenar) e CSRF;
+  - DTO estrito (`apiKeyEncrypted`, `encryptionKeyVersion`, chave com espaço, modelo inválido, finalidade desconhecida, prioridade 0);
+  - **criptografia**: cifra `v1.` no banco, decifra só com o contexto certo, cifra copiada para outra configuração vira `credential_unreadable`;
+  - **ausência de vazamento**: nenhuma resposta contém a chave nem a cifra, e a resposta só tem os campos permitidos;
+  - troca e remoção de chave; chave do servidor como reserva; rotação `v1` → `v2`;
+  - **prioridade** e reordenação; prioridade ou configuração repetida dá `409`;
+  - **fallback** em cada uma das 6 falhas recuperáveis; **nenhum fallback** em `invalid_request` e `content_blocked` (`422`, os outros provedores não são chamados);
+  - provedor travado cortado pelo timeout; todos falhando dão `503` com as tentativas e sem chaves;
+  - inativos e sem chave pulados; nenhuma configuração dá `503 ai_not_configured`; finalidades separadas;
+  - teste de conexão sem fallback.
+- **Frontend**: 72 testes, 9 deste passo:
+  - lista, origem da chave, campos de senha vazios;
+  - nova configuração esvazia a chave depois do envio; troca e remoção de chave;
+  - teste com sucesso e falha explicada; reordenação;
+  - erro `409` explicado; não admin vê área restrita; inglês e espanhol; link e bloqueio da rota.
+- **Mutações detectadas**: fallback depois de erro inválido; cifra vazando na resposta admin; rota admin sem `@Roles`.
+- **Docker**:
+  - seed com os três provedores inativos;
+  - suítes nos containers (268 + 217 + 72);
+  - teste manual com sessões sintéticas removidas no fim: usuário comum `403`; admin lista; chave sem criptografia configurada dá `503 encryption_unavailable`, sem nada gravado; configuração sem chave e teste `not_configured`; página `/admin/ai` servida;
+  - `pnpm quality` completo.
+- **Não validado contra as APIs reais** (sem chaves de teste): os formatos seguem a documentação de cada provedor; `RUN_AI_INTEGRATION_TESTS` continua reservado para um smoke real.
+
+**Sugestão de commit:** `feat: adiciona provedores de ia configuráveis com fallback`
 
 ## [ ] PASSO 13 — Tool Registry e executor seguro
 

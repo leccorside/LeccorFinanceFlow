@@ -10,7 +10,7 @@ async function main(): Promise<void> {
   try {
     const result = await seedDatabase(prisma);
     console.info(
-      `Seed applied: ${result.roles} roles, ${result.categories} system categories.`,
+      `Seed applied: ${result.roles} roles, ${result.categories} system categories, ${result.aiProviders} AI providers.`,
     );
   } finally {
     await prisma.$disconnect();

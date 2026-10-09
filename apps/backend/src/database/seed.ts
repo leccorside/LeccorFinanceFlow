@@ -1,9 +1,10 @@
 import type { PrismaClient } from '../generated/prisma/client.js';
-import { DEFAULT_CATEGORIES, DEFAULT_ROLES } from './seed-data.js';
+import { DEFAULT_AI_PROVIDERS, DEFAULT_CATEGORIES, DEFAULT_ROLES } from './seed-data.js';
 
 export interface SeedResult {
   roles: number;
   categories: number;
+  aiProviders: number;
 }
 
 /**
@@ -35,6 +36,23 @@ export async function seedDatabase(prisma: PrismaClient): Promise<SeedResult> {
       });
     }
 
-    return { roles: DEFAULT_ROLES.length, categories: DEFAULT_CATEGORIES.length };
+    // Only creates missing providers: activation and names are the administrator's choice.
+    for (const provider of DEFAULT_AI_PROVIDERS) {
+      await tx.aIProvider.upsert({
+        where: { type: provider.type },
+        create: {
+          ...provider,
+          capabilities: [...provider.capabilities],
+          isActive: false,
+        },
+        update: {},
+      });
+    }
+
+    return {
+      roles: DEFAULT_ROLES.length,
+      categories: DEFAULT_CATEGORIES.length,
+      aiProviders: DEFAULT_AI_PROVIDERS.length,
+    };
   });
 }

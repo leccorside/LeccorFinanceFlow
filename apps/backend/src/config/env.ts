@@ -126,6 +126,16 @@ const envSchema = z
     TRUST_PROXY: trustProxy,
     /** Users whose verified Google e-mail is listed receive the ADMIN role on login. */
     ADMIN_EMAILS: emailList,
+    /** Per AI provider request; the next provider is tried after a timeout. */
+    AI_REQUEST_TIMEOUT_MS: positiveInt(30_000, 300_000),
+    /** Optional server-side keys, used only when a configuration has no stored key. */
+    OPENAI_API_KEY: optionalNonEmpty,
+    GEMINI_API_KEY: optionalNonEmpty,
+    ANTHROPIC_API_KEY: optionalNonEmpty,
+    /** Suggested models for new configurations in the admin screen. */
+    OPENAI_DEFAULT_CHAT_MODEL: optionalNonEmpty,
+    GEMINI_DEFAULT_CHAT_MODEL: optionalNonEmpty,
+    ANTHROPIC_DEFAULT_CHAT_MODEL: optionalNonEmpty,
   })
   .superRefine((env, ctx) => {
     // Client ID and secret decide whether Google login is enabled; both or neither.
@@ -155,9 +165,29 @@ const envSchema = z
       GOOGLE_REDIRECT_URI,
       GOOGLE_CONNECTION_REDIRECT_URI,
       CORS_ALLOWED_ORIGINS,
+      AI_REQUEST_TIMEOUT_MS,
+      OPENAI_API_KEY,
+      GEMINI_API_KEY,
+      ANTHROPIC_API_KEY,
+      OPENAI_DEFAULT_CHAT_MODEL,
+      GEMINI_DEFAULT_CHAT_MODEL,
+      ANTHROPIC_DEFAULT_CHAT_MODEL,
       ...env
     }) => ({
       ...env,
+      AI: {
+        timeoutMs: AI_REQUEST_TIMEOUT_MS,
+        environmentKeys: {
+          OPENAI: OPENAI_API_KEY,
+          GEMINI: GEMINI_API_KEY,
+          ANTHROPIC: ANTHROPIC_API_KEY,
+        } as Record<'OPENAI' | 'GEMINI' | 'ANTHROPIC', string | undefined>,
+        defaultModels: {
+          OPENAI: OPENAI_DEFAULT_CHAT_MODEL,
+          GEMINI: GEMINI_DEFAULT_CHAT_MODEL,
+          ANTHROPIC: ANTHROPIC_DEFAULT_CHAT_MODEL,
+        } as Record<'OPENAI' | 'GEMINI' | 'ANTHROPIC', string | undefined>,
+      },
       /** FRONTEND_URL origin + CORS_ALLOWED_ORIGINS, deduplicated. */
       ALLOWED_ORIGINS: [
         ...new Set([new URL(env.FRONTEND_URL).origin, ...CORS_ALLOWED_ORIGINS]),

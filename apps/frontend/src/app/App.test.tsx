@@ -68,4 +68,28 @@ describe('App', () => {
     expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe('es-ES');
   });
+
+  it('shows the administration link only to admins and blocks the page for others', async () => {
+    const user = {
+      id: 'u1',
+      email: 'ana@example.com',
+      status: 'ACTIVE' as const,
+      roles: ['USER' as const],
+      profile: null,
+    };
+    vi.mocked(getCurrentUser).mockResolvedValue(user);
+    const view = renderWithProviders(<App />, { route: '/admin/ai' });
+    expect(await screen.findByRole('alert')).toHaveTextContent(
+      'Esta área é só para administradores.',
+    );
+    expect(screen.queryByRole('link', { name: 'Administração' })).not.toBeInTheDocument();
+    view.unmount();
+
+    vi.mocked(getCurrentUser).mockResolvedValue({ ...user, roles: ['ADMIN', 'USER'] });
+    renderWithProviders(<App />);
+    expect(await screen.findByRole('link', { name: 'Administração' })).toHaveAttribute(
+      'href',
+      '/admin/ai',
+    );
+  });
 });

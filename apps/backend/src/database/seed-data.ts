@@ -1,4 +1,9 @@
-import type { CategoryKind, RoleName } from '../generated/prisma/enums.js';
+import type {
+  AIProviderType,
+  AIPurpose,
+  CategoryKind,
+  RoleName,
+} from '../generated/prisma/enums.js';
 
 export interface SeedRole {
   name: RoleName;
@@ -12,6 +17,34 @@ export interface SeedCategory {
   color: string;
   icon: string;
 }
+
+export interface SeedAiProvider {
+  type: AIProviderType;
+  displayName: string;
+  capabilities: AIPurpose[];
+}
+
+/**
+ * The three supported AI providers. Created inactive and without configurations: an
+ * administrator activates them, picks models and priorities and stores the keys.
+ */
+export const DEFAULT_AI_PROVIDERS: readonly SeedAiProvider[] = [
+  {
+    type: 'OPENAI',
+    displayName: 'OpenAI',
+    capabilities: ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'],
+  },
+  {
+    type: 'GEMINI',
+    displayName: 'Google Gemini',
+    capabilities: ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'],
+  },
+  {
+    type: 'ANTHROPIC',
+    displayName: 'Anthropic Claude',
+    capabilities: ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'],
+  },
+];
 
 export const DEFAULT_ROLES: readonly SeedRole[] = [
   { name: 'ADMIN', description: 'Controle completo da plataforma.' },

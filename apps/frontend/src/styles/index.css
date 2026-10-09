@@ -430,3 +430,94 @@ p {
   background: #5ce899;
   box-shadow: 0 0 0 5px rgb(92 232 153 / 12%);
 }
+
+/* Administration (PASSO 12) */
+.admin-page {
+  display: grid;
+  gap: 1.25rem;
+  width: min(1100px, 100%);
+}
+
+.card-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.badge {
+  border-radius: 999px;
+  padding: 0.15rem 0.6rem;
+  font-size: 0.8rem;
+  background: #e5e7eb;
+  color: #374151;
+}
+
+.badge[data-active='true'] {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.admin-table th,
+.admin-table td {
+  border-bottom: 1px solid #e5e7eb;
+  padding: 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.admin-table .actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.inline-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.admin-form {
+  display: grid;
+  gap: 0.6rem;
+  margin-top: 1rem;
+  max-width: 28rem;
+}
+
+.order-group ol {
+  display: grid;
+  gap: 0.35rem;
+  padding-left: 1.25rem;
+}
+
+.order-group li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.link-button.danger {
+  color: #b91c1c;
+}
+
+.hint {
+  color: #6b7280;
+  font-size: 0.9rem;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -33,9 +33,32 @@ describe('loadEnv', () => {
       MAX_JSON_BODY_SIZE: '1mb',
       TRUST_PROXY: false,
       ADMIN_EMAILS: [],
+      AI: {
+        timeoutMs: 30_000,
+        environmentKeys: { OPENAI: undefined, GEMINI: undefined, ANTHROPIC: undefined },
+        defaultModels: { OPENAI: undefined, GEMINI: undefined, ANTHROPIC: undefined },
+      },
       ENCRYPTION: null,
     });
     expect(Object.isFrozen(env)).toBe(true);
+  });
+
+  it('reads optional AI keys, models and timeout (blank means unset)', () => {
+    const env = loadEnv({
+      DATABASE_URL: validDatabaseUrl,
+      AI_REQUEST_TIMEOUT_MS: '5000',
+      OPENAI_API_KEY: ' sk-1 ',
+      GEMINI_API_KEY: '',
+      ANTHROPIC_DEFAULT_CHAT_MODEL: 'claude-x',
+    });
+    expect(env.AI).toEqual({
+      timeoutMs: 5000,
+      environmentKeys: { OPENAI: 'sk-1', GEMINI: undefined, ANTHROPIC: undefined },
+      defaultModels: { OPENAI: undefined, GEMINI: undefined, ANTHROPIC: 'claude-x' },
+    });
+    expect(() =>
+      loadEnv({ DATABASE_URL: validDatabaseUrl, AI_REQUEST_TIMEOUT_MS: '0' }),
+    ).toThrow(/AI_REQUEST_TIMEOUT_MS/);
   });
 
   it('parses explicit values', () => {
