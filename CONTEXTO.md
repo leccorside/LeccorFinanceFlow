@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 10 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 11 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,55 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Sincronização bidirecional implementada no PASSO 11 (`src/spreadsheets/sync`):
+
+- `cells.ts`: o codec das células:
+  - datas seriais e conversão de data e hora no fuso;
+  - `amountOf` (texto exato do número), `enumOf` (rótulo traduzido por posição, sem diferenciar acento ou maiúsculas, aceita o código do enum) e `fold`;
+  - `rowHash` (SHA-256 dos valores canônicos);
+  - `cellData` (sempre `stringValue`/`numberValue`, nunca fórmula);
+  - `RowError(code, column)`.
+- `adapters.ts`: `TabAdapter` com `editable`, `load`, `render`, `create` e `update`:
+  - adaptadores de Movimentações, Contas e Investimentos; Categorias só exportada (`categoryRows`);
+  - `create` e `update` validam pelos DTOs do domínio (`createTransactionSchema` etc.) e chamam os serviços (`TransactionsService`, `AccountsService`, `InvestmentsService`), então todas as regras e o `ActionHistory` valem também para a planilha;
+  - `rowErrorOf` converte `ApiException` em código de linha.
+- `sheet-sync.service.ts`, com `sync`, `status` e `resolve`. O `run` faz:
+  1. snapshot e `layoutOf` (abas e colunas por metadata);
+  2. `values:batchGet` das 4 abas;
+  3. `pullTab` em cada aba (contas primeiro);
+  4. registro dos conflitos;
+  5. novos registros e linhas apagadas vão para o fim da aba;
+  6. um único `batchUpdate` (`cellRequests` agrupa linhas e colunas; `appendDimension`; `deleteDimension` de baixo para cima);
+  7. depois da confirmação, upsert dos estados e `setStatus` (SQL direto) para `SYNCED` só na versão escrita.
+- Tabela `spreadsheet_row_states`: `exportedVersion`, `rowHash` (das colunas editáveis), `awaitingLink` (linha importada cujo ID ainda não foi escrito) e `conflictReason`/`conflictValues` (valores crus da planilha).
+- Cliente Google: `getValues`; o snapshot traz `rowCount` e `columns` (`lff.column` com `dimensionRange.startIndex`). `SpreadsheetsService.withGoogleToken` virou público.
+- Fake do Google com grade de células e ações de pessoa (`edit`, `append`, `deleteRow`, `insertColumn`, `rows`).
+- Testes: `sync/cells.spec.ts` (12), `google-workspace.client.spec.ts` (+1) e `test/integration/sync.int-spec.ts` (18).
+
+## Decisões do PASSO 11
+
+- **Estado por linha numa tabela** (não um JSON no `sync_checkpoint`): escala, tem CHECKs e é apagada junto com a planilha.
+  - `sync_checkpoint` guarda só o último relatório.
+- **Hash das células editáveis, não cópia dos dados**: decide quem mudou.
+  - sheet ≠ baseline e versão igual → importar;
+  - versão diferente e sheet = baseline → exportar;
+  - os dois mudaram → conflito.
+  - Colunas informativas e derivadas (banco, cartão, parcela, recorrente, frequência, criado/atualizado, custo total do investimento) ficam fora do hash e são simplesmente regravadas.
+- **Ordem**: puxar antes de empurrar, contas antes das movimentações (uma conta digitada na planilha já pode ser usada na mesma sincronização).
+- **Importação sempre pelos serviços de domínio** com `version`: nenhuma regra é duplicada e o histórico funcional registra as edições vindas da planilha.
+- **Conflito preserva os dois lados**: o banco não muda, a linha não é tocada e os valores crus da planilha ficam no estado.
+  - Edição inválida de linha existente também é conflito (`invalid_row:<código>`), porque banco e planilha divergem e só a pessoa decide.
+  - Se a linha voltar a ficar igual ao app, o conflito se resolve sozinho.
+- **Linha nova**: importada e marcada `awaitingLink` com o hash da linha. O retry vincula pelo hash (pareando um a um, então duas linhas iguais legítimas não se fundem).
+- **Exclusões**:
+  - linha apagada na planilha → registro exportado de novo;
+  - registro apagado no app → linha intacta removida, linha editada mantida como órfã;
+  - ID desconhecido nunca é importado; ID repetido vale só na primeira linha.
+- **Transferências não são editáveis pela planilha** (não existe coluna de destino); continuam exportadas como "Origem → Destino".
+- **Categorias só exportadas**: não têm `version`/`sync_status` no schema; criar categoria continua sendo pelo app.
+- **Status de sync por SQL direto**, para não alterar `updated_at` (sem isso cada sincronização reescrevia tudo).
+- **Sem sincronização automática nas rotas REST**: a resposta mostra `PENDING_SYNC` real. O assistente (PASSO 13) chamará `SheetSyncService.sync` após cada ferramenta de escrita, e a UI (PASSO 16/18) chamará ao abrir.
 
 Parcelas, recorrências e investimentos implementados no PASSO 10 (`src/finance`):
 
@@ -270,6 +319,8 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 11: **bug real** pego pelo teste de idempotência: marcar `SYNCED` com `updateMany` do Prisma atualiza `updated_at` (`@updatedAt`), a coluna "Atualizado em" mudava e toda sincronização reescrevia todas as linhas. Corrigido com `UPDATE` em SQL direto (`setStatus`).
+- PASSO 11: comandos `node -e` longos com aspas quebram no Git Bash. Os patches grandes viraram scripts no scratchpad (`patch-fake.cjs`, `mutate.cjs`).
 - PASSO 10: nenhum bug de domínio apareceu: unitários e integração passaram de primeira, e as duas mutações injetadas foram detectadas.
   - Problemas de ferramenta:
     - o Prettier quebrou `request(...)[method](...)` em duas linhas, o que o ESLint acusa como `no-unexpected-multiline`. Corrigido guardando `request(...)` numa variável;
@@ -319,15 +370,24 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 10 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 11 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 11`
+`INICIE O PASSO 12`
 
-Quando autorizado, executar apenas o PASSO 11 de `PASSOS.md`: sincronização bidirecional e conflitos.
+Quando autorizado, executar apenas o PASSO 12 de `PASSOS.md`: abstração multi-IA (OpenAI, Gemini, Claude) e administração de provedores.
 
-- Envio: todas as entidades com `sync_status = PENDING_SYNC` (movimentações, contas, investimentos; parcelas e ocorrências são movimentações comuns, com colunas de parcela e recorrência).
-- Leitura: mapear pelas colunas técnicas do PASSO 08.
-- Usar `version` e `CONFLICT`.
+- Cifrar as API keys com o `CredentialVault` (contexto `ai_configurations:<id>:api_key`) e incluí-las em `credentials:rotate`.
+- Fallback só em erro recuperável.
+
+Pendências ligadas ao PASSO 11:
+
+- PASSO 13: depois de cada tool de escrita, chamar `SheetSyncService.sync(user, activeSpreadsheetId)`. Responder conforme `report.status` e citar `invalidRows`/`orphanedRows`/`duplicateRows`. Sem planilha ativa, dizer que ficou pendente.
+- PASSO 16/18: botão "Sincronizar", lista de conflitos com `keep: app|sheet` (valores crus: datas como serial → formatar) e linhas com problema.
+- Smoke real (`pnpm test:google`) ainda não cobre a sincronização: estender com `getValues`, edição e `sync` quando houver conta de teste.
+- Limitações:
+  - corrida entre a leitura e a escrita se a pessoa inserir ou apagar linhas durante a sincronização (a escrita é por índice de linha);
+  - sem paginação: uma sincronização lê as abas inteiras e escreve num único `batchUpdate`;
+  - precisão de ponto flutuante da planilha acima de cerca de 15 dígitos.
 
 Pendências ligadas aos PASSOS 09 e 10:
 
@@ -347,7 +407,6 @@ Pendências ligadas aos PASSOS 09 e 10:
 
 Pendências ligadas ao PASSO 08:
 
-- PASSO 11: mapear colunas por `lff.column` (developer metadata) e valores de listas por posição em `TEXTS[spreadsheet.locale].lists`; preencher `record_id`/`record_version`/`synced_at`.
 - Rodar o smoke real (`pnpm test:google`) assim que houver uma conta de teste, para confirmar fórmulas, padrões de moeda e o gráfico no Google.
 - Importar planilhas que o usuário já tem exigiria o Google Picker (o escopo `drive.file` não enxerga outros arquivos): fora do escopo atual.
 - Gráficos adicionais (por categoria) e aplicação de `TEMPLATE_VERSION` mais nova a planilhas antigas (migração de template) ficam para depois.
@@ -382,7 +441,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`) e 09 (`59218a0`) commitados; o PASSO 10 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`) e 10 (`c2a270b`) commitados; o PASSO 11 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -482,3 +541,16 @@ Pendências conhecidas para passos futuros:
   - resumo por classe;
   - histórico com `INSTALLMENT`, `RECURRING_TRANSACTION` e `INVESTMENT`.
 - `pnpm quality` passou por completo.
+
+## Evidências do PASSO 11
+
+- Backend no host e no container: 223 testes unitários (13 novos) e 197 de integração (18 de sincronização; o teste de migrations agora espera 23 tabelas, e a nova migration reverte pelo `down.sql`). Nenhum banco de teste restante.
+- Mutações detectadas:
+  - texto com `=` escrito como fórmula;
+  - conflito não detectado;
+  - retry sem vínculo, que duplicava a linha.
+- Docker:
+  - migration `20261009030912_spreadsheet_sync` aplicada no container;
+  - teste manual das rotas novas com sessão sintética removida no fim: status `200`; sync sem Google configurado `503 google_connection_unavailable`, com a trava liberada e `last_error_code` gravado; `403` sem CSRF; `404` para id inexistente; `400` para corpo inválido.
+- `pnpm quality` passou por completo.
+- Não validado contra o Google real (sem conta de teste).

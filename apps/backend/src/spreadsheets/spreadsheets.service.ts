@@ -239,7 +239,7 @@ export class SpreadsheetsService {
   }
 
   /** Runs `work` with a valid token; on a 401 forces one refresh and retries once. */
-  private async withGoogleToken<T>(
+  async withGoogleToken<T>(
     userId: string,
     work: (token: string) => Promise<T>,
   ): Promise<T> {

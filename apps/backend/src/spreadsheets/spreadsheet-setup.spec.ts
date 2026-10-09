@@ -29,6 +29,8 @@ const fresh: SpreadsheetSnapshot = {
       title: 'Página1',
       index: 0,
       tabKey: null,
+      rowCount: 1000,
+      columns: [],
       protectedRangeDescriptions: [],
       conditionalFormatCount: 0,
       chartIds: [],
@@ -63,6 +65,11 @@ function afterFirstRun(locale: SetupOptions['locale'] = 'pt-BR'): SpreadsheetSna
         title: first.tabTitles[tab.key],
         index,
         tabKey: tab.key,
+        rowCount: 1000,
+        columns: tab.columns.map((column, position) => ({
+          key: column.key,
+          index: position,
+        })),
         protectedRangeDescriptions: protections
           .filter((p) => p.range.sheetId === sheetId)
           .map((p) => p.description),
@@ -329,6 +336,8 @@ describe('buildSetupPlan — re-run (idempotency)', () => {
       title: 'Minhas anotações',
       index: 10,
       tabKey: null,
+      rowCount: 1000,
+      columns: [],
       protectedRangeDescriptions: [],
       conditionalFormatCount: 0,
       chartIds: [],

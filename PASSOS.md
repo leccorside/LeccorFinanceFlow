@@ -322,7 +322,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: adiciona parcelamentos, recorrências e investimentos`
 
-## [ ] PASSO 11 — Sincronização bidirecional e conflitos
+## [x] PASSO 11 — Sincronização bidirecional e conflitos
 
 **Objetivo:** manter PostgreSQL e Sheets coerentes com edição manual segura.
 
@@ -334,7 +334,45 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** app-only, sheet-only, conflito, retry, indisponibilidade, linha inválida e prompt injection em célula.
 
-**Sugestão de commit:** `feat: synchronize financial data with google sheets`
+**Evidência (09/10/2026):**
+
+- **Backend**:
+  - módulo `spreadsheets/sync`: `SheetSyncService`, adaptadores de Movimentações, Contas e Investimentos (Categorias só exportada) e o codec de células;
+  - rotas `POST/GET /spreadsheets/:id/sync` e `POST /spreadsheets/:id/sync/conflicts/:recordId`;
+  - migration `20261009030912_spreadsheet_sync` (tabela `spreadsheet_row_states` + trava `sync_started_at`, com `down.sql`);
+  - cliente Google com leitura de valores (`values:batchGet` sem formatação) e posição das colunas por metadata.
+- **Unitários**: 223 no total, 13 deste passo:
+  - datas seriais e fuso; dinheiro exato a partir da célula; textos recusados;
+  - listas traduzidas por posição; hash canônico;
+  - escrita literal (texto com `=` não vira fórmula);
+  - leitura por chave de coluna com coluna da pessoa no meio; agrupamento das escritas; estrutura obrigatória;
+  - leitura de valores no cliente HTTP.
+- **Integração**: 197 no total, 18 deste passo, com Postgres real e Google simulado com grade de células:
+  - **só app**: exporta tudo como valor literal; segunda sincronização sem nenhuma escrita;
+  - **edição no app**: reescreve a mesma linha;
+  - **só planilha**: importa a edição pelo domínio, com histórico;
+  - **linha nova**: importada uma vez; com o Google caindo no meio, o **retry vincula sem duplicar**;
+  - conta e movimentação digitadas juntas;
+  - **conflito**: o app vence, a linha da pessoa é preservada e a reconciliação funciona por `sheet` e por `app`;
+  - edição inválida e parcela travada viram conflito e se resolvem quando a linha é corrigida;
+  - **linha apagada não apaga dado**; registro apagado no app sai da planilha (ou fica como órfão, se editado);
+  - ID de outro usuário e ID duplicado nunca importados (IDOR);
+  - coluna inserida pela pessoa preservada;
+  - **linha inválida**: 7 casos, com linha, código e coluna;
+  - **prompt injection em célula** tratada como texto;
+  - **indisponibilidade**: tudo fica pendente e a próxima sincronização recupera;
+  - estrutura quebrada e planilha inativa recusadas; uma sincronização por vez;
+  - contas e investimentos com suas regras.
+- **Mutações detectadas**: texto com `=` escrito como fórmula; conflito não detectado; retry sem vínculo (duplicava).
+- **Bug real corrigido durante o passo**: marcar `SYNCED` pelo Prisma atualizava `updated_at` e fazia toda sincronização reescrever todas as linhas. Agora o status é gravado por SQL direto, sem tocar em `updated_at`.
+- **Docker**:
+  - migration aplicada no container;
+  - suítes nos containers (223 + 197);
+  - teste manual das rotas com sessão sintética: status `200`; sync sem Google configurado `503 google_connection_unavailable`, com trava liberada e erro gravado; sem CSRF `403`; id inexistente `404`; corpo inválido `400`;
+  - `pnpm quality` completo.
+- **Não validado contra o Google real** (sem conta de teste): `values:batchGet`, `appendDimension` e `deleteDimension` seguem a documentação da API, mas falta o smoke real.
+
+**Sugestão de commit:** `feat: sincroniza os dados financeiros com o google sheets`
 
 ## [ ] PASSO 12 — Abstração multi-IA e administração de provedores
 

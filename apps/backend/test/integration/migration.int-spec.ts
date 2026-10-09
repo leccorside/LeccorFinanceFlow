@@ -12,7 +12,7 @@ const migrations = readdirSync(MIGRATIONS_DIR, { withFileTypes: true })
   .map((entry) => entry.name)
   .sort();
 
-const EXPECTED_TABLES = 22;
+const EXPECTED_TABLES = 23;
 
 let db: DisposableDatabase;
 
@@ -42,7 +42,7 @@ describe('migrations', () => {
     prisma(['migrate', 'deploy'], db.url);
 
     const objects = await publicObjects();
-    // 19 domain tables + user_roles + user_sessions + auth_login_attempts
+    // 19 domain tables + user_roles + user_sessions + auth_login_attempts + spreadsheet_row_states
     expect(Number(objects?.tables)).toBe(EXPECTED_TABLES);
     expect(Number(objects?.types)).toBeGreaterThan(0);
     expect(Number(objects?.functions)).toBeGreaterThan(0);

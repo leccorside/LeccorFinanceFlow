@@ -1,4 +1,5 @@
 import {
+  type CellValue,
   GoogleApiError,
   type GoogleApiErrorKind,
   type GoogleWorkspaceClient,
@@ -16,7 +17,11 @@ interface FakeSheet {
   charts: number[];
   headers: string[];
   formulas: string[];
-  columnKeys: string[];
+  /** Column index → template key (`lff.column` metadata; moves with the column). */
+  columnKeys: (string | undefined)[];
+  rowCount: number;
+  /** Cell values by [row][column]; null = empty. Row 0 is the header. */
+  grid: (CellValue | null)[][];
 }
 
 interface FakeFile {
@@ -32,7 +37,7 @@ interface FakeFile {
   sheets: FakeSheet[];
 }
 
-type Method = 'find' | 'create' | 'get' | 'batchUpdate';
+type Method = 'find' | 'create' | 'get' | 'batchUpdate' | 'values';
 
 /**
  * In-memory Google Drive/Sheets. Applies batchUpdate requests with the rules that matter
@@ -99,6 +104,10 @@ export class FakeWorkspace implements GoogleWorkspaceClient {
         title: sheet.title,
         index: sheet.index,
         tabKey: sheet.tabKey,
+        rowCount: sheet.rowCount,
+        columns: sheet.columnKeys.flatMap((key, index) =>
+          key === undefined ? [] : [{ key, index }],
+        ),
         protectedRangeDescriptions: [...sheet.protectedRanges],
         conditionalFormatCount: sheet.conditionalFormats,
         chartIds: [...sheet.charts],
@@ -121,6 +130,102 @@ export class FakeWorkspace implements GoogleWorkspaceClient {
       this.files.set(spreadsheetId, backup); // all-or-nothing, like Google
       throw error;
     }
+  }
+
+  async getValues(
+    token: string,
+    spreadsheetId: string,
+    ranges: string[],
+  ): Promise<CellValue[][][]> {
+    this.enter('values', token);
+    const file = this.file(spreadsheetId);
+    return ranges.map((range) => {
+      const title = range.replace(/^'(.*)'$/, '$1').replace(/''/g, "'");
+      const sheet = file.sheets.find((item) => item.title === title);
+      if (!sheet) throw new GoogleApiError('invalid_request', 400);
+      // Like Google: trailing empty rows and cells are omitted, inner empties are "".
+      const rows = sheet.grid.map((row) => {
+        const values = row.map((cell) => cell ?? '');
+        while (values.length > 0 && values.at(-1) === '') values.pop();
+        return values;
+      });
+      while (rows.length > 0 && rows.at(-1)?.length === 0) rows.pop();
+      return structuredClone(rows);
+    });
+  }
+
+  // ── Helpers that act like a person editing the sheet in Google Sheets. ──
+
+  sheetOf(fileId: string, tabKey: string): FakeSheet {
+    const sheet = this.file(fileId).sheets.find((item) => item.tabKey === tabKey);
+    if (!sheet) throw new Error(`no tab ${tabKey}`);
+    return sheet;
+  }
+
+  /** Non-empty data rows as { row (1-based), values by column key }. */
+  rows(
+    fileId: string,
+    tabKey: string,
+  ): { row: number; values: Record<string, CellValue | null> }[] {
+    const sheet = this.sheetOf(fileId, tabKey);
+    const result: { row: number; values: Record<string, CellValue | null> }[] = [];
+    sheet.grid.forEach((cells, index) => {
+      if (index === 0 || cells.every((cell) => cell === null || cell === '')) return;
+      const values: Record<string, CellValue | null> = {};
+      sheet.columnKeys.forEach((key, column) => {
+        if (key !== undefined) values[key] = cells[column] ?? null;
+      });
+      result.push({ row: index + 1, values });
+    });
+    return result;
+  }
+
+  /** Edits cells of a 1-based row by column key. */
+  edit(
+    fileId: string,
+    tabKey: string,
+    row: number,
+    values: Record<string, CellValue | null>,
+  ): void {
+    const sheet = this.sheetOf(fileId, tabKey);
+    for (const [key, value] of Object.entries(values)) {
+      const column = sheet.columnKeys.indexOf(key);
+      if (column < 0) throw new Error(`no column ${key}`);
+      setCell(sheet, row - 1, column, value);
+    }
+  }
+
+  /** Types a new row below the last one; returns its 1-based number. */
+  append(
+    fileId: string,
+    tabKey: string,
+    values: Record<string, CellValue | null>,
+  ): number {
+    const sheet = this.sheetOf(fileId, tabKey);
+    let last = sheet.grid.length - 1;
+    while (
+      last > 0 &&
+      (sheet.grid[last] ?? []).every((cell) => cell === null || cell === '')
+    ) {
+      last -= 1;
+    }
+    const row = last + 2;
+    this.edit(fileId, tabKey, row, values);
+    return row;
+  }
+
+  /** Deletes a 1-based row (rows below move up), like right click → delete row. */
+  deleteRow(fileId: string, tabKey: string, row: number): void {
+    const sheet = this.sheetOf(fileId, tabKey);
+    sheet.grid.splice(row - 1, 1);
+    sheet.rowCount -= 1;
+  }
+
+  /** Inserts an empty column at a 0-based index (ours move right, metadata follows). */
+  insertColumn(fileId: string, tabKey: string, at: number): void {
+    const sheet = this.sheetOf(fileId, tabKey);
+    sheet.columnKeys.splice(at, 0, undefined);
+    for (const cells of sheet.grid) if (cells.length > at) cells.splice(at, 0, null);
   }
 
   liveFiles(): FakeFile[] {
@@ -166,9 +271,11 @@ export class FakeWorkspace implements GoogleWorkspaceClient {
           )
         )
           throw invalid();
-        file.sheets.push(
-          blankSheet(properties.sheetId, properties.title, properties.index),
-        );
+        const added = blankSheet(properties.sheetId, properties.title, properties.index);
+        added.rowCount =
+          (properties as { gridProperties?: { rowCount?: number } }).gridProperties
+            ?.rowCount ?? 1000;
+        file.sheets.push(added);
         return;
       }
       case 'deleteSheet': {
@@ -237,13 +344,37 @@ export class FakeWorkspace implements GoogleWorkspaceClient {
         return;
       }
       case 'updateCells': {
-        const start = body.start as { sheetId: number; rowIndex: number };
+        const start = body.start as {
+          sheetId: number;
+          rowIndex: number;
+          columnIndex?: number;
+        };
         const target = sheet(start.sheetId);
         const rows = body.rows as {
           values: {
-            userEnteredValue?: { stringValue?: string; formulaValue?: string };
+            userEnteredValue?: {
+              stringValue?: string;
+              formulaValue?: string;
+              numberValue?: number;
+              boolValue?: boolean;
+            };
           }[];
         }[];
+        rows.forEach((row, offset) => {
+          const rowIndex = start.rowIndex + offset;
+          if (rowIndex >= target.rowCount) throw invalid(); // outside the grid
+          row.values.forEach((cell, column) => {
+            const value = cell.userEnteredValue;
+            setCell(
+              target,
+              rowIndex,
+              (start.columnIndex ?? 0) + column,
+              value?.formulaValue !== undefined
+                ? value.formulaValue
+                : (value?.stringValue ?? value?.numberValue ?? value?.boolValue ?? null),
+            );
+          });
+        });
         if (start.rowIndex === 0) {
           target.headers =
             rows[0]?.values.map((cell) => cell.userEnteredValue?.stringValue ?? '') ?? [];
@@ -258,6 +389,25 @@ export class FakeWorkspace implements GoogleWorkspaceClient {
             }
           }
         }
+        return;
+      }
+      case 'appendDimension': {
+        const target = sheet(body.sheetId);
+        if (body.dimension === 'ROWS') target.rowCount += body.length as number;
+        return;
+      }
+      case 'deleteDimension': {
+        const range = body.range as {
+          sheetId: number;
+          dimension: string;
+          startIndex: number;
+          endIndex: number;
+        };
+        const target = sheet(range.sheetId);
+        if (range.dimension !== 'ROWS' || range.endIndex > target.rowCount)
+          throw invalid();
+        target.grid.splice(range.startIndex, range.endIndex - range.startIndex);
+        target.rowCount -= range.endIndex - range.startIndex;
         return;
       }
       default: {
@@ -281,7 +431,21 @@ function blankSheet(sheetId: number, title: string, index: number): FakeSheet {
     headers: [],
     formulas: [],
     columnKeys: [],
+    rowCount: 1000,
+    grid: [],
   };
+}
+
+function setCell(
+  sheet: FakeSheet,
+  row: number,
+  column: number,
+  value: CellValue | null,
+): void {
+  while (sheet.grid.length <= row) sheet.grid.push([]);
+  const cells = sheet.grid[row] as (CellValue | null)[];
+  while (cells.length <= column) cells.push(null);
+  cells[column] = value === '' ? null : value;
 }
 
 function findSheetId(value: unknown): number | undefined {

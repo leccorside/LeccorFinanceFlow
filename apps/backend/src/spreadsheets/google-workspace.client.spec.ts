@@ -72,12 +72,17 @@ describe('HttpGoogleWorkspaceClient', () => {
       developerMetadata: [{ metadataKey: 'lff.spreadsheet_id', metadataValue: 'row-1' }],
       sheets: [
         {
-          properties: { sheetId: 1001, title: 'Movimentações', index: 1 },
+          properties: {
+            sheetId: 1001,
+            title: 'Movimentações',
+            index: 1,
+            gridProperties: { rowCount: 1000 },
+          },
           developerMetadata: [
             {
               metadataKey: 'lff.column',
               metadataValue: 'type',
-              location: { locationType: 'COLUMN' },
+              location: { locationType: 'COLUMN', dimensionRange: { startIndex: 4 } },
             },
             {
               metadataKey: 'lff.tab',
@@ -108,6 +113,8 @@ describe('HttpGoogleWorkspaceClient', () => {
           title: 'Movimentações',
           index: 1,
           tabKey: 'transactions',
+          rowCount: 1000,
+          columns: [{ key: 'type', index: 4 }],
           protectedRangeDescriptions: ['lff:technical:transactions'],
           conditionalFormatCount: 2,
           chartIds: [],
@@ -117,12 +124,29 @@ describe('HttpGoogleWorkspaceClient', () => {
           title: 'Página1',
           index: 0,
           tabKey: null,
+          rowCount: 0,
+          columns: [],
           protectedRangeDescriptions: [],
           conditionalFormatCount: 0,
           chartIds: [],
         },
       ],
     });
+  });
+
+  it('reads raw values of several ranges (unformatted, serial dates)', async () => {
+    const { client, calls } = fake(200, {
+      valueRanges: [{ values: [['Tipo'], ['Despesa', 87.45, 46091]] }, {}],
+    });
+    await expect(
+      client.getValues('tok', 'file-1', ["'Movimentações'", "'Contas'"]),
+    ).resolves.toEqual([[['Tipo'], ['Despesa', 87.45, 46091]], []]);
+    const url = new URL(calls[0]?.url ?? '');
+    expect(url.pathname).toBe('/v4/spreadsheets/file-1/values:batchGet');
+    expect(url.searchParams.getAll('ranges')).toEqual(["'Movimentações'", "'Contas'"]);
+    expect(url.searchParams.get('valueRenderOption')).toBe('UNFORMATTED_VALUE');
+    expect(url.searchParams.get('dateTimeRenderOption')).toBe('SERIAL_NUMBER');
+    expect(authorization(calls[0])).toBe('Bearer tok');
   });
 
   it('sends batchUpdate requests and skips empty batches', async () => {

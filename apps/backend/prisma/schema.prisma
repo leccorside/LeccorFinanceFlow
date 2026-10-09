@@ -394,6 +394,8 @@ model Spreadsheet {
   locale              AppLocale         @default(pt_BR)
   /// Claim for the (slow, external) setup: prevents two concurrent setups of the same row.
   setupStartedAt      DateTime?         @map("setup_started_at") @db.Timestamptz(3)
+  /// Claim for a running sync (one at a time per spreadsheet; expires if abandoned).
+  syncStartedAt       DateTime?         @map("sync_started_at") @db.Timestamptz(3)
   /// Sanitized code of the last setup failure (no Google payloads).
   lastErrorCode       String?           @map("last_error_code") @db.VarChar(50)
   syncCheckpoint      Json?             @map("sync_checkpoint")
@@ -407,9 +409,35 @@ model Spreadsheet {
   installments          Installment[]
   conversations         Conversation[]
   reports               Report[]
+  rowStates             SpreadsheetRowState[]
 
   @@unique([ownerId, name])
   @@map("spreadsheets")
+}
+
+/// What the last sync knows about one exported row: the record version written and a hash
+/// of the user-editable cells as written (or as imported). Detects sheet-only, app-only and
+/// concurrent changes without keeping a copy of the data. Not a log.
+model SpreadsheetRowState {
+  id              String      @id @default(uuid(7)) @db.Uuid
+  spreadsheetId   String      @map("spreadsheet_id") @db.Uuid
+  /// Data tab key: transactions, accounts or investments.
+  tab             String      @db.VarChar(30)
+  recordId        String      @map("record_id") @db.Uuid
+  exportedVersion Int         @map("exported_version")
+  rowHash         String      @map("row_hash") @db.Char(64)
+  /// Created from a sheet row whose ID was not written back yet: a retry links, never duplicates.
+  awaitingLink    Boolean     @default(false) @map("awaiting_link")
+  /// Set while the record is in CONFLICT: why, and the sheet's editable values at that time.
+  conflictReason  String?     @map("conflict_reason") @db.VarChar(80)
+  conflictValues  Json?       @map("conflict_values")
+  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  spreadsheet Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+
+  @@unique([spreadsheetId, recordId])
+  @@index([spreadsheetId, tab])
+  @@map("spreadsheet_row_states")
 }
 
 model FinancialAccount {
