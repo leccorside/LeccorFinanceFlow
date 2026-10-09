@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module.js';
 import { DashboardModule } from '../dashboard/dashboard.module.js';
+import { ReportsModule } from '../reports/reports.module.js';
 import { FinanceModule } from '../finance/finance.module.js';
 import { GoogleModule } from '../google/google.module.js';
 import { ProfileModule } from '../profile/profile.module.js';
@@ -21,6 +22,7 @@ import { ToolRegistry } from './tools/tool-registry.js';
     ProfileModule,
     GoogleModule,
     DashboardModule,
+    ReportsModule,
   ],
   controllers: [AssistantController],
   providers: [

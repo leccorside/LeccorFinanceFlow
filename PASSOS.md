@@ -709,7 +709,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: adiciona painel financeiro e insights baseados nos dados`
 
-## [ ] PASSO 19 — Relatórios PDF e XLSX
+## [x] PASSO 19 — Relatórios PDF e XLSX
 
 **Objetivo:** gerar e baixar todos os relatórios pedidos, inclusive pelo chat.
 
@@ -721,7 +721,41 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** conteúdo, layout, XLSX, PDF, IDOR, expiração e volume excedido.
 
-**Sugestão de commit:** `feat: generate secure pdf and xlsx reports`
+**Evidência (09/10/2026):**
+
+- **Backend** (`src/reports`):
+  - `POST /reports` (`type`, `format` e o período como `month`, `year` ou `from`/`to`), `GET /reports` e `GET /reports/:id/download`;
+  - os 9 tipos (mensal, anual, receitas, despesas, categorias, investimentos, contas, fluxo de caixa e consolidado), montados com as mesmas consultas do painel, por moeda;
+  - **PDF** com `pdfkit` (A4, cabeçalho, indicadores, barras, tabelas com quebra de página e cabeçalho repetido, rodapé com paginação);
+  - **XLSX** com gerador próprio (ZIP + XML): números e datas tipados, formatos por casas da moeda, cabeçalho congelado e filtro, e todo texto do usuário gravado como texto, nunca fórmula;
+  - geração síncrona com limites: período máximo, volume de lançamentos (`report_too_large`) e rate limit `reports`;
+  - arquivo em `REPORT_TEMP_DIRECTORY/<dono>/` com permissão `0600`, servido só ao dono, expirado e apagado após `REPORT_FILE_TTL_MINUTES`.
+- **Assistente**: ferramenta `generate_report`; o turno traz `attachments` com o link, e o chat mostra o cartão de download.
+- **Frontend**: página `/reports` ("Relatórios"):
+  - tipo e formato em rádios nativos estilizados;
+  - mês, ano ou atalhos de período e período personalizado;
+  - resultado com download e aviso de expiração; histórico com status.
+- **Testes**:
+  - backend 334 unitários (+10: períodos, CRC-32/ZIP, XLSX, injeção de fórmula, datas seriais, PDF com paginação, textos) e 297 de integração (+11: 18 arquivos gerados e lidos de volta, totais iguais à API, pasta e permissão, posse, CSRF, expiração com arquivo apagado, varredura, arquivo ausente, validação, volume excedido e pedido pelo chat);
+  - frontend 125 (+6).
+- **Mutações detectadas**: download sem filtro de dono; expiração ignorada; limite de volume removido.
+- **Validação independente**:
+  - `pdftotext` e PyMuPDF (PDF) e `openpyxl` (XLSX) leem os arquivos;
+  - a célula `=HYPERLINK(...)` volta como texto, sem fórmula.
+- **Bugs corrigidos durante a validação**:
+  - o `pdfkit` move o cursor a cada texto e os indicadores saíam fora do lugar;
+  - textos longos quebravam linha em vez de ganhar reticências;
+  - a aba de barras duplicava a tabela no XLSX;
+  - o React Query passava um segundo argumento ao `createReport`.
+- **Docker** (stack real com proxy do Vite):
+  - PDF e XLSX baixados com `Content-Disposition`, `no-store` e `nosniff`;
+  - 401 sem sessão;
+  - arquivos `-rw-------` na pasta do usuário;
+  - após expirar, 410 e arquivo apagado;
+  - suítes nos containers (334 + 297 + 125); `pnpm quality` completo.
+- **Chrome real**: página de relatórios e cartão no chat em 320, 375 e 1280, sem rolagem horizontal.
+
+**Sugestão de commit:** `feat: gera relatórios seguros em pdf e xlsx`
 
 ## [ ] PASSO 20 — Painel administrativo
 

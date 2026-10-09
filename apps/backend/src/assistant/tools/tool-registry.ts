@@ -13,6 +13,7 @@ import { TransactionsService } from '../../finance/transactions.service.js';
 import { UndoService } from '../../finance/undo.service.js';
 import { GoogleConnectionService } from '../../google/google-connection.service.js';
 import { ProfileService } from '../../profile/profile.service.js';
+import { ReportsService } from '../../reports/reports.service.js';
 import {
   GOOGLE_WORKSPACE_CLIENT,
   type GoogleWorkspaceClient,
@@ -22,6 +23,7 @@ import { SheetSyncService } from '../../spreadsheets/sync/sheet-sync.service.js'
 import { dataTools } from './data.tools.js';
 import { financeTools } from './finance.tools.js';
 import { insightTools } from './insight.tools.js';
+import { reportTools } from './report.tools.js';
 import type { ToolContext, ToolRisk, ToolSpec } from './tool.types.js';
 import { workspaceTools } from './workspace.tools.js';
 
@@ -61,6 +63,7 @@ export class ToolRegistry {
     @Inject(GOOGLE_WORKSPACE_CLIENT) workspace: GoogleWorkspaceClient,
     @Inject(GoogleConnectionService) google: GoogleConnectionService,
     @Inject(DashboardService) dashboard: DashboardService,
+    @Inject(ReportsService) reports: ReportsService,
   ) {
     const all = [
       ...financeTools({
@@ -76,6 +79,7 @@ export class ToolRegistry {
       ...workspaceTools({ prisma, spreadsheets, sheetSync, profiles }),
       ...dataTools({ prisma, undo, spreadsheets, workspace, google }),
       ...insightTools({ dashboard }),
+      ...reportTools({ reports }),
     ];
     for (const tool of all) this.register(tool);
   }

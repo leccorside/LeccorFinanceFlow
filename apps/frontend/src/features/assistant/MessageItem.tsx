@@ -103,6 +103,32 @@ function AssistantBubble({
           ))}
         </ul>
       )}
+      {!writing && (item.attachments?.length ?? 0) > 0 && (
+        <ul className="attachments">
+          {item.attachments?.map((file) => (
+            <li key={file.id}>
+              <span
+                className={`file-badge file-badge--${file.format.toLowerCase()}`}
+                aria-hidden="true"
+              >
+                {file.format}
+              </span>
+              <span className="attachment-name">{file.fileName}</span>
+              <small>
+                {t('assistant.attachment.expires', { time: dateTime(file.expiresAt) })}
+              </small>
+              <a
+                href={file.url}
+                download={file.fileName}
+                className="button-secondary"
+                aria-label={t('reports.download', { name: file.fileName })}
+              >
+                {t('assistant.attachment.download')}
+              </a>
+            </li>
+          ))}
+        </ul>
+      )}
       {!writing && candidates.length > 0 && (
         <div className="candidates">
           <p className="candidates-title">{t('assistant.candidates.title')}</p>

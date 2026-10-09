@@ -1,0 +1,342 @@
+/* Reports (PASSO 19). Colors come only from the theme tokens. */
+
+.reports {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-self: start;
+  width: min(1100px, 100%);
+}
+
+.app-main:has(> .reports) {
+  place-items: start center;
+}
+
+.report-builder {
+  display: grid;
+  gap: 18px;
+  padding: clamp(16px, 3vw, 24px);
+  border: 1px solid var(--border);
+  border-radius: 24px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+}
+
+.report-step {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.report-step legend {
+  margin-bottom: 8px;
+  padding: 0;
+  color: var(--accent);
+  font-size: 0.8rem;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.report-types {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 210px), 1fr));
+  gap: 10px;
+}
+
+/* Native radios styled as cards: keyboard (arrows) and screen readers work as usual. */
+.report-type,
+.report-format {
+  position: relative;
+  display: grid;
+  gap: 4px;
+  min-height: 44px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface-sunken);
+  cursor: pointer;
+  transition:
+    border-color 0.2s,
+    box-shadow 0.2s,
+    background 0.2s;
+}
+
+.report-type input,
+.report-format input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.report-type:hover,
+.report-format:hover {
+  border-color: var(--border-strong);
+}
+
+.report-type:has(input:checked),
+.report-format:has(input:checked) {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface-sunken));
+  box-shadow: var(--glow);
+}
+
+.report-type:has(input:focus-visible),
+.report-format:has(input:focus-visible) {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+}
+
+.report-type-name {
+  color: var(--text);
+  font-weight: 750;
+}
+
+.report-type-desc {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  line-height: 1.4;
+}
+
+.report-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 18px;
+}
+
+.report-formats {
+  display: grid;
+  gap: 8px;
+}
+
+.report-format {
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  color: var(--text-soft);
+}
+
+.report-step .field select,
+.report-step .field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--surface-sunken);
+}
+
+.custom-period--flat {
+  padding: 0;
+  border: 0;
+  background: none;
+}
+
+.report-range {
+  font-variant-numeric: tabular-nums;
+}
+
+.report-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.report-actions .button-primary {
+  margin-top: 0;
+}
+
+.report-result {
+  display: grid;
+  gap: 8px;
+  padding: 16px;
+  border: 1px solid var(--accent);
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface-sunken));
+  box-shadow: var(--glow);
+}
+
+.report-result h2 {
+  margin: 0;
+  font-size: 1rem;
+}
+
+.report-download {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-width: 0;
+}
+
+.report-download > div {
+  display: grid;
+  min-width: 0;
+}
+
+.report-download-link {
+  overflow: hidden;
+  color: var(--accent);
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-download small {
+  color: var(--text-muted);
+}
+
+.file-badge {
+  display: inline-grid;
+  flex: none;
+  width: 44px;
+  height: 52px;
+  place-items: center;
+  border-radius: 8px;
+  color: #ffffff;
+  font-size: 0.7rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  background: linear-gradient(160deg, var(--accent-2), var(--accent-3));
+  clip-path: polygon(0 0, 72% 0, 100% 22%, 100% 100%, 0 100%);
+}
+
+.file-badge--xlsx {
+  background: linear-gradient(160deg, var(--success), #0b6b45);
+}
+
+.report-history {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.report-history h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.report-history ul {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.report-history li {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface-sunken);
+}
+
+.report-history .file-badge {
+  width: 34px;
+  height: 40px;
+  font-size: 0.6rem;
+}
+
+.report-history-main {
+  display: grid;
+  flex: 1;
+  min-width: 0;
+}
+
+.report-history-main .hint {
+  overflow: hidden;
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.report-history .button-secondary {
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+.report-status {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+  font-weight: 650;
+}
+
+.report-status--failed {
+  color: var(--danger);
+}
+
+/* Download card inside a chat reply. */
+.attachments {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.attachments li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  gap: 2px 12px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 14px;
+  background: var(--surface-sunken);
+}
+
+.attachments .file-badge {
+  grid-row: span 2;
+  width: 34px;
+  height: 40px;
+  font-size: 0.6rem;
+}
+
+.attachment-name {
+  overflow: hidden;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachments small {
+  grid-column: 2;
+  color: var(--text-muted);
+}
+
+.attachments .button-secondary {
+  grid-row: 1 / span 2;
+  grid-column: 3;
+  display: inline-flex;
+  align-items: center;
+  text-decoration: none;
+}
+
+/* In the report form the presets wrap instead of scrolling (all options stay visible). */
+.report-step .segmented {
+  flex-wrap: wrap;
+  border-radius: 18px;
+}
+
+@media (max-width: 479.98px) {
+  .attachments li {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .attachments .button-secondary {
+    grid-row: auto;
+    grid-column: 1 / -1;
+    justify-self: start;
+  }
+}

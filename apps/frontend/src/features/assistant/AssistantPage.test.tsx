@@ -186,6 +186,40 @@ describe('AssistantPage', () => {
     expect(screen.getByRole('button', { name: 'Enviar' })).toBeDisabled();
   });
 
+  it('offers the report the assistant generated as a download', async () => {
+    vi.mocked(sendMessage).mockResolvedValue(
+      turn({
+        reply: { ...turn().reply, content: 'Seu relatório de setembro está pronto.' },
+        actions: [{ tool: 'generate_report', status: 'ok' }],
+        attachments: [
+          {
+            kind: 'report',
+            id: 'r1',
+            fileName: 'relatorio-mensal_2026-09-01_2026-09-30.pdf',
+            format: 'PDF',
+            url: '/api/v1/reports/r1/download',
+            expiresAt: '2026-10-09T15:30:00.000Z',
+          },
+        ],
+      }),
+    );
+    renderWithProviders(<AssistantPage firstName={null} />);
+
+    sendWithEnter('gere meu relatório de setembro em PDF');
+
+    // The card appears once the reply has been written out.
+    const link = await screen.findByRole(
+      'link',
+      { name: 'Baixar relatorio-mensal_2026-09-01_2026-09-30.pdf' },
+      { timeout: 4000 },
+    );
+    expect(link).toHaveAttribute('href', '/api/v1/reports/r1/download');
+    expect(link).toHaveAttribute(
+      'download',
+      'relatorio-mensal_2026-09-01_2026-09-30.pdf',
+    );
+  });
+
   it('sends a suggestion when it is clicked', async () => {
     vi.mocked(sendMessage).mockResolvedValue(turn());
     renderWithProviders(<AssistantPage firstName={null} />);

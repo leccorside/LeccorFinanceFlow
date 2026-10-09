@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 18 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 19 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,36 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Relatórios implementados no PASSO 19 (`apps/backend/src/reports`):
+
+- `report.types.ts` (`ReportDocument`, `Section` = `kpis` | `table` | `bars`, `Cell`), `report-i18n.ts` (textos pt/en/es), `report-format.ts` (`cellText`, `pdfSafe`).
+- `report-builder.ts` (`ReportBuilder.build`, `countMovements`; seções por tipo e por moeda).
+- `renderers/pdf.ts` (`renderPdf`, `pdfkit` 0.20.2), `renderers/xlsx.ts` (`renderXlsx`, `excelDate`) e `renderers/zip.ts` (`createZip`, `crc32`).
+- `reports.service.ts` (`resolveReportPeriod`, `create`, `list`, `download`, `sweep`), `reports.controller.ts`, `reports.module.ts`.
+- Ajustes:
+  - env `REPORT_*` e `MAX_REPORT_TRANSACTIONS`; política `reports`;
+  - `assistant/tools/report.tools.ts` (`generate_report`; `ToolRegistry` ganhou o 16º parâmetro);
+  - `AssistantTurn.attachments`.
+- Frontend:
+  - `features/reports/ReportsPage.tsx` e `report-periods.ts`; `services/reports.ts`; `styles/reports.css`; rota `/reports` lazy;
+  - cartão de anexo no `MessageItem`;
+  - rótulos das ferramentas `generate_report` e `get_financial_insights`.
+- Testes:
+  - `src/reports/reports.spec.ts` (10) e `test/integration/reports.int-spec.ts` (11);
+  - `test/office-readers.ts` (`unzip`, `readXlsx`, `pdfText`), leitores próprios para conferir os arquivos;
+  - `ReportsPage.test.tsx` (5) e o anexo em `AssistantPage.test.tsx`.
+
+## Decisões do PASSO 19
+
+- **Documento neutro + dois renderizadores**: o montador decide o conteúdo a partir das consultas existentes; PDF e XLSX só desenham. Os testes comparam os totais com a API.
+- **`pdfkit` para PDF** (MIT, mantido, dependências enxutas) e **XLSX próprio**: o `exceljs` está parado desde 2024 e puxa `archiver`/`unzipper` antigos. O XLSX é um ZIP de XML e cabe em ~300 linhas testadas e validadas com `openpyxl`.
+- **Texto do usuário nunca vira fórmula** no XLSX (`inlineStr`).
+- **Helvetica embutida** em vez de fonte TTF no repositório. Limitação: emoji e escritas fora do WinAnsi saem "?" no PDF (o XLSX mantém tudo).
+- **Síncrono com limites** (período, volume, rate limit) em vez de fila: relatórios pessoais pequenos. O volume é checado antes de gerar.
+- **Arquivo temporário privado e expirável** em vez de guardar binário no banco. Varredura preguiçosa (ao gerar, listar, baixar e iniciar), sem agendador.
+- **Período**: o mensal exige um mês inteiro e o anual um ano inteiro; os demais aceitam qualquer intervalo até o limite.
+- **Chat**: o link vem em `attachments` do turno, não no texto do modelo (que não inventa URLs).
 
 Painel implementado no PASSO 18:
 
@@ -506,6 +536,15 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 19:
+  - **pdfkit**: cada `doc.text()` move `doc.y`, e os indicadores saíam fora de posição. O helper `text()` agora restaura o cursor e o layout usa só coordenadas explícitas.
+  - **Reticências no pdfkit**: com `lineBreak: false` o texto ainda quebrava. A reticência só funciona com `height` de uma linha + `ellipsis`.
+  - **Rodapé**: escrever dentro da margem inferior criava página nova; foi zerada a margem antes de escrever o rodapé.
+  - **Escapes `\u`**: escritos pela ferramenta de arquivo viraram caracteres literais (NBSP, marcas combinantes) e o ESLint acusou espaço irregular. Usar `\p{M}` ou escapes gravados por script.
+  - **React Query v5**: passa um 2º argumento (contexto) ao `mutationFn`; envolver a chamada (`(body) => createReport(body)`).
+  - **Nome acessível**: um trecho `visually-hidden` com espaço inicial não separou as palavras no nome do link; usar `aria-label`.
+  - **Testes**: o rate limit de relatórios precisou entrar no `testEnv` (a 11ª geração recebeu 429, o que comprovou o limite).
+  - **Validação**: `pdftoppm` não existe na máquina; o PDF foi renderizado com PyMuPDF num venv no scratchpad.
 - PASSO 18:
   - No celular, o painel estourava para 626 px: em `display: grid` a trilha `auto` cresce até o tamanho mínimo do SVG do gráfico. Corrigido com `grid-template-columns: minmax(0, 1fr)` no painel e no corpo. Lição: todo grid que contém gráfico precisa de `minmax(0, …)`.
   - O `Pie` do Recharts tem `rootTabIndex=0` por padrão, o que deixava um elemento focável dentro do `aria-hidden`; agora é `rootTabIndex={-1}` (e `accessibilityLayer={false}` nos demais gráficos).
@@ -593,14 +632,18 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 18 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 19 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 19`
+`INICIE O PASSO 20`
 
-Quando autorizado, executar apenas o PASSO 19 de `PASSOS.md`: relatórios PDF e XLSX.
+Quando autorizado, executar apenas o PASSO 20 de `PASSOS.md`: painel administrativo.
 
-- Reaproveitar `DashboardService` e `FinanceQueriesService` para os números, para que relatório, painel e assistente batam.
-- Ferramenta `generate_report` pendente desde o PASSO 13.
+Pendências ligadas ao PASSO 19:
+
+- Relatórios no histórico do chat: o anexo só aparece no turno em que foi gerado (os arquivos ficam na página Relatórios).
+- PDF com fonte TTF embutida para cobrir emoji e outras escritas (hoje "?").
+- Limpeza de registros antigos de relatório (só o arquivo é apagado; a linha `EXPIRED` fica) — PASSO 21 (retenção).
+- Relatórios grandes em segundo plano, se um dia os limites síncronos não bastarem.
 
 Pendências ligadas ao PASSO 18:
 
@@ -630,7 +673,6 @@ Pendências ligadas ao PASSO 14:
 
 Pendências ligadas ao PASSO 13:
 
-- PASSO 19: ferramenta `generate_report`.
 - `switch_spreadsheet` não existe: o serviço de planilhas ainda não troca a planilha ativa.
 - Limpeza de confirmações expiradas: hoje elas só deixam de valer (índice em `expires_at` pronto para uma limpeza futura, sem fila).
 
@@ -696,7 +738,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`) e 17 (`30f054a`) commitados; o PASSO 18 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`), 17 (`30f054a`) e 18 (`a0d428e`) commitados; o PASSO 19 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -926,3 +968,19 @@ Pendências conhecidas para passos futuros:
   - períodos e personalizado enviados corretamente.
 - Containers: 324 + 286 + 119.
 - `pnpm quality` passou. A primeira tentativa estourou o tempo de início dos workers do frontend (disco USB a frio, problema conhecido); a segunda passou inteira.
+
+## Evidências do PASSO 19
+
+- Backend: 334 testes unitários e 297 de integração, entre eles 18 arquivos gerados e lidos de volta e totais iguais a `/finance/summary`, `/accounts` e ao fluxo de caixa.
+- Frontend: 125 testes.
+- Mutações detectadas:
+  - download sem filtro de dono;
+  - expiração ignorada;
+  - limite de volume removido.
+- Validação independente: `pdftotext`/PyMuPDF para o PDF e `openpyxl` para o XLSX (tipos, formatos, filtro, fórmula como texto).
+- Docker real:
+  - download com cabeçalhos corretos; 401 sem sessão;
+  - arquivos `-rw-------` na pasta do dono;
+  - 410 e arquivo apagado após expirar.
+- Chrome real em 320, 375 e 1280, sem rolagem horizontal.
+- `pnpm quality` passou por completo.

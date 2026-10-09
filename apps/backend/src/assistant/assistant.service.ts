@@ -26,6 +26,7 @@ import {
   type ToolOutcome,
   toModelContent,
 } from './tools/tool.types.js';
+import type { ReportResponse } from '../reports/reports.service.js';
 
 /** Model ↔ tools round trips per user message. */
 export const MAX_STEPS = 6;
@@ -63,7 +64,18 @@ export interface AssistantTurn {
   /** Options when a request matched several records. */
   candidates: Record<string, unknown>[];
   suggestions: string[];
+  /** Files produced in the turn (reports), with their download link. */
+  attachments: TurnAttachment[];
   error?: { code: string };
+}
+
+export interface TurnAttachment {
+  kind: 'report';
+  id: string;
+  fileName: string;
+  format: string;
+  url: string;
+  expiresAt: string;
 }
 
 type User = Pick<AuthenticatedUser, 'id' | 'email' | 'roles'>;
@@ -312,6 +324,7 @@ class TurnBuilder {
   private readonly actions: TurnAction[] = [];
   private readonly confirmations: AssistantTurn['confirmations'] = [];
   private readonly candidates: Record<string, unknown>[] = [];
+  private readonly attachments: TurnAttachment[] = [];
   private lastTool: string | null = null;
 
   constructor(
@@ -333,6 +346,19 @@ class TurnBuilder {
       this.confirmations.push({ tool: outcome.tool, ...outcome.confirmation });
     }
     if (outcome.status === 'ambiguous') this.candidates.push(...outcome.candidates);
+    if (outcome.status === 'ok' && outcome.tool === 'generate_report') {
+      const report = outcome.data as Partial<ReportResponse>;
+      if (report.id && report.fileName && report.downloadUrl && report.expiresAt) {
+        this.attachments.push({
+          kind: 'report',
+          id: report.id,
+          fileName: report.fileName,
+          format: String(report.format),
+          url: report.downloadUrl,
+          expiresAt: report.expiresAt,
+        });
+      }
+    }
   }
 
   build(
@@ -373,6 +399,7 @@ class TurnBuilder {
       actions: this.actions,
       confirmations: this.confirmations,
       candidates: this.candidates,
+      attachments: this.attachments,
       suggestions:
         (this.lastTool ? words.followUps[this.lastTool] : undefined) ?? words.suggestions,
     };

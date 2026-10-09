@@ -163,7 +163,7 @@ Prefixo: `/api/v1`.
 | `/recurring-transactions` | recorrências materializadas sob demanda (PASSO 10)                  |
 | `/assistant`              | conversas, mensagens, ferramentas e confirmações (undo no PASSO 15) |
 | `/voice`                  | capacidades, transcrição e leitura em voz alta (PASSO 17)           |
-| `/reports`                | geração e download autenticado                                      |
+| `/reports`                | geração (PDF/XLSX) e download só do dono, com expiração (PASSO 19)  |
 | `/dashboard`              | painel por período, por moeda, com insights (PASSO 18)              |
 | `/admin/*`                | usuários, provedores, modelos e configurações                       |
 
@@ -1197,9 +1197,73 @@ Regras:
 
 - A página é carregada sob demanda (chunk próprio, ~435 kB com o Recharts), sem pesar na abertura do chat.
 
-## Relatórios
+## Relatórios (PASSO 19)
 
-PDF e XLSX cobrirão relatórios mensal, anual, receitas, despesas, categorias, investimentos, contas, fluxo de caixa e consolidado. A geração será síncrona, com limites explícitos. O download requer sessão e ownership.
+Gerados na página **Relatórios** (`/reports`) ou pelo assistente ("Gere meu relatório financeiro de setembro em PDF", ferramenta `generate_report`). Os números vêm das mesmas consultas do painel e de `/finance`, `/accounts` e `/investments`, por moeda.
+
+### Rotas
+
+| Método e rota               | Uso                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `POST /reports`             | `{ type, format, month \| year \| from+to }` (uma forma de período). Gera na hora e responde `201` com `status`, `fileName`, `expiresAt` e `downloadUrl`. CSRF e rate limit `reports`.            |
+| `GET /reports`              | Os 20 mais recentes do usuário, com status (`READY`, `EXPIRED`, `FAILED`).                                                                                                                        |
+| `GET /reports/:id/download` | O arquivo, só para o dono, com `Content-Disposition: attachment` (nome ASCII + UTF-8) e `Cache-Control: no-store`. Outro usuário recebe `404`; expirado ou arquivo ausente, `410 report_expired`. |
+
+Erros:
+
+| Código                   | HTTP | Quando                                                                                          |
+| ------------------------ | ---- | ----------------------------------------------------------------------------------------------- |
+| `report_period_invalid`  | 422  | período impossível; mensal que não é um mês inteiro; anual que não é um ano inteiro             |
+| `report_period_too_long` | 422  | acima de `MAX_REPORT_RANGE_MONTHS`                                                              |
+| `report_too_large`       | 422  | mais de `MAX_REPORT_TRANSACTIONS` lançamentos no período (`details.movements`, `details.limit`) |
+| `report_failed`          | 500  | falha ao gerar (o registro fica `FAILED`, sem arquivo)                                          |
+| `validation_failed`      | 400  | tipo ou formato desconhecido, nenhum ou mais de um jeito de dar o período                       |
+
+### Tipos
+
+| `type`                  | Conteúdo (por moeda)                                                                         |
+| ----------------------- | -------------------------------------------------------------------------------------------- |
+| `MONTHLY` (mês inteiro) | resumo, despesas por categoria (barras + tabela), fluxo diário, todos os lançamentos         |
+| `ANNUAL` (ano inteiro)  | resumo, fluxo mensal, resultado por mês, despesas e receitas por categoria, maiores despesas |
+| `INCOME`                | totais (concluído/pendente), receitas por categoria, lista de receitas                       |
+| `EXPENSES`              | totais, despesas por categoria, maiores despesas, lista de despesas                          |
+| `CATEGORIES`            | despesas e receitas por categoria, com participação                                          |
+| `INVESTMENTS`           | total investido, posições, investido por classe, aportes do período                          |
+| `ACCOUNTS`              | saldo, pendente, entradas e saídas de cada conta no período                                  |
+| `CASH_FLOW`             | resumo, entradas, saídas, investimentos, resultado e acumulado por dia (até 62 dias) ou mês  |
+| `CONSOLIDATED`          | tudo acima reunido                                                                           |
+
+### Formatos
+
+- **PDF** (`pdfkit`, Helvetica embutida, A4):
+  - cabeçalho com título, período, dono e data;
+  - indicadores, barras e tabelas com linhas alternadas e negativos em vermelho;
+  - quebra de página repetindo o cabeçalho da tabela;
+  - rodapé com a origem dos números e "Página X de Y".
+
+  As fontes embutidas cobrem o português e o espanhol (WinAnsi); caracteres fora disso (emoji, ideogramas) saem como "?".
+
+- **XLSX** (gerador próprio em `renderers/xlsx.ts` + `zip.ts`, sem dependência):
+  - aba "Resumo" com os indicadores e uma aba por tabela;
+  - valores e datas como **números** com formato (casas da moeda, `dd/mm/aaaa` ou `mm/dd/aaaa`, porcentagem);
+  - cabeçalho congelado e filtro.
+
+  **Todo texto vai como texto literal (`inlineStr`), nunca como fórmula**: uma descrição `=HYPERLINK(...)` não executa nada (sem injeção de fórmula). Unicode completo.
+
+### Armazenamento, expiração e limites
+
+- **Arquivo**: `REPORT_TEMP_DIRECTORY/<id do dono>/<id do relatório>.<ext>`, pasta `0700` e arquivo `0600`. O caminho é gerado pelo servidor e conferido contra a pasta raiz, e nunca é exposto.
+- **Expiração**: `REPORT_FILE_TTL_MINUTES` (padrão 30) contados a partir do arquivo pronto. Ao gerar, listar, baixar e iniciar o backend, os vencidos de todos os usuários têm o arquivo apagado e viram `EXPIRED`.
+- **Limites**: `MAX_REPORT_RANGE_MONTHS` (120), `MAX_REPORT_TRANSACTIONS` (5000) e `REPORT_RATE_LIMIT_MAX_REQUESTS` por janela. A geração é síncrona.
+
+### Interface
+
+- **Página `/reports`**:
+  - tipo e formato em rádios nativos estilizados como cartões (setas do teclado e leitores de tela funcionam);
+  - período: mês (mensal), ano (anual) ou atalhos "Este mês", "Mês passado", "Últimos 3 meses", "Este ano" e "Outro período";
+  - "Gerar relatório" mostra o link com prazo; erros explicados ("período com lançamentos demais", "muitos relatórios em pouco tempo");
+  - histórico com "Baixar" só para os disponíveis.
+- **Chat**: o turno do assistente traz `attachments` (`kind: 'report'`, `url`, `fileName`, `expiresAt`), e a bolha mostra um cartão "Baixar". O anexo não fica no histórico da conversa; os relatórios continuam na página.
 
 ## Testes
 

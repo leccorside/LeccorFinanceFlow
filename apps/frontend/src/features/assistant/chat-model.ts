@@ -5,6 +5,7 @@ import type {
   StoredMessage,
   ToolStatus,
   TurnAction,
+  TurnAttachment,
 } from '../../services/assistant';
 
 /** What the chat shows; history and live turns become the same shape. */
@@ -18,6 +19,7 @@ export type ChatItem =
       failed?: boolean;
       actions?: TurnAction[];
       candidates?: Record<string, unknown>[];
+      attachments?: TurnAttachment[];
     }
   | {
       kind: 'tool';
@@ -74,6 +76,7 @@ export function itemFromTurn(turn: AssistantTurn): ChatItem {
     failed: turn.state === 'error',
     actions: turn.actions,
     candidates: turn.candidates,
+    attachments: turn.attachments ?? [],
   };
 }
 

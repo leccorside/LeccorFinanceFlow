@@ -129,6 +129,8 @@ const envSchema = z
     ASSISTANT_RATE_LIMIT_MAX_REQUESTS: positiveInt(30, 1_000_000),
     /** Per client IP and window, on transcription and speech (each one calls a provider). */
     VOICE_RATE_LIMIT_MAX_REQUESTS: positiveInt(10, 1_000_000),
+    /** Per client IP and window, on report generation (CPU and disk heavy). */
+    REPORT_RATE_LIMIT_MAX_REQUESTS: positiveInt(10, 1_000_000),
     MAX_JSON_BODY_SIZE: z
       .string()
       .regex(/^\d+(b|kb|mb)$/i, 'must look like 512kb or 1mb')
@@ -157,6 +159,17 @@ const envSchema = z
     /** Uploaded audio limits (OpenAI accepts up to 25 MB). */
     MAX_AUDIO_SIZE_MB: positiveInt(10, 25),
     MAX_AUDIO_DURATION_SECONDS: positiveInt(120, 600),
+    /** Generated files live here until they expire (never served directly). */
+    REPORT_TEMP_DIRECTORY: z
+      .string()
+      .trim()
+      .min(1)
+      .default('/tmp/leccor-finance-flow/reports'),
+    REPORT_FILE_TTL_MINUTES: positiveInt(30, 1_440),
+    /** Longest period of one report. */
+    MAX_REPORT_RANGE_MONTHS: positiveInt(120, 240),
+    /** Above this many movements in the period, the report is refused (narrow the period). */
+    MAX_REPORT_TRANSACTIONS: positiveInt(5_000, 50_000),
   })
   .superRefine((env, ctx) => {
     // Client ID and secret decide whether Google login is enabled; both or neither.

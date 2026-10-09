@@ -21,6 +21,9 @@ import { getHealth } from '../services/health';
 import { useApplyTheme } from './theme';
 
 /** Charts (Recharts) load only when the dashboard is opened, not with the chat. */
+const ReportsPage = lazy(async () => ({
+  default: (await import('../features/reports/ReportsPage')).ReportsPage,
+}));
 const DashboardPage = lazy(async () => ({
   default: (await import('../features/dashboard/DashboardPage')).DashboardPage,
 }));
@@ -154,6 +157,7 @@ function Header() {
               {t('nav.assistant')}
             </NavLink>
             <NavLink to="/dashboard">{t('nav.dashboard')}</NavLink>
+            <NavLink to="/reports">{t('nav.reports')}</NavLink>
             <NavLink to="/profile">{t('nav.profile')}</NavLink>
             {me.data.roles.includes('ADMIN') && (
               <NavLink to="/admin/ai">{t('nav.admin')}</NavLink>
@@ -194,6 +198,16 @@ export function App() {
               <RequireAuth>
                 <Suspense fallback={<p role="status">{t('dashboard.loading')}</p>}>
                   <DashboardPage />
+                </Suspense>
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/reports"
+            element={
+              <RequireAuth>
+                <Suspense fallback={<p role="status">{t('app.loading')}</p>}>
+                  <ReportsPage />
                 </Suspense>
               </RequireAuth>
             }

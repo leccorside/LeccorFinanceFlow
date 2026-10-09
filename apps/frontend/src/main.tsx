@@ -8,6 +8,7 @@ import { I18nProvider } from './i18n/I18nProvider';
 import './styles/index.css';
 import './styles/assistant.css';
 import './styles/dashboard.css';
+import './styles/reports.css';
 
 const queryClient = new QueryClient();
 

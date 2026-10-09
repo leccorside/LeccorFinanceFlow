@@ -29,7 +29,18 @@ export interface AssistantTurn {
   confirmations: TurnConfirmation[];
   candidates: Record<string, unknown>[];
   suggestions: string[];
+  /** Files produced in the turn (reports), with their download link. */
+  attachments?: TurnAttachment[];
   error?: { code: string };
+}
+
+export interface TurnAttachment {
+  kind: 'report';
+  id: string;
+  fileName: string;
+  format: string;
+  url: string;
+  expiresAt: string;
 }
 
 export interface ConversationSummary {
