@@ -149,21 +149,23 @@ Grupos de configuração:
 
 Prefixo: `/api/v1`.
 
-| Grupo           | Exemplos de responsabilidade                                 |
-| --------------- | ------------------------------------------------------------ |
-| `/auth`         | login, callback, refresh, logout, sessão (`me`) e token CSRF |
-| `/profile`      | leitura e preferências do titular                            |
-| `/google`       | conectar, status, reconectar e desconectar                   |
-| `/spreadsheets` | criar, listar, selecionar, sincronizar e excluir             |
-| `/transactions` | consultas e operações autorizadas usadas pelas ferramentas   |
-| `/accounts`     | consulta e ferramentas de contas/cartões                     |
-| `/categories`   | categorias padrão e personalizadas                           |
-| `/investments`  | consulta e ferramentas de investimentos                      |
-| `/assistant`    | conversas, mensagens, confirmações e undo                    |
-| `/voice`        | transcrição, síntese e vozes disponíveis                     |
-| `/reports`      | geração e download autenticado                               |
-| `/dashboard`    | agregações por período                                       |
-| `/admin/*`      | usuários, provedores, modelos e configurações                |
+| Grupo                     | Exemplos de responsabilidade                                 |
+| ------------------------- | ------------------------------------------------------------ |
+| `/auth`                   | login, callback, refresh, logout, sessão (`me`) e token CSRF |
+| `/profile`                | leitura e preferências do titular                            |
+| `/google`                 | conectar, status, reconectar e desconectar                   |
+| `/spreadsheets`           | criar, listar, selecionar, sincronizar e excluir             |
+| `/transactions`           | consultas e operações autorizadas usadas pelas ferramentas   |
+| `/accounts`               | consulta e ferramentas de contas/cartões                     |
+| `/categories`             | categorias padrão e personalizadas                           |
+| `/investments`            | posições, aportes e resumo por classe (PASSO 10)             |
+| `/installments`           | compras parceladas e suas parcelas (PASSO 10)                |
+| `/recurring-transactions` | recorrências materializadas sob demanda (PASSO 10)           |
+| `/assistant`              | conversas, mensagens, confirmações e undo                    |
+| `/voice`                  | transcrição, síntese e vozes disponíveis                     |
+| `/reports`                | geração e download autenticado                               |
+| `/dashboard`              | agregações por período                                       |
+| `/admin/*`                | usuários, provedores, modelos e configurações                |
 
 Controladores não concentrarão regra de negócio. DTOs validam formato; serviços de domínio validam invariantes; guards/policies validam papel e propriedade.
 
@@ -506,6 +508,110 @@ Cada criação, edição e exclusão de conta, categoria ou movimentação grava
 Dados de sincronização e de propriedade ficam fora dos snapshots. Não é log técnico.
 
 Toda alteração marca o registro como `PENDING_SYNC` e incrementa `version`. A escrita na planilha é o PASSO 11. Novas movimentações são vinculadas à planilha ativa do usuário, se houver.
+
+## Parcelas, recorrências e investimentos (PASSO 10)
+
+Implementado em `apps/backend/src/finance` (`InstallmentsService`, `RecurringTransactionsService`, `RecurrenceMaterializer`, `InvestmentsService` e as regras puras em `schedule.ts`). Os três reutilizam as validações de `TransactionsService.prepare()`: posse, arquivadas, tipo da categoria, moeda da conta e casas decimais. Assim, nunca divergem de uma movimentação comum. Mesmas garantias das rotas do PASSO 09: sessão, CSRF, `404` para id de outro usuário e DTOs estritos.
+
+### Rotas de parcelas, recorrências e investimentos
+
+| Rota                                                                                             | Uso                                                                                                                                                 |
+| ------------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET/POST /api/v1/installments`, `GET/DELETE /api/v1/installments/:id`                           | Compras parceladas. A listagem traz o andamento: parcelas pagas, pendentes, valor restante e próximo vencimento. O detalhe traz também as parcelas. |
+| `GET/POST /api/v1/recurring-transactions`, `GET/PATCH/DELETE /api/v1/recurring-transactions/:id` | Recorrências. `?includeInactive=true` inclui as pausadas. A resposta traz `upcomingDates` (próximas 3 datas ainda não geradas) e `isFinished`.      |
+| `GET/POST /api/v1/investments`, `GET/PATCH/DELETE /api/v1/investments/:id`                       | Posições de investimento. `?assetClass=CRYPTO` filtra. O detalhe traz os aportes.                                                                   |
+| `POST /api/v1/investments/:id/contributions`                                                     | Aporte: cria uma movimentação `INVESTMENT` vinculada e, se `quantity` vier, soma as unidades à posição na mesma transação.                          |
+| `GET /api/v1/investments/summary`                                                                | Valor investido por moeda e por classe, com participação (%).                                                                                       |
+
+As movimentações agora trazem `installment` (`{ id, number, count }`), `recurrence` (`{ id, occurrenceOn }`) e `investment` (`{ id, name }`). Esses vínculos só são criados pelos serviços acima. Enviados em `POST/PATCH /transactions`, respondem `400`.
+
+### Parcelamentos
+
+"Comprei uma TV de R$ 3.600 em 12 vezes no cartão Nubank" cria:
+
+- uma compra (`Installment`);
+- 12 despesas `PENDING`, cada uma com o número da parcela.
+
+| Regra                                                                                                                                                                                                                           | Erro                           |
+| ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------ |
+| De 2 a 420 parcelas                                                                                                                                                                                                             | `400 validation_failed`        |
+| Divisão em centavos (unidade mínima da moeda): os centavos que sobram vão um a um para as primeiras parcelas (100,00 / 3 = 33,34 + 33,33 + 33,33). **A soma é sempre igual ao total**                                           | `installment_amount_too_small` |
+| Primeiro vencimento informado, ou o do cartão: compra antes do dia de fechamento entra na fatura do mês; no dia ou depois, na seguinte. A fatura vence no primeiro `dueDay` após o fechamento. Sem cartão, um mês após a compra | `first_due_before_purchase`    |
+| Vencimentos mensais ancorados no dia do primeiro: 31/01 → 28/02 → 31/03, sem deslizar depois de um mês curto                                                                                                                    | —                              |
+| A parcela "ocorre" no mês do vencimento (`occurredOn = dueOn`): pesa no orçamento do mês em que é paga                                                                                                                          | —                              |
+| Parcela não muda sozinha de valor, tipo, conta ou moeda, nem é excluída sozinha. Pagar, cancelar, mudar categoria, descrição ou observação é permitido                                                                          | `installment_parcel_locked`    |
+| Excluir a compra remove todas as parcelas (inclusive pagas), com snapshot completo no histórico                                                                                                                                 | —                              |
+
+### Recorrências
+
+"Pago R$ 2.500 de aluguel todo dia 5" vira uma recorrência `MONTHLY` com `dayOfMonth: 5`. Tipos aceitos: receita, despesa e investimento. Transferências recorrentes não existem, porque a recorrência não tem conta de destino.
+
+| Frequência                | Datas                                                                                              |
+| ------------------------- | -------------------------------------------------------------------------------------------------- |
+| `WEEKLY`                  | a cada 7 dias a partir do início                                                                   |
+| `BIWEEKLY` (quinzenal)    | a cada 14 dias a partir do início                                                                  |
+| `MONTHLY`                 | no `dayOfMonth` (ou no dia do início), limitado ao fim do mês: dia 30 cai em 28/02 e volta a 30/03 |
+| `YEARLY`                  | mesmo dia e mês; 29/02 cai em 28/02 nos anos comuns e volta a 29/02 nos bissextos                  |
+| `CUSTOM` + `intervalUnit` | a cada `intervalCount` dias, semanas, meses (aceita `dayOfMonth`) ou anos                          |
+
+Cada data é calculada a partir da âncora, nunca da data anterior, por isso não acumula desvio. Se o início vier depois do `dayOfMonth`, a primeira ocorrência cai no mês seguinte. `startOn` padrão: hoje, no fuso do perfil.
+
+**Materialização sob demanda, sem filas.** Antes de responder uma consulta, as ocorrências até a data consultada viram movimentações `PENDING` com vencimento na própria data. Isso vale para a busca de movimentações, o resumo, as séries e as contas a vencer ou vencidas. O limite é hoje + 366 dias, com no máximo 500 ocorrências por recorrência a cada chamada.
+
+**Idempotência:**
+
+- a linha da recorrência é bloqueada (`FOR UPDATE`) e relida dentro da transação;
+- datas que já existem são puladas;
+- o índice único (`recurring_transaction_id`, `recurrence_occurrence_on`) é a última barreira.
+
+Testado com cinco consultas simultâneas.
+
+**Edição** (`PATCH`: descrição, valor, conta, categoria, forma de pagamento, data final, pausa, `version`):
+
+- O calendário (frequência, intervalo, dia, início) é fixo. Para mudá-lo, crie outra recorrência.
+- Mudanças de valor valem para as próximas gerações. Também valem para as ocorrências **pendentes, de hoje em diante e que ninguém editou**, isto é, que ainda têm exatamente os valores da recorrência.
+- Ocorrências passadas, pagas ou editadas à mão ficam como estão.
+- Pausar ou encurtar a data final remove as ocorrências pendentes não editadas que ficaram fora.
+- Retomar volta a gerar a partir de hoje, sem recriar as ocorrências do período pausado.
+- **Exclusão** remove a recorrência e as ocorrências futuras não editadas. As demais continuam como movimentações comuns.
+- O histórico guarda as ocorrências afetadas.
+
+Erros:
+
+- `400 validation_failed`: `CUSTOM` sem `intervalUnit`, `intervalCount`/`dayOfMonth` fora do lugar, `TRANSFER`;
+- `end_before_start`;
+- `recurrence_without_occurrences`;
+- `409 version_conflict`.
+
+### Investimentos
+
+Classes aceitas:
+
+| Classe     | Significado    |
+| ---------- | -------------- |
+| `STOCK`    | ações          |
+| `REIT`     | FIIs           |
+| `ETF`      | ETFs           |
+| `CRYPTO`   | criptomoedas   |
+| `TREASURY` | Tesouro Direto |
+| `CDB`      | CDB            |
+| `LCI_LCA`  | LCI/LCA        |
+| `FUND`     | fundos         |
+| `PENSION`  | previdência    |
+| `OTHER`    | outros         |
+
+Uma posição tem nome, `symbol` (ticker em maiúsculas), conta onde está, moeda (fixa), quantidade (`Decimal(28,10)` como texto, ex.: `"0.00512345"`) e custo de abertura (`totalCost`, o que já existia antes dos aportes registrados aqui).
+
+"Investi R$ 1.000 em Bitcoin hoje" vira um aporte, ou seja, uma movimentação `INVESTMENT` vinculada à posição:
+
+- Por padrão é concluído hoje (fuso do perfil), na categoria padrão "Investimentos" e com descrição igual ao nome da posição.
+- Com `accountId`, o dinheiro sai daquela conta e o saldo dela cai.
+- `investido = custo de abertura + aportes concluídos`, sempre por soma no banco. Aportes pendentes aparecem à parte (`pendingContributions`).
+- Editar ou excluir um aporte em `/transactions` atualiza o investido automaticamente. O aporte continua sendo `INVESTMENT` e na moeda da posição (`investment_type_locked`, `currency_mismatch`).
+- A quantidade é declarada pelo usuário: o aporte soma `quantity`, e o `PATCH` ajusta.
+- Moeda: conta e aporte precisam estar na moeda da posição (`currency_mismatch`). Os resumos nunca somam moedas diferentes.
+- Posição com aportes não pode ser excluída (`409 investment_in_use`).
+- **Somente custo, sem cotação**: não há preço de mercado, rentabilidade nem projeção. Nenhuma resposta promete retorno.
 
 ## IA e tool calling
 

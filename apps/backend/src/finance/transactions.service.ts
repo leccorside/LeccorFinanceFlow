@@ -28,11 +28,13 @@ import {
   type UpdateTransactionInput,
 } from './finance.schemas.js';
 import { moneyString, parseMoney } from './money.js';
+import { RecurrenceMaterializer } from './recurrence-materializer.js';
 import { userSettings } from './user-settings.js';
 
 type User = Pick<AuthenticatedUser, 'id'>;
 
-const WITH_RELATIONS = {
+/** Relations every transaction response needs (also used by the query services). */
+export const TRANSACTION_INCLUDE = {
   account: { select: { id: true, name: true } },
   transferAccount: { select: { id: true, name: true } },
   category: {
@@ -43,9 +45,23 @@ const WITH_RELATIONS = {
       parent: { select: { id: true, name: true, systemKey: true } },
     },
   },
+  installment: { select: { id: true, installmentCount: true } },
+  investment: { select: { id: true, name: true } },
 } as const;
+const WITH_RELATIONS = TRANSACTION_INCLUDE;
 
-type TransactionRow = Prisma.TransactionGetPayload<{ include: typeof WITH_RELATIONS }>;
+export type TransactionRow = Prisma.TransactionGetPayload<{
+  include: typeof TRANSACTION_INCLUDE;
+}>;
+
+/** Fields an installment parcel cannot change alone (the parcels must keep adding up). */
+const PARCEL_LOCKED = [
+  'type',
+  'amount',
+  'currency',
+  'accountId',
+  'transferAccountId',
+] as const;
 
 export interface TransactionResponse {
   id: string;
@@ -70,6 +86,11 @@ export interface TransactionResponse {
   } | null;
   notes: string | null;
   tags: string[];
+  /** Parcel `number` of `count` of an installment purchase. */
+  installment: { id: string; number: number; count: number } | null;
+  /** Recurrence that generated it, and the occurrence date it stands for. */
+  recurrence: { id: string; occurrenceOn: string } | null;
+  investment: { id: string; name: string } | null;
   syncStatus: Transaction['syncStatus'];
   version: number;
   createdAt: string;
@@ -84,7 +105,7 @@ export interface SearchResult {
 }
 
 /** Fully resolved, validated values ready to be stored. */
-interface Resolved {
+export interface Resolved {
   type: TransactionType;
   status: TransactionStatus;
   description: string;
@@ -108,7 +129,29 @@ export class TransactionsService {
     @Inject(AccountsService) private readonly accounts: AccountsService,
     @Inject(CategoriesService) private readonly categories: CategoriesService,
     @Inject(ActionHistoryService) private readonly history: ActionHistoryService,
+    @Inject(RecurrenceMaterializer) private readonly recurrences: RecurrenceMaterializer,
   ) {}
+
+  /**
+   * Applies every transaction rule to a would-be new transaction without storing it. Used by
+   * installments, recurrences and investments so they never diverge from plain transactions.
+   */
+  prepare(
+    user: User,
+    input: CreateTransactionInput,
+    defaultCurrency: string,
+  ): Promise<Resolved> {
+    return this.resolve(user, null, input, defaultCurrency);
+  }
+
+  /** The user's active spreadsheet (new rows are linked to it for the sync, PASSO 11). */
+  async activeSpreadsheetId(user: User): Promise<string | null> {
+    const spreadsheet = await this.prisma.spreadsheet.findFirst({
+      where: { ...ownedBy(user), isActive: true, status: 'ACTIVE' },
+      select: { id: true },
+    });
+    return spreadsheet?.id ?? null;
+  }
 
   async get(user: User, id: string): Promise<TransactionResponse> {
     const settings = await userSettings(this.prisma, user.id);
@@ -127,17 +170,14 @@ export class TransactionsService {
   ): Promise<TransactionResponse> {
     const settings = await userSettings(this.prisma, user.id);
     const resolved = await this.resolve(user, null, input, settings.currency);
-    const spreadsheet = await this.prisma.spreadsheet.findFirst({
-      where: { ...ownedBy(user), isActive: true, status: 'ACTIVE' },
-      select: { id: true },
-    });
+    const spreadsheetId = await this.activeSpreadsheetId(user);
 
     const id = await this.prisma.$transaction(async (tx) => {
       const created = await tx.transaction.create({
         data: {
           ...resolved,
           ownerId: user.id,
-          spreadsheetId: spreadsheet?.id ?? null,
+          spreadsheetId,
           syncStatus: 'PENDING_SYNC',
         },
       });
@@ -174,7 +214,40 @@ export class TransactionsService {
     }
     const { version: _version, ...changes } = input;
     void _version;
+    if (current.installmentId) {
+      const locked = PARCEL_LOCKED.filter((field) => {
+        const value = changes[field];
+        if (value === undefined) return false;
+        if (field === 'amount') {
+          const parsed = parseMoney(value, current.currency);
+          return !parsed.ok || !parsed.value.equals(current.amount);
+        }
+        return (value ?? null) !== (current[field] ?? null);
+      });
+      if (locked.length > 0) {
+        throw ruleViolation(
+          'installment_parcel_locked',
+          'Parcelas não mudam de valor, tipo, conta ou moeda sozinhas: altere a compra parcelada inteira.',
+          { fields: locked },
+        );
+      }
+    }
     const resolved = await this.resolve(user, current, changes, settings.currency);
+    if (current.investmentId) {
+      if (resolved.type !== 'INVESTMENT') {
+        throw ruleViolation(
+          'investment_type_locked',
+          'Um aporte vinculado a um investimento continua sendo investimento.',
+        );
+      }
+      if (resolved.currency !== current.currency) {
+        throw ruleViolation(
+          'currency_mismatch',
+          'O aporte precisa continuar na moeda do investimento.',
+          { requested: resolved.currency, investment: current.currency },
+        );
+      }
+    }
 
     await this.prisma
       .$transaction(async (tx) => {
@@ -212,6 +285,12 @@ export class TransactionsService {
       where: { id, ...ownedBy(user) },
     });
     if (!current) throw new ResourceNotFoundException();
+    if (current.installmentId) {
+      throw ruleViolation(
+        'installment_parcel_locked',
+        'Uma parcela não pode ser excluída sozinha: exclua a compra parcelada inteira.',
+      );
+    }
     await this.prisma.$transaction(async (tx) => {
       await tx.transaction.delete({ where: { id } });
       // Full snapshot: enough to restore it (undo, PASSO 15).
@@ -229,6 +308,11 @@ export class TransactionsService {
   async search(user: User, filter: SearchTransactionsInput): Promise<SearchResult> {
     const settings = await userSettings(this.prisma, user.id);
     const today = todayIn(settings.timeZone);
+    await this.recurrences.materialize(
+      user,
+      filter.to ? (parseCalendarDate(filter.to) as Date) : today,
+      today,
+    );
     const where: Prisma.TransactionWhereInput = { ...ownedBy(user) };
     const and: Prisma.TransactionWhereInput[] = [];
 
@@ -549,6 +633,22 @@ export function toResponse(
       : null,
     notes: row.notes,
     tags: row.tags,
+    installment:
+      row.installment && row.installmentNumber !== null
+        ? {
+            id: row.installment.id,
+            number: row.installmentNumber,
+            count: row.installment.installmentCount,
+          }
+        : null,
+    recurrence:
+      row.recurringTransactionId && row.recurrenceOccurrenceOn
+        ? {
+            id: row.recurringTransactionId,
+            occurrenceOn: formatCalendarDate(row.recurrenceOccurrenceOn),
+          }
+        : null,
+    investment: row.investment,
     syncStatus: row.syncStatus,
     version: row.version,
     createdAt: row.createdAt.toISOString(),

@@ -20,12 +20,21 @@ import { CategoriesService } from './categories.service.js';
 import { FinanceQueriesService } from './finance-queries.service.js';
 import {
   byPeriodSchema,
+  type ContributionInput,
+  contributionSchema,
   type CreateAccountInput,
   createAccountSchema,
   type CreateCategoryInput,
   createCategorySchema,
+  type CreateInstallmentInput,
+  createInstallmentSchema,
+  type CreateInvestmentInput,
+  createInvestmentSchema,
+  type CreateRecurringInput,
+  createRecurringSchema,
   type CreateTransactionInput,
   createTransactionSchema,
+  INVESTMENT_CLASSES,
   listCategoriesSchema,
   periodSchema,
   type SearchTransactionsInput,
@@ -34,10 +43,17 @@ import {
   updateAccountSchema,
   type UpdateCategoryInput,
   updateCategorySchema,
+  type UpdateInvestmentInput,
+  updateInvestmentSchema,
+  type UpdateRecurringInput,
+  updateRecurringSchema,
   type UpdateTransactionInput,
   updateTransactionSchema,
   upcomingSchema,
 } from './finance.schemas.js';
+import { InstallmentsService } from './installments.service.js';
+import { InvestmentsService } from './investments.service.js';
+import { RecurringTransactionsService } from './recurring-transactions.service.js';
 import { TransactionsService } from './transactions.service.js';
 
 /**
@@ -212,6 +228,140 @@ export class FinanceController {
   @Get('overdue-bills')
   overdue(@CurrentUser() user: AuthenticatedUser) {
     return this.queries.overdueBills(user);
+  }
+}
+
+@Controller('installments')
+export class InstallmentsController {
+  constructor(
+    @Inject(InstallmentsService) private readonly installments: InstallmentsService,
+  ) {}
+
+  @Get()
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.installments.list(user);
+  }
+
+  @Get(':id')
+  get(@CurrentUser() user: AuthenticatedUser, @Param('id', uuidParam) id: string) {
+    return this.installments.get(user, id);
+  }
+
+  @Post()
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(validate(createInstallmentSchema)) body: CreateInstallmentInput,
+  ) {
+    return this.installments.create(user, body);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  delete(@CurrentUser() user: AuthenticatedUser, @Param('id', uuidParam) id: string) {
+    return this.installments.delete(user, id);
+  }
+}
+
+@Controller('recurring-transactions')
+export class RecurringTransactionsController {
+  constructor(
+    @Inject(RecurringTransactionsService)
+    private readonly recurring: RecurringTransactionsService,
+  ) {}
+
+  @Get()
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(validate(dto({ includeInactive: z.enum(['true', 'false']).optional() })))
+    query: { includeInactive?: 'true' | 'false' },
+  ) {
+    return this.recurring.list(user, query.includeInactive === 'true');
+  }
+
+  @Get(':id')
+  get(@CurrentUser() user: AuthenticatedUser, @Param('id', uuidParam) id: string) {
+    return this.recurring.get(user, id);
+  }
+
+  @Post()
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(validate(createRecurringSchema)) body: CreateRecurringInput,
+  ) {
+    return this.recurring.create(user, body);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParam) id: string,
+    @Body(validate(updateRecurringSchema)) body: UpdateRecurringInput,
+  ) {
+    return this.recurring.update(user, id, body);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  delete(@CurrentUser() user: AuthenticatedUser, @Param('id', uuidParam) id: string) {
+    return this.recurring.delete(user, id);
+  }
+}
+
+@Controller('investments')
+export class InvestmentsController {
+  constructor(
+    @Inject(InvestmentsService) private readonly investments: InvestmentsService,
+  ) {}
+
+  @Get()
+  list(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query(validate(dto({ assetClass: z.enum(INVESTMENT_CLASSES).optional() })))
+    query: { assetClass?: (typeof INVESTMENT_CLASSES)[number] },
+  ) {
+    return this.investments.list(user, query.assetClass);
+  }
+
+  @Get('summary')
+  summary(@CurrentUser() user: AuthenticatedUser) {
+    return this.investments.summary(user);
+  }
+
+  @Get(':id')
+  get(@CurrentUser() user: AuthenticatedUser, @Param('id', uuidParam) id: string) {
+    return this.investments.get(user, id);
+  }
+
+  @Post()
+  create(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(validate(createInvestmentSchema)) body: CreateInvestmentInput,
+  ) {
+    return this.investments.create(user, body);
+  }
+
+  @Patch(':id')
+  update(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParam) id: string,
+    @Body(validate(updateInvestmentSchema)) body: UpdateInvestmentInput,
+  ) {
+    return this.investments.update(user, id, body);
+  }
+
+  @Delete(':id')
+  @HttpCode(204)
+  delete(@CurrentUser() user: AuthenticatedUser, @Param('id', uuidParam) id: string) {
+    return this.investments.delete(user, id);
+  }
+
+  @Post(':id/contributions')
+  contribute(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParam) id: string,
+    @Body(validate(contributionSchema)) body: ContributionInput,
+  ) {
+    return this.investments.contribute(user, id, body);
   }
 }
 

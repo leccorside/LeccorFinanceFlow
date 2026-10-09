@@ -17,7 +17,12 @@ import {
 } from './dates.js';
 import { ruleViolation } from './finance.schemas.js';
 import { moneyString, ZERO } from './money.js';
-import { type TransactionResponse, toResponse } from './transactions.service.js';
+import { RecurrenceMaterializer } from './recurrence-materializer.js';
+import {
+  TRANSACTION_INCLUDE,
+  type TransactionResponse,
+  toResponse,
+} from './transactions.service.js';
 import { userSettings } from './user-settings.js';
 
 type User = Pick<AuthenticatedUser, 'id'>;
@@ -74,30 +79,24 @@ export interface BillsResponse {
   totals: { currency: string; amount: string; count: number }[];
 }
 
-const INCLUDE = {
-  account: { select: { id: true, name: true } },
-  transferAccount: { select: { id: true, name: true } },
-  category: {
-    select: {
-      id: true,
-      name: true,
-      systemKey: true,
-      parent: { select: { id: true, name: true, systemKey: true } },
-    },
-  },
-} as const;
+const INCLUDE = TRANSACTION_INCLUDE;
 
 /**
  * Deterministic aggregations over the user's own transactions. CANCELED items and
  * transfers (money moving between the user's own accounts) never count as income/expense.
+ * Recurrences are materialized up to the end of the queried period first (on demand).
  */
 @Injectable()
 export class FinanceQueriesService {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(RecurrenceMaterializer) private readonly recurrences: RecurrenceMaterializer,
+  ) {}
 
   async summary(user: User, fromText: string, toText: string): Promise<FinancialSummary> {
     const { from, to } = period(fromText, toText);
     const settings = await userSettings(this.prisma, user.id);
+    await this.recurrences.materialize(user, to, todayIn(settings.timeZone));
     const base = {
       ...ownedBy(user),
       occurredOn: { gte: from, lte: to },
@@ -210,6 +209,8 @@ export class FinanceQueriesService {
     groupBy: 'day' | 'month' = 'month',
   ): Promise<PeriodSeries> {
     const { from, to } = period(fromText, toText);
+    const settings = await userSettings(this.prisma, user.id);
+    await this.recurrences.materialize(user, to, todayIn(settings.timeZone));
     const groups = await this.prisma.transaction.groupBy({
       by: ['occurredOn', 'currency'],
       where: {
@@ -263,6 +264,7 @@ export class FinanceQueriesService {
   async upcomingBills(user: User, days = 7): Promise<BillsResponse> {
     const settings = await userSettings(this.prisma, user.id);
     const today = todayIn(settings.timeZone);
+    await this.recurrences.materialize(user, addDays(today, days - 1), today);
     return this.bills(
       user,
       { gte: today, lte: addDays(today, days - 1) },
@@ -275,6 +277,7 @@ export class FinanceQueriesService {
   async overdueBills(user: User): Promise<BillsResponse> {
     const settings = await userSettings(this.prisma, user.id);
     const today = todayIn(settings.timeZone);
+    await this.recurrences.materialize(user, today, today);
     return this.bills(user, { lt: today }, today, settings.locale);
   }
 

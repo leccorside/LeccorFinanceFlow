@@ -272,7 +272,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: implementa o domínio financeiro principal`
 
-## [ ] PASSO 10 — Parcelas, recorrências e investimentos
+## [x] PASSO 10 — Parcelas, recorrências e investimentos
 
 **Objetivo:** cobrir regras financeiras avançadas sem filas.
 
@@ -284,7 +284,43 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** 12x, resíduos de centavos, fim de mês, quinzenal/anual, duplicidade e ownership.
 
-**Sugestão de commit:** `feat: add installments recurrences and investments`
+**Evidência (09/10/2026):**
+
+- **Backend**: em `src/finance`, os serviços `InstallmentsService`, `RecurringTransactionsService`, `RecurrenceMaterializer` e `InvestmentsService`, as regras puras em `schedule.ts` e as rotas `/installments`, `/recurring-transactions` e `/investments` (com `/contributions` e `/summary`).
+  - As validações vêm de `TransactionsService.prepare()`.
+  - Sem migration nova: o schema do PASSO 03 já tinha as tabelas, as CHECKs e os índices únicos de parcela e ocorrência.
+- **Unitários**: 210 no total, 15 deste passo:
+  - 12x de 3.600 = 300,00; resíduo de centavos nas primeiras parcelas;
+  - soma exata em 36 combinações de total × parcelas; JPY sem centavos; parcela zero recusada;
+  - fim de mês sem deslize; fatura do cartão em volta do fechamento e da virada de ano;
+  - mensal no dia 31 e no dia 30; semanal, quinzenal e personalizada (10 dias, 3 meses no dia 31, 2 anos);
+  - anual em 29/02; data final e limite;
+  - salto para janelas tardias igual a percorrer desde o início, em 7 regras.
+- **Integração**: 179 no total, 17 deste passo, com Postgres real:
+  - TV 12x no cartão, com fatura antes e no dia do fechamento;
+  - resíduos e vencimentos de fim de mês;
+  - validações; parcela travada (valor, exclusão) mas pagável; andamento da compra;
+  - exclusão com snapshot completo; atomicidade da compra com 12 parcelas;
+  - formato do calendário; aluguel todo dia 5 com **5 consultas simultâneas** sem duplicar; índice único como última barreira;
+  - quinzenal, anual 29/02 e trimestral no dia 31;
+  - horizonte de materialização (contas a vencer e limite de 366 dias);
+  - edição propagando só para pendentes não editadas de hoje em diante, `version`, pausa e retomada sem duplicar, exclusão mantendo as editadas;
+  - data final encurtada;
+  - aporte em Bitcoin com saldo da conta e histórico; 10 classes e resumo por classe e moeda; aportes pendentes à parte;
+  - moeda, quantidade inválida, categoria, tipo travado, investido derivado e exclusão bloqueada;
+  - IDOR em 14 caminhos e mass assignment em 9 campos.
+- **Mutações detectadas**:
+  - materializador sem `ownedBy` (a consulta de outro usuário materializava a recorrência);
+  - critério de "não editada" sem o valor (a ocorrência editada à mão era sobrescrita).
+- **Docker**, via proxy do Vite com sessão sintética removida no fim:
+  - TV 12x de 300,00 no cartão com primeiro vencimento em 10/11 (compra depois do fechamento);
+  - parcela travada;
+  - aluguel todo dia 5 materializado sob demanda (2 ocorrências);
+  - aporte de 1.000 em Bitcoin com saldo da corrente em 4.000,00 e resumo por classe;
+  - histórico.
+- **Suítes nos containers**: 210 + 179. `pnpm quality` completo.
+
+**Sugestão de commit:** `feat: adiciona parcelamentos, recorrências e investimentos`
 
 ## [ ] PASSO 11 — Sincronização bidirecional e conflitos
 

@@ -196,14 +196,15 @@ export class CategoriesService {
   /** Only unused own categories can be deleted; otherwise archive them. */
   async delete(user: User, id: string): Promise<void> {
     const current = await this.findEditable(user, id);
-    const [children, transactions, plans] = await Promise.all([
+    const [children, transactions, recurrences, installments] = await Promise.all([
       this.prisma.category.count({ where: { parentId: id } }),
       this.prisma.transaction.count({ where: { ...ownedBy(user), categoryId: id } }),
       this.prisma.recurringTransaction.count({
         where: { ...ownedBy(user), categoryId: id },
       }),
+      this.prisma.installment.count({ where: { ...ownedBy(user), categoryId: id } }),
     ]);
-    if (children + transactions + plans > 0) {
+    if (children + transactions + recurrences + installments > 0) {
       throw new ApiException(
         HttpStatus.CONFLICT,
         'category_in_use',

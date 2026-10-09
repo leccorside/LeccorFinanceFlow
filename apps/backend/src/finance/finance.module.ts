@@ -8,9 +8,28 @@ import {
   ActionHistoryController,
   CategoriesController,
   FinanceController,
+  InstallmentsController,
+  InvestmentsController,
+  RecurringTransactionsController,
   TransactionsController,
 } from './finance.controllers.js';
+import { InstallmentsService } from './installments.service.js';
+import { InvestmentsService } from './investments.service.js';
+import { RecurrenceMaterializer } from './recurrence-materializer.js';
+import { RecurringTransactionsService } from './recurring-transactions.service.js';
 import { TransactionsService } from './transactions.service.js';
+
+const SERVICES = [
+  AccountsService,
+  CategoriesService,
+  TransactionsService,
+  FinanceQueriesService,
+  ActionHistoryService,
+  RecurrenceMaterializer,
+  InstallmentsService,
+  RecurringTransactionsService,
+  InvestmentsService,
+];
 
 @Module({
   controllers: [
@@ -18,21 +37,12 @@ import { TransactionsService } from './transactions.service.js';
     CategoriesController,
     TransactionsController,
     FinanceController,
+    InstallmentsController,
+    RecurringTransactionsController,
+    InvestmentsController,
     ActionHistoryController,
   ],
-  providers: [
-    AccountsService,
-    CategoriesService,
-    TransactionsService,
-    FinanceQueriesService,
-    ActionHistoryService,
-  ],
-  exports: [
-    AccountsService,
-    CategoriesService,
-    TransactionsService,
-    FinanceQueriesService,
-    ActionHistoryService,
-  ],
+  providers: SERVICES,
+  exports: SERVICES,
 })
 export class FinanceModule {}

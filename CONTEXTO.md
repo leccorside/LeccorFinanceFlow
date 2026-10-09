@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 09 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 10 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,62 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Parcelas, recorrências e investimentos implementados no PASSO 10 (`src/finance`):
+
+- `schedule.ts` (regras puras, sem I/O):
+  - `splitAmount`: divisão em unidades mínimas da moeda, resíduo nas primeiras parcelas;
+  - `parcelDueDate`/`addMonthsAnchored`: vencimentos ancorados no dia, limitados ao fim do mês;
+  - `cardFirstDueDate`: fatura pelo dia de fechamento e de vencimento;
+  - `occurrencesBetween`/`nextOccurrence`: cada data calculada a partir da âncora, com salto direto para janelas tardias.
+- `TransactionsService.prepare()` expõe as regras de `resolve()` para os novos serviços. `activeSpreadsheetId()` é compartilhado. `TRANSACTION_INCLUDE` é usado também pelas consultas. A resposta traz `installment`, `recurrence` e `investment`. Parcela não muda valor, tipo, conta ou moeda sozinha nem é excluída sozinha (`installment_parcel_locked`). Aporte continua `INVESTMENT` e na moeda da posição.
+- `InstallmentsService`:
+  - compra mais todas as parcelas `PENDING` numa transação (`createManyAndReturn`);
+  - um registro de histórico com `parcels`;
+  - andamento por `groupBy`;
+  - a exclusão remove tudo.
+- `RecurrenceMaterializer.materialize(user, upTo, today)`:
+  - chamado pela busca de movimentações, pelo resumo, pelas séries e pelas contas a vencer/vencidas;
+  - limite de hoje + 366 dias e 500 ocorrências por recorrência a cada chamada;
+  - `lockRecurrence` (`FOR UPDATE`) mais releitura, datas existentes puladas e `skipDuplicates`;
+  - `untouchedOccurrences(row, from)` define "ocorrência não editada": pendente, de `from` em diante, com exatamente os valores da recorrência.
+- `RecurringTransactionsService`: CRUD. O `PATCH` propaga para as não editadas de hoje em diante, remove as que saíram (pausa, data final) e retoma sem recriar o período pausado. O `DELETE` remove as futuras não editadas.
+- `InvestmentsService`:
+  - posições: `totalCost` = custo de abertura;
+  - aportes: `POST /investments/:id/contributions`, uma movimentação `INVESTMENT` vinculada; a `quantity` é somada na mesma transação;
+  - `invested` = abertura + aportes concluídos, sempre derivado;
+  - `summary` por moeda e classe.
+- `CategoriesService.delete` também conta compras parceladas.
+- Testes: `schedule.spec.ts` (15) e `test/integration/plans.int-spec.ts` (17).
+
+## Decisões do PASSO 10
+
+- **Sem migration**: tabelas, CHECKs e índices únicos (`installment_id + installment_number`, `recurring_transaction_id + recurrence_occurrence_on`) já existiam desde o PASSO 03.
+- **Uma só fonte de regras**: parcelamento, recorrência e aporte passam por `TransactionsService.prepare()`. Posse, arquivadas, tipo de categoria, moeda e casas decimais nunca divergem.
+- **Parcelas**:
+  - de 2 a 420; parcelamento é sempre despesa (o model não tem tipo);
+  - centavos que sobram vão um a um para as primeiras parcelas;
+  - a parcela ocorre no mês do vencimento (`occurredOn = dueOn`, visão de orçamento);
+  - todas nascem `PENDING`; o usuário paga uma a uma;
+  - a descrição não leva "(1/12)": número e total vêm em `installment`, e a planilha tem colunas próprias;
+  - sem `PATCH` da compra: para mudar valor ou quantidade, excluir e recriar. Editar categoria, descrição ou status de cada parcela continua possível.
+- **Fatura do cartão**:
+  - compra antes do dia de fechamento entra na fatura do mês; no dia ou depois, na seguinte ("melhor dia de compra" = dia do fechamento);
+  - vence no primeiro `dueDay` após o fechamento;
+  - sem cartão configurado, a primeira parcela vence um mês após a compra.
+- **Recorrências**:
+  - quinzenal = a cada 14 dias (não "dia 15 e 30");
+  - `TRANSFER` não é aceito (não há conta de destino no model);
+  - o calendário é imutável;
+  - ocorrências nascem `PENDING` com vencimento na data, inclusive as passadas quando `startOn` está no passado;
+  - a materialização não grava `ActionHistory` (dado derivado; o histórico fica com a criação e a edição da recorrência).
+- **Materialização dentro de GET**: é escrita derivada e idempotente, por isso não exige CSRF. Escolhida em vez de fila ou cron (proibidos pelo plano).
+- **"Não editada" por igualdade de valores**, não por `version`: assim a propagação continua funcionando em edições sucessivas da recorrência.
+- **Investimentos**:
+  - só custo, sem cotação, rentabilidade ou promessa de retorno;
+  - quantidade declarada pelo usuário: excluir um aporte não desfaz a quantidade;
+  - resgates e vendas ficaram fora (não há tipo de movimentação para isso no schema);
+  - categoria padrão do aporte: "Investimentos" (`systemKey: investments`).
 
 Domínio financeiro implementado no PASSO 09 (`src/finance`):
 
@@ -214,6 +270,11 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 10: nenhum bug de domínio apareceu: unitários e integração passaram de primeira, e as duas mutações injetadas foram detectadas.
+  - Problemas de ferramenta:
+    - o Prettier quebrou `request(...)[method](...)` em duas linhas, o que o ESLint acusa como `no-unexpected-multiline`. Corrigido guardando `request(...)` numa variável;
+    - o script de teste manual usou o banco `leccor` em vez de `leccor_finance_flow` (o nome está em `POSTGRES_DB`).
+  - O teste manual fica em `scratchpad/smoke-plans.sh` da sessão; para refazer, recriar o script a partir da evidência.
 - PASSO 09: **bug real** pego pela integração: criar um cartão validava, mas não gravava, dia de fechamento, dia de vencimento e últimos dígitos (o helper de validação devolvia um objeto vazio usado no spread). Corrigido: validação separada e campos gravados explicitamente.
 - PASSO 09: no host, a suíte do frontend voltou a estourar o tempo de inicialização dos workers na primeira rodada da `quality` (disco USB a frio); a segunda rodada passou e a suíte passa no container.
 - PASSO 08: limpar o id do arquivo apagado no Drive violava a CHECK "planilha `ACTIVE` exige arquivo" (pego pelo teste de integração). Corrigido: a linha volta a `PENDING_CREATION` até ser recriada.
@@ -258,17 +319,31 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 09 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 10 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 10`
+`INICIE O PASSO 11`
 
-Quando autorizado, executar apenas o PASSO 10 de `PASSOS.md`: parcelamentos, recorrências e investimentos. Reutilizar `TransactionsService` (regras únicas em `resolve()`), `parseMoney`/`currencyDigits` para dividir parcelas sem perder centavos, `ActionHistoryService.record` dentro da mesma transação e `todayIn` para materializar recorrências no fuso do usuário. A sincronização com a planilha continua no PASSO 11.
+Quando autorizado, executar apenas o PASSO 11 de `PASSOS.md`: sincronização bidirecional e conflitos.
 
-Pendências ligadas ao PASSO 09:
+- Envio: todas as entidades com `sync_status = PENDING_SYNC` (movimentações, contas, investimentos; parcelas e ocorrências são movimentações comuns, com colunas de parcela e recorrência).
+- Leitura: mapear pelas colunas técnicas do PASSO 08.
+- Usar `version` e `CONFLICT`.
 
-- PASSO 10: liberar `installmentId`/`recurringTransactionId`/`investmentId` só pelos serviços próprios (os DTOs atuais recusam esses campos).
-- PASSO 15: undo a partir dos snapshots do `ActionHistory` (criação → excluir; edição → aplicar `before`; exclusão → recriar com o mesmo id).
-- PASSO 18: dashboard consumindo `/finance/*` e `/accounts`.
+Pendências ligadas aos PASSOS 09 e 10:
+
+- PASSO 15: undo a partir dos snapshots do `ActionHistory`:
+  - criação → excluir; edição → aplicar `before`; exclusão → recriar com o mesmo id;
+  - `INSTALLMENT` traz `parcels`;
+  - `RECURRING_TRANSACTION` traz `occurrences`, `updatedOccurrences` e `deletedOccurrences`;
+  - o aporte grava `TRANSACTION:CREATE` + `INVESTMENT:UPDATE` (agrupar por proximidade ou por `conversationId` ao desfazer).
+- PASSO 13: as tools do assistente devem chamar os serviços passando `context.conversationId`:
+  - `InstallmentsService.create`, `RecurringTransactionsService.create/update/delete`, `InvestmentsService.create/contribute`.
+- PASSO 18: dashboard consumindo `/finance/*`, `/accounts`, `/installments` e `/investments/summary`.
+- Futuro (fora do plano atual):
+  - resgate/venda de investimento;
+  - edição da compra parcelada (valor e quantidade);
+  - antecipação ou quitação de parcelas;
+  - recorrência de transferência (exige coluna de conta de destino).
 
 Pendências ligadas ao PASSO 08:
 
@@ -307,7 +382,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`) e 08 (`a84d5fc`) commitados; o PASSO 09 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`) e 09 (`59218a0`) commitados; o PASSO 10 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -389,4 +464,21 @@ Pendências conhecidas para passos futuros:
 - Frontend sem mudanças: 63 testes passam no container e na segunda rodada da `quality` no host.
 - Mutações detectadas: leitura de movimentação sem `ownedBy` (IDOR) e canceladas somadas no resumo.
 - Docker, com sessão sintética removida ao final: conta com saldo inicial 1000, despesa de 87,45 em Alimentação (`COMPLETED`, paga no dia), saldo `912.55`, resumo de outubro com 100% em Alimentação, `422 currency_mismatch` ao informar USD numa conta BRL, histórico `TRANSACTION:CREATE, FINANCIAL_ACCOUNT:CREATE`.
+- `pnpm quality` passou por completo.
+
+## Evidências do PASSO 10
+
+- Backend no host e no container: 210 testes unitários (15 de calendário e parcelas) e 179 de integração (17 de parcelas, recorrências e investimentos). Nenhum banco de teste restante.
+- Frontend sem mudanças: 63 testes passam na `quality`.
+- Concorrência: 5 consultas simultâneas materializaram o aluguel uma única vez. O índice único recusa uma ocorrência duplicada inserida direto no banco (`P2002`).
+- Mutações detectadas:
+  - materializador sem `ownedBy`;
+  - critério de "não editada" sem o valor.
+- Docker, com sessão sintética removida no fim:
+  - TV 12x de `300.00` no cartão (fechamento 3, vencimento 10) com primeira parcela em 10/11/2026;
+  - `installment_parcel_locked`;
+  - aluguel todo dia 5 materializado sob demanda (2 ocorrências);
+  - aporte de 1.000 em Bitcoin (`BTC`, `0.00512345`) com corrente em `4000.00`;
+  - resumo por classe;
+  - histórico com `INSTALLMENT`, `RECURRING_TRANSACTION` e `INVESTMENT`.
 - `pnpm quality` passou por completo.

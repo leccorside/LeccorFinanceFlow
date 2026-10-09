@@ -4,7 +4,7 @@ Assistente financeiro pessoal com IA, Google Sheets e experiência conversaciona
 
 ## Estado atual
 
-Arquitetura e planejamento estão concluídos. PASSOS 01 a 09 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade, ambiente oficial em Docker Compose, modelo relacional completo com Prisma, login com Google (OAuth com PKCE/state/nonce) com sessão própria em cookies HttpOnly, e proteção da API (autenticação default-deny, RBAC ADMIN/USER, ownership sem IDOR, DTOs estritos, CSRF, CORS, headers de segurança, rate limit e contrato único de erros), perfil com preferências e interface em português, inglês e espanhol (idioma, moeda e fuso aplicados à apresentação), e conexão com o Google Drive/Sheets separada do login, com escopo mínimo (`drive.file`) e tokens guardados num cofre AES-256-GCM com chaves versionadas, e criação idempotente da planilha financeira no Drive do usuário (10 abas, formatos, listas, filtros, cores, fórmulas, gráfico e colunas técnicas ocultas), e domínio financeiro com contas, cartões, categorias, movimentações, consultas por período e histórico funcional (valores `Decimal`, regras determinísticas, somas por moeda, "hoje" no fuso do usuário). Parcelas, recorrências, investimentos e a sincronização com a planilha ainda não foram iniciados.
+Arquitetura e planejamento estão concluídos. PASSOS 01 a 10 concluídos: monorepo com frontend React/Vite, backend NestJS, contratos compartilhados, TypeScript estrito, pipeline de qualidade, ambiente oficial em Docker Compose, modelo relacional completo com Prisma, login com Google (OAuth com PKCE/state/nonce) com sessão própria em cookies HttpOnly, e proteção da API (autenticação default-deny, RBAC ADMIN/USER, ownership sem IDOR, DTOs estritos, CSRF, CORS, headers de segurança, rate limit e contrato único de erros), perfil com preferências e interface em português, inglês e espanhol (idioma, moeda e fuso aplicados à apresentação), e conexão com o Google Drive/Sheets separada do login, com escopo mínimo (`drive.file`) e tokens guardados num cofre AES-256-GCM com chaves versionadas, e criação idempotente da planilha financeira no Drive do usuário (10 abas, formatos, listas, filtros, cores, fórmulas, gráfico e colunas técnicas ocultas), e domínio financeiro com contas, cartões, categorias, movimentações, consultas por período e histórico funcional (valores `Decimal`, regras determinísticas, somas por moeda, "hoje" no fuso do usuário), e compras parceladas (soma exata das parcelas, fatura do cartão), recorrências semanais, quinzenais, mensais, anuais e personalizadas materializadas sob demanda e de forma idempotente, e investimentos por classe com aportes. A sincronização com a planilha ainda não foi iniciada.
 
 O primeiro administrador é definido por `ADMIN_EMAILS` no `.env`.
 
@@ -59,6 +59,6 @@ pnpm quality
 
 Para autorizar o próximo passo, use:
 
-`INICIE O PASSO 10`
+`INICIE O PASSO 11`
 
-Até essa autorização, parcelamentos, recorrências e investimentos não devem ser iniciados.
+Até essa autorização, a sincronização bidirecional com o Google Sheets não deve ser iniciada.
