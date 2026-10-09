@@ -478,6 +478,9 @@ describe('AssistantPage', () => {
     sendWithEnter('apaga o mercado');
     await spoken('Encontrei dois. Qual deles?');
     const choice = await screen.findByRole('button', { name: /Mercado\s*R\$\s75,00/ });
+    // The choice renders while the send is still settling (disabled); a click then is
+    // ignored. Seen intermittently under load in the container.
+    await waitFor(() => expect(choice).toBeEnabled());
 
     fireEvent.click(choice);
 

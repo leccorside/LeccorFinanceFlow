@@ -34,14 +34,28 @@ function isPublic(reflector: Reflector, context: ExecutionContext): boolean {
   );
 }
 
+/** One bucket hit; throws 429 with Retry-After when the bucket is empty. */
+function spend(
+  limiter: RateLimiter,
+  response: HttpResponse,
+  bucket: { key: string; limit: number; windowMs: number },
+): void {
+  const result = limiter.hit(bucket.key, bucket.limit, bucket.windowMs);
+  if (!result.allowed) {
+    response.setHeader('Retry-After', result.retryAfterSeconds);
+    throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, 'rate_limited', undefined, {
+      retryAfterSeconds: result.retryAfterSeconds,
+    });
+  }
+}
+
 /**
- * Global per-IP budget for every route, plus an optional route bucket from @RateLimit.
- * Runs first so floods are cut before any database work.
+ * Global per-IP budget for every route. Runs first, before authentication, so floods are
+ * cut before any database work.
  */
 @Injectable()
 export class RateLimitGuard implements CanActivate {
   constructor(
-    @Inject(Reflector) private readonly reflector: Reflector,
     @Inject(RateLimiter) private readonly limiter: RateLimiter,
     @Inject(APP_ENV) private readonly env: AppEnv,
   ) {}
@@ -49,18 +63,41 @@ export class RateLimitGuard implements CanActivate {
   canActivate(context: ExecutionContext): boolean {
     const request = context.switchToHttp().getRequest<SecuredRequest>();
     const response = context.switchToHttp().getResponse<HttpResponse>();
-    const client = request.ip ?? 'unknown';
-    const windowMs = this.env.RATE_LIMIT_TTL_SECONDS * 1000;
+    spend(this.limiter, response, {
+      key: `global:${request.ip ?? 'unknown'}`,
+      limit: this.env.RATE_LIMIT_MAX_REQUESTS,
+      windowMs: this.env.RATE_LIMIT_TTL_SECONDS * 1000,
+    });
+    return true;
+  }
+}
 
-    const buckets: { key: string; limit: number; windowMs: number }[] = [
-      { key: `global:${client}`, limit: this.env.RATE_LIMIT_MAX_REQUESTS, windowMs },
-    ];
+/**
+ * Route budgets from @RateLimit, counted per signed-in user (after authentication) and per IP
+ * for public routes. Per user, people behind the same proxy or NAT do not share a budget,
+ * and one account cannot multiply its budget by changing IP.
+ */
+@Injectable()
+export class RouteRateLimitGuard implements CanActivate {
+  constructor(
+    @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(RateLimiter) private readonly limiter: RateLimiter,
+    @Inject(APP_ENV) private readonly env: AppEnv,
+  ) {}
 
+  canActivate(context: ExecutionContext): boolean {
     const policy = this.reflector.getAllAndOverride<RateLimitPolicy | undefined>(
       RATE_LIMIT,
       [context.getHandler(), context.getClass()],
     );
-    if (policy && 'policy' in policy) {
+    if (!policy) return true;
+    const request = context.switchToHttp().getRequest<SecuredRequest>();
+    const response = context.switchToHttp().getResponse<HttpResponse>();
+    const who = request.auth
+      ? `user:${request.auth.id}`
+      : `ip:${request.ip ?? 'unknown'}`;
+    const windowMs = this.env.RATE_LIMIT_TTL_SECONDS * 1000;
+    if ('policy' in policy) {
       const limits = {
         auth: this.env.AUTH_RATE_LIMIT_MAX_REQUESTS,
         spreadsheets: this.env.SPREADSHEET_RATE_LIMIT_MAX_REQUESTS,
@@ -68,27 +105,17 @@ export class RateLimitGuard implements CanActivate {
         voice: this.env.VOICE_RATE_LIMIT_MAX_REQUESTS,
         reports: this.env.REPORT_RATE_LIMIT_MAX_REQUESTS,
       } as const;
-      buckets.push({
-        key: `${policy.policy}:${client}`,
+      spend(this.limiter, response, {
+        key: `${policy.policy}:${who}`,
         limit: limits[policy.policy],
         windowMs,
       });
-    } else if (policy) {
-      buckets.push({
-        key: `${policy.name}:${client}`,
+    } else {
+      spend(this.limiter, response, {
+        key: `${policy.name}:${who}`,
         limit: policy.limit,
         windowMs: policy.windowMs,
       });
-    }
-
-    for (const bucket of buckets) {
-      const result = this.limiter.hit(bucket.key, bucket.limit, bucket.windowMs);
-      if (!result.allowed) {
-        response.setHeader('Retry-After', result.retryAfterSeconds);
-        throw new ApiException(HttpStatus.TOO_MANY_REQUESTS, 'rate_limited', undefined, {
-          retryAfterSeconds: result.retryAfterSeconds,
-        });
-      }
     }
     return true;
   }

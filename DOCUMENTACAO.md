@@ -1028,6 +1028,7 @@ Os formatos seguem a documentação das APIs e não foram exercitados contra os 
 | `GET /admin/users?q&status&role&page&pageSize` | Busca por e-mail ou nome; filtros; até 100 por página. Cada item traz `isSelf` e `adminFromEnvironment`.                                               |
 | `PATCH /admin/users/:id/status`                | `{ status: ACTIVE \| BLOCKED }`. Bloquear revoga **todas** as sessões na hora.                                                                         |
 | `PATCH /admin/users/:id/admin`                 | `{ admin: true \| false }`. Vale na próxima requisição do usuário (os papéis são lidos a cada requisição).                                             |
+| `GET /admin/audit`                             | Últimas 50 ações administrativas (quem, o quê, em quem, quando). PASSO 21.                                                                             |
 | `GET/PATCH /admin/settings`                    | Configurações globais (abaixo).                                                                                                                        |
 
 ### Regras de usuários e papéis
@@ -1040,7 +1041,7 @@ Os formatos seguem a documentação das APIs e não foram exercitados contra os 
 | Conta bloqueada não vira admin                                                                                         | `422 user_blocked`           |
 | Quem perdeu o papel no meio da operação                                                                                | `403 forbidden`              |
 
-As mudanças correm numa transação que trava todas as atribuições de ADMIN (`SELECT … FOR UPDATE`) e reconfere que quem age ainda é admin ativo. Dois admins rebaixando um ao outro ao mesmo tempo: um vence e o outro recebe 403, então nunca ficam os dois sem papel. Cada ação gera um log `AdminAudit` (ids, sem dados pessoais).
+As mudanças correm numa transação que trava todas as atribuições de ADMIN (`SELECT … FOR UPDATE`) e reconfere que quem age ainda é admin ativo. Dois admins rebaixando um ao outro ao mesmo tempo: um vence e o outro recebe 403, então nunca ficam os dois sem papel. Cada ação fica na trilha `admin_audit_events` (PASSO 21), gravada na mesma transação.
 
 ### Configurações globais
 
@@ -1083,13 +1084,13 @@ O teste de integração procura as chaves configuradas em todas as respostas do 
 Implementada em `apps/backend/src/common` e aplicada a toda requisição, nesta ordem:
 
 1. **Middlewares HTTP** (`configureApp`, usado por `main.ts` e pelos testes): `X-Request-Id` gerado pelo servidor (ids enviados pelo cliente são ignorados), headers de segurança (`nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: no-referrer`, CSP `default-src 'none'`, COOP/CORP, `Permissions-Policy`, `Cache-Control: no-store`, HSTS quando `COOKIE_SECURE`), sem `X-Powered-By`, limite de corpo `MAX_JSON_BODY_SIZE` (acima disso, `413`) e CORS restrito a `FRONTEND_URL` + `CORS_ALLOWED_ORIGINS`, com credenciais e apenas os headers `Content-Type` e `X-CSRF-Token`.
-2. **Rate limit** (`RateLimitGuard`): orçamento global por IP (`RATE_LIMIT_MAX_REQUESTS` por `RATE_LIMIT_TTL_SECONDS`) em todas as rotas, mais um orçamento próprio das rotas `/auth` (`AUTH_RATE_LIMIT_MAX_REQUESTS`) e buckets por rota com `@RateLimit({ name, limit, windowMs })`. Excedido: `429 rate_limited` com `Retry-After`. Contadores em memória do processo (uma instância; zeram ao reiniciar). Atrás de proxy, configure `TRUST_PROXY` para o IP real ser usado; pelo proxy do Vite em desenvolvimento, todo o tráfego do navegador compartilha o IP do container do frontend.
+2. **Rate limit** (`RateLimitGuard`): orçamento global por IP (`RATE_LIMIT_MAX_REQUESTS` por `RATE_LIMIT_TTL_SECONDS`) em todas as rotas, mais um orçamento próprio das rotas `/auth` (`AUTH_RATE_LIMIT_MAX_REQUESTS`) e buckets por rota com `@RateLimit({ name, limit, windowMs })`. Excedido: `429 rate_limited` com `Retry-After`. Contadores em memória do processo (uma instância; zeram ao reiniciar). Desde o PASSO 21, os orçamentos de rota contam por usuário quando há sessão (ver "Endurecimento"). Atrás de proxy, configure `TRUST_PROXY` para o IP real ser usado; pelo proxy do Vite em desenvolvimento, todo o tráfego do navegador compartilha o IP do container do frontend.
 3. **Autenticação default-deny** (`SessionAuthGuard` global): toda rota exige sessão válida de usuário `ACTIVE`, exceto as marcadas com `@Public()` (hoje: `/health`, `/health/ready`, `/auth/google/login`, `/auth/google/callback`, `/auth/refresh`, `/auth/logout`). Sem sessão: `401 unauthenticated`.
 4. **CSRF** (`CsrfGuard`), para `POST`/`PUT`/`PATCH`/`DELETE`: se a requisição trouxer `Origin` (ou `Referer`), a origem precisa estar na lista permitida, inclusive em rotas públicas (origem `null` nunca é aceita); em rotas autenticadas, o header `X-CSRF-Token` precisa ser igual ao token da sessão (`GET /auth/csrf`). Falha: `403 csrf_failed`. `GET`/`HEAD`/`OPTIONS` não exigem token e não devem alterar estado.
 5. **Papéis** (`RolesGuard`): `@Roles('ADMIN')` exige o papel; sem ele, `403 forbidden`. Funcionalidades administrativas ficam em rotas `/admin/...` explícitas.
 6. **Validação de entrada**: cada parâmetro usa `@Body(validate(schema))`, `@Param('id', uuidParam)` etc. com Zod. DTOs são criados com `dto({...})` (objeto _strict_): campos desconhecidos como `ownerId`, `id`, `role` ou `status` são **rejeitados** com `400 validation_failed`, nunca ignorados em silêncio. Os detalhes trazem caminho, regra e mensagem, nunca o valor recebido.
 7. **Ownership**: ver abaixo.
-8. **Erros** (`ApiExceptionFilter`): toda falha responde `{ code, message, details, requestId, timestamp }`. Erros 5xx nunca expõem mensagem original, stack ou detalhes do driver. Erros conhecidos do Prisma: registro inexistente → `404 not_found`, unicidade/FK → `409 conflict`. JSON malformado → `400 bad_request`. Nada é gravado em log (decisão de arquitetura).
+8. **Erros** (`ApiExceptionFilter`): toda falha responde `{ code, message, details, requestId, timestamp }`. Erros 5xx nunca expõem mensagem original, stack ou detalhes do driver. Erros conhecidos do Prisma: registro inexistente → `404 not_found`, unicidade/FK → `409 conflict`. JSON malformado → `400 bad_request`. Desde o PASSO 21, erros inesperados geram uma linha de log mascarada para a operação (ver "Endurecimento"); a resposta continua genérica.
 
 ### Autorização e IDOR
 
@@ -1154,11 +1155,92 @@ Implementado nos PASSOS 13 e 15 pelas ferramentas do assistente (ver "Tool Regis
 - O resumo diz o que será perdido (contagens, `irreversible: true`).
 - Mudou algo entre a pergunta e o "sim" (nova conversa, novo lançamento, planilha alterada): `409 confirmation_stale`.
 - Confirmada dentro de uma conversa que ela mesma apaga, a resposta volta para a tela mas não é gravada.
-- Exportação de dados, política de retenção e revisão LGPD completa ficam para o PASSO 21.
+- Excluir dados financeiros ou a conta também remove relatórios e arquivos (PASSO 21). A página `/privacy` oferece as exclusões com o mesmo cartão de confirmação.
 
-### Privacidade
+### Privacidade e LGPD (PASSO 21)
 
-O desenho considera minimização, consentimento, transparência, portabilidade, revogação e exclusão. Política de retenção e backups deverá ser aprovada antes da produção.
+Tudo o que o titular pode fazer sozinho fica na página **Privacidade e dados** (`/privacy`, com atalho no perfil) e também pelo assistente.
+
+| Direito (LGPD art. 18) | Como                                                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
+| Acesso e portabilidade | `GET /api/v1/privacy/export`: arquivo JSON `leccor-meus-dados-AAAA-MM-DD.json` (formato `leccor-finance-flow/export@1`).                   |
+| Revogação do Google    | `DELETE /api/v1/google/connection` (cartão Google na página): revoga no Google e apaga os tokens locais. A conta e as planilhas continuam. |
+| Eliminação             | Conversas, dados financeiros, planilha ou a conta inteira, sempre com confirmação (ver "Exclusões de alto impacto").                       |
+| Informação             | A página mostra o que cada exclusão leva e por quanto tempo cada dado fica guardado (tabela de retenção abaixo).                           |
+
+**Exportação**:
+
+- Inclui conta (e-mail, status, papéis, perfil, preferência de voz, estado da conexão Google), contas, categorias próprias, lançamentos, parcelamentos, recorrências, investimentos, planilhas (nome e id no Drive), conversas com mensagens, relatórios (metadados), histórico de alterações e sessões (só datas e motivo de encerramento).
+- **Nunca inclui**: tokens, hashes, token CSRF, valores cifrados, caminho de arquivos, `ownerId`, erros técnicos de sincronização, nem nada de outro usuário (o teste procura cada um desses no arquivo).
+- Valores `Decimal` saem como texto exato e datas em ISO 8601.
+- `Content-Disposition: attachment`, `Cache-Control: no-store`, política de limite `reports` por usuário.
+
+**Exclusão integral da conta** (`delete_my_account`):
+
+1. Revoga o Google (melhor esforço). Se o Google recusar ou não responder, a exclusão **continua**: os tokens locais saem com a conta e a resposta traz `googleRevocation: 'failed'` para a pessoa revogar em myaccount.google.com.
+2. Apaga relatórios e a pasta privada de arquivos (`reportFiles: 'removed' | 'failed'`).
+3. Apaga o usuário; o banco remove em cascata perfil, papéis, sessões, tentativas de login, conexão Google, planilhas, dados financeiros, conversas, confirmações e histórico. A trilha administrativa fica, com a referência anulada (`SET NULL`).
+4. As sessões param na hora (`401`, inclusive o refresh).
+
+O teste de integração varre **todas as tabelas** com colunas `owner_id`, `user_id`, `actor_id`, `target_user_id` ou `updated_by_id` e exige zero linhas apontando para o id excluído. Uma tabela nova que esqueça a cascata quebra esse teste.
+
+A exclusão de dados financeiros também apaga os relatórios e seus arquivos (eles contêm dados financeiros).
+
+**Retenção** (`RetentionService`, ao iniciar e a cada `RETENTION_SWEEP_INTERVAL_HOURS`, padrão 6; `0` desliga o timer):
+
+| Dado                                         | Guardado por                                       |
+| -------------------------------------------- | -------------------------------------------------- |
+| Dados financeiros, conversas e histórico     | Até o usuário apagar (ou excluir a conta)          |
+| Arquivo de relatório                         | `REPORT_FILE_TTL_MINUTES` (padrão 30)              |
+| Registro de relatório expirado ou com falha  | 30 dias                                            |
+| Confirmação vencida                          | 7 dias                                             |
+| Tentativa de login (state/PKCE)              | Até expirar                                        |
+| Sessão encerrada ou expirada                 | 30 dias (para reconhecer reuso de refresh roubado) |
+| Eventos anônimos de consumo de IA/voz        | 395 dias (13 meses)                                |
+| Trilha administrativa (`admin_audit_events`) | 730 dias                                           |
+
+Backups do banco de produção seguem a mesma regra: devem expirar em até 35 dias, para que um dado excluído não sobreviva além disso. A definição do backup fica para a operação (PASSO 22).
+
+### Endurecimento (PASSO 21)
+
+- **Limite por usuário**: os orçamentos de rota (`@RateLimit`: auth, assistente, voz, planilhas, relatórios) contam **por usuário** quando há sessão, e por IP nas rotas públicas. O orçamento global continua por IP, antes da autenticação. Duas pessoas atrás do mesmo NAT não dividem limite, e trocar de IP não multiplica o de uma conta.
+- **Redaction de erros**: respostas 5xx continuam genéricas. Para a operação, erros inesperados viram uma linha de log `ServerError` com request id, método, caminho **sem query** e mensagem mascarada: senhas em URLs e em `password=`/`token:`, Bearer, cookies `lff_*`, JWT, chaves `sk-`/`AIza`/`ya29.`, e-mails e tokens longos (UUIDs ficam, para investigar), até 500 caracteres. Falhas previstas (503 de provedor fora ou recurso desligado) viram aviso só com o código. 4xx não são registrados.
+- **Trilha administrativa**: tabela `admin_audit_events` (migration `20261009195018_admin_audit_events`) grava bloqueio/desbloqueio, promoção/rebaixamento e mudança de configurações (só as chaves, nunca valores), na mesma transação da ação. `GET /api/v1/admin/audit` mostra as 50 mais recentes na visão geral do admin.
+- **CSP do frontend** (`apps/frontend/security-headers.ts`): em produção (`vite preview` hoje; o servidor de deploy deve enviar os mesmos headers):
+
+  ```
+  default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline';
+  img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self';
+  connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self';
+  frame-ancestors 'none'
+  ```
+
+  Mais `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` (microfone só na própria origem) e COOP. Em desenvolvimento só se libera o necessário ao Vite (script inline do React Refresh e WebSocket). `'unsafe-inline'` em estilos é necessário por gráficos e animações que usam atributo `style`; scripts inline não são permitidos. Verificado no Chrome sobre o build: oito páginas sem nenhuma violação.
+
+- **Dependências**: `pnpm security:audit` (`pnpm audit`). As 4 falhas encontradas eram transitivas (`shell-quote` crítica via `concurrently`; `mysql2` e `deepmerge-ts` via CLI do Prisma) e foram corrigidas com `overrides` em `pnpm-workspace.yaml`. Resultado: nenhuma vulnerabilidade conhecida.
+- **Segredos no repositório**: `pnpm security:scan` (`scripts/scan-secrets.mjs`, parte do `pnpm quality`) procura chaves privadas, chaves de OpenAI/Anthropic/Google, tokens OAuth, AWS, GitHub, Slack, URLs de webhook assinadas, URLs com senha e `.env` preenchido em todo arquivo que o Git versionaria. Nunca imprime o valor, só arquivo e linha. Em testes, chaves no formato `sk-…` são esperadas (provam a cifragem e o mascaramento) e não contam.
+
+### Revisão OWASP Top 10 (2021)
+
+| Risco                       | Situação                                                                                                                                                                                       |
+| --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| A01 Controle de acesso      | Default-deny, `ownedBy` em toda consulta (id alheio = 404), RBAC no backend, triggers de ownership no banco, confirmação de uso único para exclusões. Testado por rota.                        |
+| A02 Falhas criptográficas   | Tokens Google e chaves de IA em AES-256-GCM com versão; sessões guardadas como SHA-256; cookies HttpOnly/SameSite, `Secure` + HSTS com `COOKIE_SECURE`.                                        |
+| A03 Injeção                 | Prisma parametrizado; SQL manual só em template marcado (parâmetros ligados); DTOs Zod estritos; células e texto do usuário são dados (prompt injection, fórmulas no XLSX); sem HTML dinâmico. |
+| A04 Design inseguro         | IA só age por ferramentas com schema, ownership e confirmação; desfazer não sobrescreve mudança posterior; limites de volume e período.                                                        |
+| A05 Configuração            | Headers de segurança na API e no frontend (CSP), CORS por lista, `.env` validado com fail-fast, sem `X-Powered-By`, containers sem root.                                                       |
+| A06 Componentes vulneráveis | `pnpm audit` limpo após `overrides`; lockfile fixo; allowlist de build scripts.                                                                                                                |
+| A07 Autenticação            | OAuth com PKCE, state e nonce; refresh rotativo com detecção de reuso; bloqueio derruba as sessões; limite de tentativas por IP.                                                               |
+| A08 Integridade             | Lockfile congelado no CI/Docker; nada de `eval`; escrita na planilha só pelo backend.                                                                                                          |
+| A09 Logs e monitoramento    | Log de erros inesperados com redaction e request id; trilha administrativa persistente. Sem SIEM/alertas (fora do escopo).                                                                     |
+| A10 SSRF                    | O backend só chama hosts fixos (Google, OpenAI, Gemini, Anthropic); nenhuma URL vem do usuário (a foto do perfil não é buscada pelo servidor).                                                 |
+
+**Achados críticos abertos: nenhum.** Riscos residuais aceitos e registrados:
+
+- rate limit em memória de um processo (várias instâncias exigirão armazenamento compartilhado);
+- `'unsafe-inline'` em estilos;
+- revogação no Google é melhor esforço (a resposta avisa quando falha);
+- arquivos de relatório ficam em disco local do container até expirar.
 
 ## Dashboard e insights (PASSO 18)
 

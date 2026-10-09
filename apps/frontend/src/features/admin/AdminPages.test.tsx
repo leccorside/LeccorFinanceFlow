@@ -4,6 +4,7 @@ import { afterEach, beforeEach, vi } from 'vitest';
 import {
   type AdminOverview,
   type AdminUser,
+  getAudit,
   getOverview,
   getSettings,
   listUsers,
@@ -19,6 +20,7 @@ import { AdminUsersPage } from './AdminUsersPage';
 
 vi.mock('../../services/admin', () => ({
   getOverview: vi.fn(),
+  getAudit: vi.fn().mockResolvedValue([]),
   listUsers: vi.fn(),
   setUserStatus: vi.fn(),
   setUserAdmin: vi.fn(),
@@ -132,6 +134,49 @@ describe('AdminOverviewPage', () => {
     expect(
       screen.getByText('Nenhum provedor configurado no servidor.'),
     ).toBeInTheDocument();
+  });
+
+  it('lists recent administrative actions, including ones on deleted accounts', async () => {
+    vi.mocked(getOverview).mockResolvedValue(overview);
+    vi.mocked(getAudit).mockResolvedValue([
+      {
+        id: 'a3',
+        action: 'settings.update',
+        details: { keys: ['voice.enabled', 'assistant.enabled'] },
+        actor: 'root@example.com',
+        target: null,
+        createdAt: '2026-10-09T15:00:00.000Z',
+      },
+      {
+        id: 'a2',
+        action: 'user.admin',
+        details: { admin: true },
+        actor: 'root@example.com',
+        target: 'bia@example.com',
+        createdAt: '2026-10-09T14:00:00.000Z',
+      },
+      {
+        id: 'a1',
+        action: 'user.status',
+        details: { status: 'BLOCKED' },
+        actor: null,
+        target: null,
+        createdAt: '2026-10-09T13:00:00.000Z',
+      },
+    ]);
+    renderWithProviders(<AdminOverviewPage />);
+
+    const section = (
+      await screen.findByRole('heading', { name: 'Ações administrativas recentes' })
+    ).closest('section') as HTMLElement;
+    const items = await within(section).findAllByRole('listitem');
+    expect(items).toHaveLength(3);
+    expect(items[0]).toHaveTextContent(
+      'Configurações alteradas: voice.enabled, assistant.enabled',
+    );
+    expect(items[1]).toHaveTextContent('bia@example.com virou administrador');
+    expect(items[1]).toHaveTextContent('root@example.com');
+    expect(items[2]).toHaveTextContent('(conta excluída) → Bloqueado');
   });
 
   it('reports a load failure with retry', async () => {

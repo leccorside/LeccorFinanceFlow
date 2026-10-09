@@ -796,7 +796,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: implementa console administrativo seguro`
 
-## [ ] PASSO 21 — Privacidade, exclusão e endurecimento
+## [x] PASSO 21 — Privacidade, exclusão e endurecimento
 
 **Objetivo:** concluir direitos do titular e revisão de segurança/LGPD.
 
@@ -808,7 +808,26 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** exclusão integral, falha parcial, revogação, exportação, scanners e testes de abuso.
 
-**Sugestão de commit:** `feat: complete privacy and security hardening`
+**Evidências:**
+
+- **Direitos do titular**: página `/privacy` com:
+  - exportação JSON (`GET /privacy/export`, sem segredos);
+  - desconexão do Google;
+  - exclusões de conversas, dados financeiros e conta com confirmação;
+  - tabela de retenção.
+- **Exclusão integral**: relatórios e arquivos também saem; varredura genérica do banco sem nenhuma referência ao id; falha na revogação do Google não impede a exclusão e é informada.
+- **Retenção**: `RetentionService` (relatórios expirados 30 d, confirmações 7 d, sessões 30 d, consumo 13 meses, trilha 2 anos), documentada.
+- **Endurecimento**:
+  - trilha `admin_audit_events` + `GET /admin/audit`;
+  - limites de rota por usuário;
+  - log de erro mascarado;
+  - CSP do frontend sem violações no build;
+  - `overrides` zerando o `pnpm audit`;
+  - `pnpm security:scan` no `quality`;
+  - revisão OWASP Top 10 sem achados críticos (`DOCUMENTACAO.md`).
+- **Testes**: backend 339 unitários e 322 de integração (+10 de privacidade, incluindo abuso); frontend 139; mutação do limite por usuário detectada; Chrome sobre o build e smoke Docker completos; `pnpm quality` verde.
+
+**Sugestão de commit:** `feat: conclui privacidade, exclusão e endurecimento de segurança`
 
 ## [ ] PASSO 22 — Validação final e preparação de entrega
 

@@ -37,6 +37,7 @@ describe('loadEnv', () => {
       REPORT_FILE_TTL_MINUTES: 30,
       MAX_REPORT_RANGE_MONTHS: 120,
       MAX_REPORT_TRANSACTIONS: 5000,
+      RETENTION_SWEEP_INTERVAL_HOURS: 6,
       MAX_JSON_BODY_SIZE: '1mb',
       TRUST_PROXY: false,
       ADMIN_EMAILS: [],

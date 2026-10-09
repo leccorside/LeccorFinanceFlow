@@ -4,6 +4,8 @@ import { isMessageKey } from '../../i18n/catalog';
 import { useI18n } from '../../i18n/context';
 import {
   type AdminOverview,
+  type AuditEvent,
+  getAudit,
   getOverview,
   type VoiceChainStatus,
 } from '../../services/admin';
@@ -56,6 +58,58 @@ function VoiceChain({ title, chain }: { title: string; chain: VoiceChainStatus }
         </ol>
       )}
     </div>
+  );
+}
+
+/** Who changed what: status, admin role and settings. Only e-mails and keys, never values. */
+function AuditTrail() {
+  const { t, dateTime } = useI18n();
+  const audit = useQuery({ queryKey: ['admin', 'audit'], queryFn: getAudit });
+
+  const describe = (event: AuditEvent): string => {
+    if (event.action === 'user.status') {
+      const statusKey = `admin.users.status.${String(event.details.status)}`;
+      return t('admin.audit.status', {
+        target: event.target ?? t('admin.audit.removed'),
+        status: isMessageKey(statusKey) ? t(statusKey) : String(event.details.status),
+      });
+    }
+    if (event.action === 'user.admin') {
+      return t(event.details.admin ? 'admin.audit.promoted' : 'admin.audit.demoted', {
+        target: event.target ?? t('admin.audit.removed'),
+      });
+    }
+    if (event.action === 'settings.update') {
+      const keys = Array.isArray(event.details.keys) ? event.details.keys : [];
+      return t('admin.audit.settings', { keys: keys.join(', ') });
+    }
+    return event.action;
+  };
+
+  return (
+    <section className="card" aria-labelledby="admin-audit">
+      <h2 id="admin-audit">{t('admin.audit.title')}</h2>
+      {audit.isPending ? (
+        <p role="status">{t('app.loading')}</p>
+      ) : audit.isError ? (
+        <p className="alert" role="alert">
+          {t('admin.loadError')}
+        </p>
+      ) : audit.data.length === 0 ? (
+        <p className="hint">{t('admin.audit.empty')}</p>
+      ) : (
+        <ol className="admin-audit">
+          {audit.data.map((event) => (
+            <li key={event.id}>
+              <span>{describe(event)}</span>
+              <span className="hint">
+                {event.actor ?? t('admin.audit.removed')} · {dateTime(event.createdAt)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 
@@ -212,6 +266,8 @@ export function AdminOverviewPage() {
         </div>
         <p className="hint">{t('admin.voice.env')}</p>
       </section>
+
+      <AuditTrail />
     </div>
   );
 }

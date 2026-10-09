@@ -170,6 +170,8 @@ const envSchema = z
     MAX_REPORT_RANGE_MONTHS: positiveInt(120, 240),
     /** Above this many movements in the period, the report is refused (narrow the period). */
     MAX_REPORT_TRANSACTIONS: positiveInt(5_000, 50_000),
+    /** Hours between retention sweeps (also run at startup); 0 turns the timer off. */
+    RETENTION_SWEEP_INTERVAL_HOURS: z.coerce.number().int().min(0).max(168).default(6),
   })
   .superRefine((env, ctx) => {
     // Client ID and secret decide whether Google login is enabled; both or neither.

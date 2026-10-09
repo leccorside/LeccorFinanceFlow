@@ -7,3 +7,13 @@ allowBuilds:
   '@tailwindcss/oxide': true
   esbuild: true
   prisma: true
+
+# Security fixes for transitive dependencies (PASSO 21, `pnpm audit`). Remove each line once
+# the parent package ships the fixed version on its own.
+overrides:
+  # via concurrently (dev scripts): GHSA command injection in quote() — critical.
+  shell-quote: '>=1.11.0'
+  # via the Prisma CLI (MySQL driver, unused here: we only talk to PostgreSQL).
+  mysql2: '>=3.23.1'
+  # via @prisma/config: stack exhaustion on recursive graphs.
+  deepmerge-ts: '>=8.0.0'

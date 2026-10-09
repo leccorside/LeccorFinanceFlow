@@ -659,6 +659,58 @@ const ptBR = {
   'assistant.error.voice_disabled':
     'A voz foi desativada pela administração. Use o texto.',
 
+  'privacy.title': 'Privacidade e dados',
+  'privacy.subtitle':
+    'Baixe uma cópia de tudo, desconecte o Google ou apague seus dados. Exclusões sempre pedem confirmação.',
+  'privacy.profileHint':
+    'Exportar seus dados, desconectar o Google e excluir dados ou a conta.',
+  'privacy.open': 'Abrir privacidade',
+  'privacy.export.title': 'Baixar meus dados',
+  'privacy.export.text':
+    'Um arquivo JSON com sua conta, perfil, contas, categorias, lançamentos, parcelamentos, recorrências, investimentos, planilhas, conversas, relatórios e histórico de alterações. Nenhum token ou segredo é incluído.',
+  'privacy.export.button': 'Baixar arquivo JSON',
+  'privacy.delete.title': 'Excluir dados',
+  'privacy.delete.hint':
+    'Cada opção mostra antes o que será apagado e só executa depois do seu "sim". Não dá para desfazer.',
+  'privacy.delete.conversations': 'Apagar conversas',
+  'privacy.delete.conversationsText':
+    'Todo o histórico de conversas com o assistente. Seus dados financeiros ficam.',
+  'privacy.delete.financial': 'Apagar dados financeiros',
+  'privacy.delete.financialText':
+    'Contas, lançamentos, categorias próprias, parcelamentos, recorrências, investimentos, histórico de alterações e relatórios. A conta e as planilhas no Google Drive continuam.',
+  'privacy.delete.account': 'Excluir minha conta',
+  'privacy.delete.accountText':
+    'Remove a conta e todos os dados, encerra as sessões e revoga o acesso ao Google. As planilhas continuam no seu Google Drive.',
+  'privacy.error': 'Não foi possível concluir. Nada foi apagado; tente de novo.',
+  'privacy.cancelled': 'Exclusão cancelada. Nada foi apagado.',
+  'privacy.done.conversations': 'Conversas apagadas.',
+  'privacy.done.financial': 'Dados financeiros e relatórios apagados.',
+  'privacy.done.account': 'Sua conta e seus dados foram excluídos.',
+  'privacy.retention.title': 'Por quanto tempo guardamos',
+  'privacy.retention.own':
+    'Seus dados financeiros, conversas e histórico: até você apagar.',
+  'privacy.retention.reports':
+    'Arquivos de relatório: minutos após gerar; o registro sai 30 dias depois de expirar.',
+  'privacy.retention.sessions': 'Sessões encerradas ou expiradas: 30 dias.',
+  'privacy.retention.confirmations': 'Confirmações vencidas: 7 dias.',
+  'privacy.retention.usage': 'Medição anônima de consumo de IA e voz: 13 meses.',
+  'privacy.retention.audit': 'Registro de ações administrativas: 2 anos.',
+  'admin.audit.title': 'Ações administrativas recentes',
+  'admin.audit.empty': 'Nenhuma ação registrada ainda.',
+  'admin.audit.removed': '(conta excluída)',
+  'admin.audit.status': '{target} → {status}',
+  'admin.audit.promoted': '{target} virou administrador',
+  'admin.audit.demoted': '{target} deixou de ser administrador',
+  'admin.audit.settings': 'Configurações alteradas: {keys}',
+
+  'assistant.field.transactions': 'Lançamentos',
+  'assistant.field.accounts': 'Contas',
+  'assistant.field.investments': 'Investimentos',
+  'assistant.field.installments': 'Parcelamentos',
+  'assistant.field.recurringTransactions': 'Recorrências',
+  'assistant.field.messages': 'Mensagens',
+  'assistant.field.spreadsheetUntouched': 'Planilha não é alterada',
+
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',
   'locale.es-ES': 'Español (España)',
@@ -1312,6 +1364,58 @@ const enUS: Messages = {
     'The assistant is paused by the administrator. Try again later.',
   'assistant.error.voice_disabled':
     'Voice was turned off by the administrator. Use text.',
+
+  'privacy.title': 'Privacy and data',
+  'privacy.subtitle':
+    'Download a copy of everything, disconnect Google or delete your data. Deletions always ask for confirmation.',
+  'privacy.profileHint':
+    'Export your data, disconnect Google and delete data or the account.',
+  'privacy.open': 'Open privacy',
+  'privacy.export.title': 'Download my data',
+  'privacy.export.text':
+    'A JSON file with your account, profile, accounts, categories, transactions, installments, recurring items, investments, spreadsheets, conversations, reports and change history. No token or secret is included.',
+  'privacy.export.button': 'Download JSON file',
+  'privacy.delete.title': 'Delete data',
+  'privacy.delete.hint':
+    'Each option first shows what will be deleted and only runs after your "yes". It cannot be undone.',
+  'privacy.delete.conversations': 'Delete conversations',
+  'privacy.delete.conversationsText':
+    'All conversation history with the assistant. Your financial data stays.',
+  'privacy.delete.financial': 'Delete financial data',
+  'privacy.delete.financialText':
+    'Accounts, transactions, own categories, installments, recurring items, investments, change history and reports. The account and the Google Drive spreadsheets stay.',
+  'privacy.delete.account': 'Delete my account',
+  'privacy.delete.accountText':
+    'Removes the account and all data, ends the sessions and revokes Google access. Spreadsheets stay in your Google Drive.',
+  'privacy.error': 'Could not complete it. Nothing was deleted; try again.',
+  'privacy.cancelled': 'Deletion cancelled. Nothing was deleted.',
+  'privacy.done.conversations': 'Conversations deleted.',
+  'privacy.done.financial': 'Financial data and reports deleted.',
+  'privacy.done.account': 'Your account and your data were deleted.',
+  'privacy.retention.title': 'How long we keep things',
+  'privacy.retention.own':
+    'Your financial data, conversations and history: until you delete them.',
+  'privacy.retention.reports':
+    'Report files: minutes after generation; the record goes 30 days after it expires.',
+  'privacy.retention.sessions': 'Ended or expired sessions: 30 days.',
+  'privacy.retention.confirmations': 'Expired confirmations: 7 days.',
+  'privacy.retention.usage': 'Anonymous AI and voice usage metering: 13 months.',
+  'privacy.retention.audit': 'Administrative action log: 2 years.',
+  'admin.audit.title': 'Recent administrative actions',
+  'admin.audit.empty': 'No action recorded yet.',
+  'admin.audit.removed': '(deleted account)',
+  'admin.audit.status': '{target} → {status}',
+  'admin.audit.promoted': '{target} became an administrator',
+  'admin.audit.demoted': '{target} is no longer an administrator',
+  'admin.audit.settings': 'Settings changed: {keys}',
+
+  'assistant.field.transactions': 'Transactions',
+  'assistant.field.accounts': 'Accounts',
+  'assistant.field.investments': 'Investments',
+  'assistant.field.installments': 'Installment plans',
+  'assistant.field.recurringTransactions': 'Recurring items',
+  'assistant.field.messages': 'Messages',
+  'assistant.field.spreadsheetUntouched': 'Spreadsheet is not changed',
 
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',
@@ -1975,6 +2079,58 @@ const esES: Messages = {
     'El asistente está en pausa por la administración. Inténtalo más tarde.',
   'assistant.error.voice_disabled':
     'La voz fue desactivada por la administración. Usa el texto.',
+
+  'privacy.title': 'Privacidad y datos',
+  'privacy.subtitle':
+    'Descarga una copia de todo, desconecta Google o borra tus datos. Las eliminaciones siempre piden confirmación.',
+  'privacy.profileHint':
+    'Exporta tus datos, desconecta Google y elimina datos o la cuenta.',
+  'privacy.open': 'Abrir privacidad',
+  'privacy.export.title': 'Descargar mis datos',
+  'privacy.export.text':
+    'Un archivo JSON con tu cuenta, perfil, cuentas, categorías, movimientos, cuotas, recurrencias, inversiones, hojas, conversaciones, informes e historial de cambios. No incluye tokens ni secretos.',
+  'privacy.export.button': 'Descargar archivo JSON',
+  'privacy.delete.title': 'Eliminar datos',
+  'privacy.delete.hint':
+    'Cada opción muestra antes lo que se borrará y solo se ejecuta después de tu "sí". No se puede deshacer.',
+  'privacy.delete.conversations': 'Borrar conversaciones',
+  'privacy.delete.conversationsText':
+    'Todo el historial de conversaciones con el asistente. Tus datos financieros se mantienen.',
+  'privacy.delete.financial': 'Borrar datos financieros',
+  'privacy.delete.financialText':
+    'Cuentas, movimientos, categorías propias, cuotas, recurrencias, inversiones, historial de cambios e informes. La cuenta y las hojas de Google Drive se mantienen.',
+  'privacy.delete.account': 'Eliminar mi cuenta',
+  'privacy.delete.accountText':
+    'Elimina la cuenta y todos los datos, cierra las sesiones y revoca el acceso a Google. Las hojas se quedan en tu Google Drive.',
+  'privacy.error': 'No se pudo completar. No se borró nada; inténtalo de nuevo.',
+  'privacy.cancelled': 'Eliminación cancelada. No se borró nada.',
+  'privacy.done.conversations': 'Conversaciones borradas.',
+  'privacy.done.financial': 'Datos financieros e informes borrados.',
+  'privacy.done.account': 'Tu cuenta y tus datos fueron eliminados.',
+  'privacy.retention.title': 'Cuánto tiempo guardamos',
+  'privacy.retention.own':
+    'Tus datos financieros, conversaciones e historial: hasta que los borres.',
+  'privacy.retention.reports':
+    'Archivos de informe: minutos después de generarse; el registro se borra 30 días después de expirar.',
+  'privacy.retention.sessions': 'Sesiones cerradas o vencidas: 30 días.',
+  'privacy.retention.confirmations': 'Confirmaciones vencidas: 7 días.',
+  'privacy.retention.usage': 'Medición anónima de consumo de IA y voz: 13 meses.',
+  'privacy.retention.audit': 'Registro de acciones administrativas: 2 años.',
+  'admin.audit.title': 'Acciones administrativas recientes',
+  'admin.audit.empty': 'Aún no hay acciones registradas.',
+  'admin.audit.removed': '(cuenta eliminada)',
+  'admin.audit.status': '{target} → {status}',
+  'admin.audit.promoted': '{target} pasó a ser administrador',
+  'admin.audit.demoted': '{target} dejó de ser administrador',
+  'admin.audit.settings': 'Configuración cambiada: {keys}',
+
+  'assistant.field.transactions': 'Movimientos',
+  'assistant.field.accounts': 'Cuentas',
+  'assistant.field.investments': 'Inversiones',
+  'assistant.field.installments': 'Compras en cuotas',
+  'assistant.field.recurringTransactions': 'Recurrencias',
+  'assistant.field.messages': 'Mensajes',
+  'assistant.field.spreadsheetUntouched': 'La hoja no se modifica',
 
   'locale.pt-BR': 'Português (Brasil)',
   'locale.en-US': 'English (United States)',

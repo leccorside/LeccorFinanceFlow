@@ -232,6 +232,22 @@ export class ReportsService implements OnModuleInit {
     return { file, fileName: row.fileName, contentType: CONTENT_TYPES[row.format] };
   }
 
+  /**
+   * Removes every report of a user: rows and the whole private folder. Used when the user
+   * deletes their financial data or their account (reports hold financial data).
+   */
+  async purgeOwner(
+    ownerId: string,
+  ): Promise<{ reports: number; files: 'removed' | 'failed' }> {
+    const { count } = await this.prisma.report.deleteMany({ where: { ownerId } });
+    try {
+      await rm(this.pathOf(ownerId), { recursive: true, force: true });
+      return { reports: count, files: 'removed' };
+    } catch {
+      return { reports: count, files: 'failed' };
+    }
+  }
+
   /** Deletes expired files (any owner) and marks their reports EXPIRED. */
   async sweep(): Promise<number> {
     const rows = await this.prisma.report.findMany({

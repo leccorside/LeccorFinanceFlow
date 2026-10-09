@@ -2,6 +2,7 @@ import { Body, Controller, Get, Inject, Param, Patch, Query } from '@nestjs/comm
 import { z } from 'zod';
 import type { AuthenticatedUser } from '../auth/auth.service.js';
 import { CurrentUser } from '../auth/session-auth.guard.js';
+import { PrismaService } from '../database/prisma.service.js';
 import { Roles } from '../common/security/decorators.js';
 import { dto, uuidParam, validate } from '../common/validation/zod-validation.pipe.js';
 import {
@@ -35,7 +36,29 @@ export class AdminController {
     @Inject(AdminOverviewService) private readonly overviewService: AdminOverviewService,
     @Inject(AdminUsersService) private readonly users: AdminUsersService,
     @Inject(SettingsService) private readonly settings: SettingsService,
+    @Inject(PrismaService) private readonly prisma: PrismaService,
   ) {}
+
+  /** The latest administrative changes (who, on whom, what). */
+  @Get('audit')
+  async audit() {
+    const rows = await this.prisma.adminAuditEvent.findMany({
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      take: 50,
+      include: {
+        actor: { select: { email: true } },
+        target: { select: { email: true } },
+      },
+    });
+    return rows.map((row) => ({
+      id: row.id,
+      action: row.action,
+      details: row.details,
+      actor: row.actor?.email ?? null,
+      target: row.target?.email ?? null,
+      createdAt: row.createdAt.toISOString(),
+    }));
+  }
 
   @Get('overview')
   overview(): Promise<AdminOverview> {

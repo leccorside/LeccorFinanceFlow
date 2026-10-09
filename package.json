@@ -15,7 +15,9 @@
     "test": "pnpm --filter @leccor/contracts test && pnpm --filter @leccor/backend test && pnpm --filter @leccor/frontend test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "quality": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test && pnpm build"
+    "quality": "pnpm format:check && pnpm lint && pnpm security:scan && pnpm typecheck && pnpm test && pnpm build",
+    "security:scan": "node scripts/scan-secrets.mjs",
+    "security:audit": "pnpm audit"
   },
   "engines": {
     "node": ">=22.12.0",

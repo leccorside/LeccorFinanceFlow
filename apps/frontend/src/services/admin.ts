@@ -83,6 +83,20 @@ export async function getOverview(): Promise<AdminOverview> {
   return (await api.get<AdminOverview>('/admin/overview')).data;
 }
 
+export interface AuditEvent {
+  id: string;
+  action: 'user.status' | 'user.admin' | 'settings.update' | string;
+  details: Record<string, unknown>;
+  actor: string | null;
+  target: string | null;
+  createdAt: string;
+}
+
+/** Last 50 administrative actions (status, admin role, settings), newest first. */
+export async function getAudit(): Promise<AuditEvent[]> {
+  return (await api.get<AuditEvent[]>('/admin/audit')).data;
+}
+
 export async function listUsers(
   query: UserQuery,
 ): Promise<{ items: AdminUser[]; total: number }> {

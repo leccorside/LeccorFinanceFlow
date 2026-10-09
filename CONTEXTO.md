@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 20 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 21 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -60,6 +60,38 @@ Proteção da API implementada no PASSO 05:
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
 
+Privacidade e endurecimento implementados no PASSO 21:
+
+- Backend:
+  - `src/privacy` (`PrivacyService.export`, `GET /privacy/export`);
+  - `src/retention` (`RetentionService.sweep`, `RETENTION`, env `RETENTION_SWEEP_INTERVAL_HOURS`);
+  - `ReportsService.purgeOwner`, chamado por `delete_financial_data` e `delete_my_account` (`DataToolDeps.reports`);
+  - tabela `admin_audit_events` (migration `20261009195018_admin_audit_events`, `down.sql`; 26 tabelas) gravada por `AdminUsersService` e `SettingsService.update`; `GET /admin/audit`;
+  - `RouteRateLimitGuard` (orçamentos de rota por usuário) separado do `RateLimitGuard` (global por IP);
+  - `common/errors/redact.ts` e log mascarado no `ApiExceptionFilter`.
+- Frontend:
+  - `features/privacy/PrivacyPage.tsx` (rota lazy `/privacy`, atalho no perfil) e `services/privacy.ts`;
+  - trilha administrativa na visão geral (`getAudit`);
+  - aviso de conta excluída na landing (`/?accountDeleted=1`);
+  - `security-headers.ts` (CSP) aplicado em `server` e `preview` do Vite;
+  - rótulos que faltavam nos resumos de exclusão (`transactions`, `accounts`... desde o PASSO 15).
+- Raiz:
+  - `scripts/scan-secrets.mjs` (`pnpm security:scan`, dentro do `quality`) e `pnpm security:audit`;
+  - `overrides` de segurança em `pnpm-workspace.yaml`.
+- Testes: `test/integration/privacy.int-spec.ts` (10), `redact.spec.ts` (5), `PrivacyPage.test.tsx` (5) e trilha em `AdminPages.test.tsx`.
+
+## Decisões do PASSO 21
+
+- **Exclusão da conta não depende do Google**: se a revogação falhar, a conta sai assim mesmo (tokens locais junto) e a resposta avisa. Prender a exclusão a um serviço externo violaria o direito de eliminação.
+- **Verificação genérica de órfãos**: o teste varre o `information_schema` em vez de listar tabelas, para pegar tabelas futuras.
+- **Trilha administrativa em tabela** (substitui o log `AdminAudit` do PASSO 20), com `SET NULL` para sobreviver à exclusão dos envolvidos e retenção de 2 anos. Configurações registram só as chaves.
+- **Retenção sem fila**: deletes limitados num `setInterval` com `unref`, mais uma rodada ao iniciar. Testes desligam o timer e chamam `sweep(now)`.
+- **Rate limit de rota por usuário** e global por IP: o global continua barrando inundação antes de qualquer consulta ao banco.
+- **Log só de erro inesperado**, mascarado. 503 intencional vira aviso com código; 4xx não gera log. UUIDs não são mascarados (não são segredo e são o que a investigação precisa).
+- **CSP num módulo próprio do frontend**, porque ainda não existe servidor de produção. O deploy deve reutilizar `productionHeaders`.
+- **Dependências**: `overrides` em vez de esperar os pacotes pais. Cada linha deve sair quando o pai trouxer a versão corrigida.
+- **Scanner próprio** (sem gitleaks): sem binário externo, roda no `quality` e nunca imprime o valor.
+
 Console administrativo implementado no PASSO 20:
 
 - Backend:
@@ -84,7 +116,7 @@ Console administrativo implementado no PASSO 20:
 - **Configurações com chaves fixas** e schema por chave em `system_settings`, em vez de chave/valor livre: nada desconhecido entra e o padrão vale sem linha no banco.
 - **Voz continua configurada pelo ambiente**: o admin só liga/desliga e vê se há chave. Unificar com as chaves cifradas de IA ficou fora (seria outro fluxo de segredo).
 - **Consumo anônimo por tentativa** (inclui falhas, o que mostra o fallback) e custo só com preço informado pelo admin. Os preços das APIs mudam, por isso não há tabela fixa no código.
-- **Auditoria** por log estruturado (`AdminAudit`, ids apenas), sem tabela nova.
+- **Auditoria** por log estruturado (`AdminAudit`, ids apenas), sem tabela nova. Substituída por tabela no PASSO 21.
 
 Relatórios implementados no PASSO 19 (`apps/backend/src/reports`):
 
@@ -562,6 +594,16 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 21:
+  - **Bug real pego pelo teste**: a exportação pedia `before`/`after` no `ActionHistory`, mas os campos são `beforeState`/`afterState` → 500. O `tsc` **não acusou** a chave inválida no `select` dentro do `Promise.all` (o tipo do Prisma não restringe excesso nesse contexto). Só o teste de integração garante consultas com `select`/`omit`.
+  - **Redaction incompleta**: `password=hunter2` aparecia no log (visto na saída da `quality`); nova regra para pares chave=valor com nome de segredo.
+  - Os primeiros logs de erro registravam como erro os 503 intencionais e trocavam UUIDs das rotas por `[token]`; corrigido (aviso com código; UUID preservado).
+  - Rótulos de resumo de exclusão faltavam desde o PASSO 15 (a confirmação mostrava `TRANSACTIONS`); visto no Chrome e coberto por teste.
+  - `pnpm audit`: 1 crítica e 2 altas transitivas; corrigidas com `overrides` (`deepmerge-ts` 8 testado com `prisma generate`, Docker e suítes).
+  - Scanner: os primeiros falsos positivos (placeholders, `*_VERSION`, chaves fictícias de teste) foram ajustados; o controle positivo (chave, chave Google, chave privada, `.env` preenchido) continua acusado. Arquivos ignorados pelo Git (`.env.*`) não são lidos, por desenho.
+  - Smoke Docker: o helper gerou um token começando com `-` e o `node` o leu como opção; passado por variável de ambiente. Bloquear o usuário revoga as sessões (regra do PASSO 20), então a auditoria do smoke usa um terceiro usuário.
+  - **Intermitente no frontend** (só no container, sob carga): `AssistantPage > ambiguous matches` clicava na escolha enquanto ela ainda estava `disabled` (o botão aparece antes de `send.isPending` voltar a `false`). O teste agora espera o botão habilitado; duas rodadas completas no container passaram.
+  - **Ordem dos guards**: o rate limit de rota precisa rodar **depois** da autenticação para conhecer o usuário (`RateLimit → SessionAuth → RouteRateLimit → Csrf → Roles`). A mutação "voltar a contar por IP" é detectada.
 - PASSO 20:
   - **Mutação sobrevivente**: "não revogar sessões ao bloquear" passou no primeiro teste, porque o guard já revoga a sessão de um usuário bloqueado na próxima requisição e o teste fazia uma requisição antes de olhar o banco. Agora o teste abre duas sessões e confere logo após o bloqueio.
   - **Tentativa sem chave** não chama o provedor e não gera consumo; o primeiro teste esperava falhas do Gemini sem chave configurada.
@@ -664,19 +706,24 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 20 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 21 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 21`
+`INICIE O PASSO 22`
 
-Quando autorizado, executar apenas o PASSO 21 de `PASSOS.md`: privacidade, exclusão e endurecimento.
+Quando autorizado, executar apenas o PASSO 22 de `PASSOS.md`: validação final e preparação de entrega.
 
-- Tela de "Privacidade e dados" usando `/assistant/data-deletions`.
-- Exportação e retenção (incluir `usage_events` antigos e registros `EXPIRED` de relatórios).
-- Revisão OWASP/LGPD completa.
+- Compose do zero, migrations, suíte total, E2E, QA responsiva, acessibilidade, performance, runbook e matriz de rastreabilidade.
+- Servidor de produção do frontend enviando `productionHeaders` (CSP) e política de backup alinhada à retenção (até 35 dias).
+
+Pendências ligadas ao PASSO 21:
+
+- Rate limit em memória de um processo: com várias instâncias, mover para armazenamento compartilhado.
+- Exportação pelo assistente (hoje só pela página e pela API).
+- Revisar `overrides` de `pnpm-workspace.yaml` quando Prisma e concurrently trouxerem as versões corrigidas.
 
 Pendências ligadas ao PASSO 20:
 
-- Auditoria administrativa persistente (hoje é log); avaliar tabela própria no PASSO 21.
+- ~~Auditoria administrativa persistente~~ — feito no PASSO 21 (`admin_audit_events`).
 - Chaves de voz pela administração (hoje ambiente).
 - Consumo por usuário não existe por desenho (eventos anônimos).
 
@@ -684,7 +731,7 @@ Pendências ligadas ao PASSO 19:
 
 - Relatórios no histórico do chat: o anexo só aparece no turno em que foi gerado (os arquivos ficam na página Relatórios).
 - PDF com fonte TTF embutida para cobrir emoji e outras escritas (hoje "?").
-- Limpeza de registros antigos de relatório (só o arquivo é apagado; a linha `EXPIRED` fica) — PASSO 21 (retenção).
+- ~~Limpeza de registros antigos de relatório~~ — feito no PASSO 21 (retenção de 30 dias).
 - Relatórios grandes em segundo plano, se um dia os limites síncronos não bastarem.
 
 Pendências ligadas ao PASSO 18:
@@ -697,16 +744,16 @@ Pendências ligadas ao PASSO 18:
 Pendências ligadas ao PASSO 17:
 
 - Smoke real de voz com chaves de teste (OpenAI e Gemini): confirmar a transcrição de `audio/webm` no Gemini, que não está na lista oficial de formatos dele, e os modelos padrão.
-- Rate limit da voz é por IP, como o resto; avaliar por usuário.
+- ~~Rate limit da voz por usuário~~ — feito no PASSO 21.
 
 Pendências ligadas ao PASSO 16:
 
-- PASSO 21: tela de "Privacidade e dados" usando `/assistant/data-deletions`, com o mesmo `ConfirmationCard`.
+- ~~Tela de "Privacidade e dados"~~ — feito no PASSO 21 (`/privacy`).
 - Sincronizar e reconciliar conflitos da planilha pela interface (ver PASSO 11) ainda não tem tela.
 
 Pendências ligadas ao PASSO 15:
 
-- PASSO 21: exportação de dados, retenção, exclusão integral com falha parcial documentada, revogação verificada.
+- ~~Exportação, retenção, exclusão integral com falha parcial, revogação~~ — feito no PASSO 21.
 
 Pendências ligadas ao PASSO 14:
 
@@ -715,7 +762,7 @@ Pendências ligadas ao PASSO 14:
 Pendências ligadas ao PASSO 13:
 
 - `switch_spreadsheet` não existe: o serviço de planilhas ainda não troca a planilha ativa.
-- Limpeza de confirmações expiradas: hoje elas só deixam de valer (índice em `expires_at` pronto para uma limpeza futura, sem fila).
+- ~~Limpeza de confirmações expiradas~~ — feito no PASSO 21 (7 dias após vencer).
 
 Pendências ligadas ao PASSO 12:
 
@@ -765,10 +812,10 @@ Regras para todo módulo novo:
 
 Pendências conhecidas para passos futuros:
 
-- PASSO 21: desconexão já não apaga planilhas; definir a exclusão explícita de planilhas e a revogação na exclusão de conta.
+- ~~Exclusão explícita de planilhas e revogação na exclusão de conta~~ — PASSOS 15 e 21.
 - A conexão real com o Google ainda não foi testada ponta a ponta (sem credenciais): ao configurar, confirmar o refresh token e a granularidade de escopos na tela do Google.
 - `packages/contracts` ainda não é usado: os tipos de perfil existem no backend e no frontend. Avaliar mover os contratos públicos para lá quando o build do pacote estiver integrado ao Docker.
-- Rate limits do assistente e da voz são por IP; avaliar por usuário.
+- ~~Rate limits por usuário~~ — feito no PASSO 21 (o global continua por IP).
 - Rate limit pelo proxy do Vite: todo o tráfego do navegador chega com o IP do container do frontend (um único bucket); em produção, configurar `TRUST_PROXY` atrás do proxy reverso.
 - Login real com Google ainda não foi testado ponta a ponta (sem credenciais). Ao configurar, confirmar que o `iss` do ID token é `https://accounts.google.com` (o Google às vezes usa `accounts.google.com` sem esquema em outros fluxos).
 - Avaliar expiração absoluta da sessão (hoje o refresh é deslizante) e uma tela de "sessões ativas".
@@ -777,7 +824,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`), 17 (`30f054a`), 18 (`a0d428e`) e 19 (`428f929`) commitados; o PASSO 20 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`), 17 (`30f054a`), 18 (`a0d428e`), 19 (`428f929`) e 20 (`49ad7e5`) commitados; o PASSO 21 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -1042,4 +1089,25 @@ Pendências conhecidas para passos futuros:
   - trava `FOR UPDATE` removida (3/3).
 - Docker real: 403 para usuário, chat pausado (`assistant_disabled`), bloqueio derruba a sessão, autoalteração recusada, respostas sem chaves.
 - Chrome real em 320, 375 e 1280 sem rolagem horizontal.
+- `pnpm quality` passou por completo.
+
+## Evidências do PASSO 21
+
+- Backend: 339 testes unitários e 322 de integração. Os 10 novos de privacidade cobrem:
+  - exportação só do dono, sem segredos, como anexo; 401 sem sessão;
+  - exclusão de dados financeiros levando relatórios e arquivos;
+  - exclusão integral da conta com **zero referências** em qualquer tabela, Google revogado e refresh morto;
+  - falha parcial (Google recusa a revogação, a conta sai assim mesmo);
+  - desconexão do Google com tokens apagados;
+  - varredura de retenção (só o que passou do prazo);
+  - trilha administrativa e `/admin/audit` (403/401);
+  - limite por usuário no mesmo IP;
+  - abuso: corpo grande (413), `__proto__` e `ownerId` (400), origem estranha (403), traversal no id (400), preflight CORS sem permissão.
+- Mutação detectada: orçamento de rota voltando a contar por IP.
+- Frontend: 139 testes (página de privacidade: exportação, confirmação obrigatória, cancelamento, conta excluída leva à landing sem cache, falha sem apagar; trilha no admin).
+- Chrome real sobre o build (`vite preview` com a CSP de produção): oito páginas **sem nenhuma violação de CSP**; privacidade, confirmação e trilha em 320, 375 e 1280 sem rolagem horizontal.
+- `pnpm audit`: nenhuma vulnerabilidade conhecida (antes: 1 crítica, 2 altas, 1 moderada, todas transitivas).
+- `pnpm security:scan`: 320 arquivos limpos; controle positivo acusado.
+- Docker real: CSP no frontend, exportação com anexo e sem segredos, auditoria de bloqueio/desbloqueio, exclusão da conta confirmada (`googleRevocation`, `reportFiles: removed`), zero órfãos, trilha do admin preservada, sessão 401, migration aplicada, retenção ao iniciar sem erros.
+- Suítes dentro dos containers: backend 322 de integração e frontend 139 (após corrigir o intermitente descrito em "Erros e correções").
 - `pnpm quality` passou por completo.

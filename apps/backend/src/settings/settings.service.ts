@@ -104,8 +104,8 @@ export class SettingsService {
     changes: Partial<SettingValues>,
     updatedById: string,
   ): Promise<SettingValues> {
-    await this.prisma.$transaction(
-      Object.entries(changes).map(([key, value]) =>
+    await this.prisma.$transaction([
+      ...Object.entries(changes).map(([key, value]) =>
         this.prisma.systemSetting.upsert({
           where: { key },
           create: {
@@ -117,7 +117,15 @@ export class SettingsService {
           update: { value: value as Prisma.InputJsonValue, updatedById },
         }),
       ),
-    );
+      // Which settings changed and who changed them (values are not personal data).
+      this.prisma.adminAuditEvent.create({
+        data: {
+          actorId: updatedById,
+          action: 'settings.update',
+          details: { keys: Object.keys(changes) },
+        },
+      }),
+    ]);
     this.cache = null;
     return this.all();
   }

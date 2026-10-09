@@ -1,4 +1,4 @@
-import { HttpStatus, Inject, Injectable, Logger } from '@nestjs/common';
+import { HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { AuthService, type AuthenticatedUser } from '../auth/auth.service.js';
 import { ApiException, ResourceNotFoundException } from '../common/errors/api-error.js';
 import { APP_ENV, type AppEnv } from '../config/env.js';
@@ -48,8 +48,6 @@ const INCLUDE = {
  */
 @Injectable()
 export class AdminUsersService {
-  private readonly logger = new Logger('AdminAudit');
-
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(AuthService) private readonly auth: AuthService,
@@ -95,9 +93,16 @@ export class AdminUsersService {
       const isAdmin = target.roles.some(({ role }) => role.name === 'ADMIN');
       if (status === 'BLOCKED' && isAdmin) await this.keepAnAdmin(tx, id);
       await tx.user.update({ where: { id }, data: { status } });
+      await tx.adminAuditEvent.create({
+        data: {
+          actorId: actor.id,
+          targetUserId: id,
+          action: 'user.status',
+          details: { status },
+        },
+      });
     });
     if (status === 'BLOCKED') await this.auth.revokeAllSessions(id, 'blocked_by_admin');
-    this.logger.log(`admin ${actor.id} set status ${status} on user ${id}`);
     return this.one(actor, id);
   }
 
@@ -119,7 +124,10 @@ export class AdminUsersService {
             'Desbloqueie a conta antes de torná-la administradora.',
           );
         }
-        if (!isAdmin) await tx.userRole.create({ data: { userId: id, roleId: role.id } });
+        if (!isAdmin) {
+          await tx.userRole.create({ data: { userId: id, roleId: role.id } });
+          await this.audit(tx, actor, id, true);
+        }
         return;
       }
       if (!isAdmin) return;
@@ -134,12 +142,29 @@ export class AdminUsersService {
       await tx.userRole.delete({
         where: { userId_roleId: { userId: id, roleId: role.id } },
       });
+      await this.audit(tx, actor, id, false);
     });
-    this.logger.log(`admin ${actor.id} set admin=${admin} on user ${id}`);
     return this.one(actor, id);
   }
 
   // ─────────────────────────── Internals ───────────────────────────
+
+  /** Written in the same transaction as the change: no change without its record. */
+  private async audit(
+    tx: Tx,
+    actor: Actor,
+    target: string,
+    admin: boolean,
+  ): Promise<void> {
+    await tx.adminAuditEvent.create({
+      data: {
+        actorId: actor.id,
+        targetUserId: target,
+        action: 'user.admin',
+        details: { admin },
+      },
+    });
+  }
 
   private notSelf(actor: Actor, id: string): void {
     if (actor.id === id) {

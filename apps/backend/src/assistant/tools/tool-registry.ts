@@ -77,7 +77,7 @@ export class ToolRegistry {
         investments,
       }),
       ...workspaceTools({ prisma, spreadsheets, sheetSync, profiles }),
-      ...dataTools({ prisma, undo, spreadsheets, workspace, google }),
+      ...dataTools({ prisma, undo, spreadsheets, workspace, google, reports }),
       ...insightTools({ dashboard }),
       ...reportTools({ reports }),
     ];

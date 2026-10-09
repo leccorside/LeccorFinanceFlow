@@ -3,11 +3,13 @@ import {
   Catch,
   type ExceptionFilter,
   HttpException,
+  Logger,
 } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import type { HttpRequest } from '../../auth/http.js';
 import { Prisma } from '../../generated/prisma/client.js';
 import { type ApiErrorBody, defaultsForStatus } from './api-error.js';
+import { redact, redactPath } from './redact.js';
 
 interface JsonResponse {
   status(code: number): JsonResponse;
@@ -32,10 +34,14 @@ const PRISMA_STATUS: Record<string, number> = {
 
 /**
  * Turns every exception into the public error contract. 5xx responses never expose the
- * original message, stack or driver details; nothing is logged (no technical log by design).
+ * original message, stack or driver details. Server errors are logged for operations with
+ * the request id, the path without query and a redacted message (no tokens, keys, e-mails,
+ * cookies or passwords); 4xx are expected outcomes and are not logged.
  */
 @Catch()
 export class ApiExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger('ServerError');
+
   catch(exception: unknown, host: ArgumentsHost): void {
     const http = host.switchToHttp();
     const request = http.getRequest<HttpRequest>();
@@ -53,6 +59,17 @@ export class ApiExceptionFilter implements ExceptionFilter {
       timestamp: new Date().toISOString(),
     };
 
+    if (resolved.status >= 500) {
+      const where = `[${body.requestId}] ${request.method ?? '?'} ${redactPath((request as { url?: string }).url)} -> ${resolved.status}`;
+      if (exception instanceof HttpException) {
+        // Deliberate degradation (provider down, feature off): a warning with the code.
+        this.logger.warn(`${where} ${resolved.code}`);
+      } else {
+        const name = exception instanceof Error ? exception.name : typeof exception;
+        const message = exception instanceof Error ? exception.message : '';
+        this.logger.error(`${where} ${name}: ${redact(message)}`);
+      }
+    }
     response.setHeader('X-Request-Id', body.requestId);
     response.status(resolved.status).json(body);
   }

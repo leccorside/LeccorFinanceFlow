@@ -16,7 +16,7 @@ import {
   type ProfileUpdate,
   updateProfile,
 } from '../../services/profile';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { GoogleConnectionCard } from './GoogleConnectionCard';
 import { returnMessageKey } from './google-return';
 import { SpreadsheetsCard } from './SpreadsheetsCard';
@@ -72,6 +72,13 @@ export function ProfilePage() {
     >
       <GoogleConnectionCard returnMessage={googleMessage} />
       <SpreadsheetsCard />
+      <section className="card" aria-labelledby="profile-privacy">
+        <h2 id="profile-privacy">{t('privacy.title')}</h2>
+        <p className="hint">{t('privacy.profileHint')}</p>
+        <Link className="button-secondary" to="/privacy">
+          {t('privacy.open')}
+        </Link>
+      </section>
     </ProfileForm>
   );
 }

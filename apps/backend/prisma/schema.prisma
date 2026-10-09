@@ -231,6 +231,8 @@ model User {
   reports               Report[]
   actionHistory         ActionHistory[]
   updatedSettings       SystemSetting[]
+  adminActions          AdminAuditEvent[] @relation("AuditActor")
+  adminActionsReceived  AdminAuditEvent[] @relation("AuditTarget")
   sessions              UserSession[]
   authAttempts          AuthLoginAttempt[]
   confirmations         AssistantConfirmation[]
@@ -842,4 +844,26 @@ model UsageEvent {
   @@index([createdAt])
   @@index([kind, provider, model])
   @@map("usage_events")
+}
+
+// ──────────────────────────── Admin audit (PASSO 21) ────────────────────────────
+
+/// What an administrator changed. Kept for accountability (retention: 2 years). Ids only:
+/// if a user is deleted the event stays, without the reference.
+model AdminAuditEvent {
+  id           String   @id @default(uuid(7)) @db.Uuid
+  actorId      String?  @map("actor_id") @db.Uuid
+  targetUserId String?  @map("target_user_id") @db.Uuid
+  /// user.status, user.admin, settings.update
+  action       String   @db.VarChar(40)
+  /// Non-personal details of the change ({ status: 'BLOCKED' }, { keys: [...] }).
+  details      Json
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  actor  User? @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  target User? @relation("AuditTarget", fields: [targetUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([targetUserId])
+  @@map("admin_audit_events")
 }

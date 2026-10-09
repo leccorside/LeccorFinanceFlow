@@ -724,3 +724,79 @@
   min-width: 44px;
   min-height: 44px;
 }
+
+/* ── Privacy (PASSO 21) ── */
+.privacy-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+  width: min(860px, 100%);
+}
+
+.privacy-page .page-header {
+  margin: 0;
+}
+
+.privacy-page .card > .button-primary {
+  justify-self: start;
+}
+
+.privacy-deletions {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.privacy-deletions li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-sunken);
+}
+
+.privacy-deletions li > div {
+  flex: 1 1 260px;
+  min-width: 0;
+}
+
+.privacy-deletions h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+
+.privacy-deletions p {
+  margin: 0;
+}
+
+.privacy-retention {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 1.2rem;
+}
+
+.admin-audit {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-audit li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-wrap: anywhere;
+}

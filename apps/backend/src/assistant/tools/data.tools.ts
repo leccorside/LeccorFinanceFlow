@@ -12,6 +12,7 @@ import {
   type SpreadsheetsService,
   toApiException,
 } from '../../spreadsheets/spreadsheets.service.js';
+import type { ReportsService } from '../../reports/reports.service.js';
 import { defineTool, type ToolContext, type ToolSpec } from './tool.types.js';
 
 export interface DataToolDeps {
@@ -20,6 +21,7 @@ export interface DataToolDeps {
   spreadsheets: SpreadsheetsService;
   workspace: GoogleWorkspaceClient;
   google: GoogleConnectionService;
+  reports: ReportsService;
 }
 
 const USER = ['USER'] as const;
@@ -30,7 +32,7 @@ const USER = ['USER'] as const;
  * state they describe and expire like every confirmation.
  */
 export function dataTools(deps: DataToolDeps): ToolSpec[] {
-  const { prisma, undo, spreadsheets, workspace, google } = deps;
+  const { prisma, undo, spreadsheets, workspace, google, reports } = deps;
   return [
     defineTool({
       name: 'undo_last_action',
@@ -139,7 +141,12 @@ export function dataTools(deps: DataToolDeps): ToolSpec[] {
             categories: children.count + roots.count,
           };
         });
-        return { deleted };
+        // Generated reports contain the deleted figures: they go too (rows and files).
+        const purged = await reports.purgeOwner(ctx.user.id);
+        return {
+          deleted: { ...deleted, reports: purged.reports },
+          reportFiles: purged.files,
+        };
       },
     }),
     defineTool({
@@ -245,8 +252,14 @@ export function dataTools(deps: DataToolDeps): ToolSpec[] {
         } catch {
           googleRevocation = 'failed';
         }
+        // Report files live outside the database: removed explicitly (rows go by cascade).
+        const purged = await reports.purgeOwner(ctx.user.id);
         await prisma.user.delete({ where: { id: ctx.user.id } });
-        return { deleted: { account: true }, googleRevocation };
+        return {
+          deleted: { account: true },
+          googleRevocation,
+          reportFiles: purged.files,
+        };
       },
     }),
   ] as unknown as ToolSpec[];

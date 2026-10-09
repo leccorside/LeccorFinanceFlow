@@ -5,6 +5,8 @@ import { AssistantModule } from './assistant/assistant.module.js';
 import { VoiceModule } from './voice/voice.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
 import { ReportsModule } from './reports/reports.module.js';
+import { PrivacyModule } from './privacy/privacy.module.js';
+import { RetentionModule } from './retention/retention.module.js';
 import { SettingsModule } from './settings/settings.module.js';
 import { UsageModule } from './usage/usage.module.js';
 import { AuthModule } from './auth/auth.module.js';
@@ -40,6 +42,8 @@ import { UsersModule } from './users/users.module.js';
     ReportsModule,
     SettingsModule,
     UsageModule,
+    RetentionModule,
+    PrivacyModule,
   ],
 })
 export class AppModule {}

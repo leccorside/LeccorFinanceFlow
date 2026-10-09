@@ -26,6 +26,9 @@ const AdminRoutes = lazy(async () => ({
 const ReportsPage = lazy(async () => ({
   default: (await import('../features/reports/ReportsPage')).ReportsPage,
 }));
+const PrivacyPage = lazy(async () => ({
+  default: (await import('../features/privacy/PrivacyPage')).PrivacyPage,
+}));
 const DashboardPage = lazy(async () => ({
   default: (await import('../features/dashboard/DashboardPage')).DashboardPage,
 }));
@@ -60,6 +63,7 @@ function useApplyProfileRegion() {
 function LandingPage() {
   const { t } = useI18n();
   const health = useQuery({ queryKey: ['health'], queryFn: getHealth, retry: false });
+  const accountDeleted = new URLSearchParams(useLocation().search).has('accountDeleted');
 
   return (
     <motion.section
@@ -69,6 +73,11 @@ function LandingPage() {
       transition={{ duration: 0.45 }}
     >
       <VoiceOrb state="idle" size={200} className="voice-orb--hero" />
+      {accountDeleted && (
+        <p className="ok-text" role="status">
+          {t('privacy.done.account')}
+        </p>
+      )}
       <span className="eyebrow">{t('landing.eyebrow')}</span>
       <h1>{t('landing.title')}</h1>
       <p>{t('landing.body')}</p>
@@ -219,6 +228,16 @@ export function App() {
             element={
               <RequireAuth>
                 <ProfilePage />
+              </RequireAuth>
+            }
+          />
+          <Route
+            path="/privacy"
+            element={
+              <RequireAuth>
+                <Suspense fallback={<p role="status">{t('app.loading')}</p>}>
+                  <PrivacyPage />
+                </Suspense>
               </RequireAuth>
             }
           />
