@@ -31,6 +31,8 @@ export interface ToolCallRequest {
 export interface PendingConfirmation {
   id: string;
   tool: string;
+  /** Conversation it was asked in (null when asked outside the chat). */
+  conversationId: string | null;
   summary: Record<string, unknown>;
   expiresAt: string;
   createdAt: string;
@@ -151,6 +153,7 @@ export class ToolExecutor {
     return rows.map((row) => ({
       id: row.id,
       tool: row.toolName,
+      conversationId: row.conversationId,
       summary: row.summary as Record<string, unknown>,
       expiresAt: row.expiresAt.toISOString(),
       createdAt: row.createdAt.toISOString(),

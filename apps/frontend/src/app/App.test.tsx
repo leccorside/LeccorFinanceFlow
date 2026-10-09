@@ -6,6 +6,19 @@ import { renderWithProviders } from '../test/render';
 import { App } from './App';
 
 vi.mock('../services/health', () => ({ getHealth: vi.fn() }));
+vi.mock('../services/profile', () => ({
+  getProfile: vi.fn(() => new Promise(() => {})),
+}));
+vi.mock('../services/assistant', () => ({
+  listConversations: vi.fn(() => Promise.resolve([])),
+  listPendingConfirmations: vi.fn(() => Promise.resolve([])),
+  getSuggestions: vi.fn(() => Promise.resolve([])),
+  getMessages: vi.fn(),
+  sendMessage: vi.fn(),
+  confirmInConversation: vi.fn(),
+  cancelInConversation: vi.fn(),
+  undoLastAction: vi.fn(),
+}));
 vi.mock('../services/auth', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../services/auth')>()),
   getCurrentUser: vi.fn(),
@@ -20,15 +33,20 @@ describe('App', () => {
     vi.mocked(getCurrentUser).mockResolvedValue(null);
   });
 
-  it('renders the home page and confirms the API state', async () => {
+  it('shows visitors the landing with the way in and the API state', async () => {
     renderWithProviders(<App />);
 
     expect(
-      screen.getByRole('heading', {
-        name: /a fundação do seu assistente financeiro está pronta/i,
-      }),
+      await screen.findByRole('heading', { name: 'Converse com o seu dinheiro.' }),
     ).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Entrar com Google' })).toHaveAttribute(
+      'href',
+      '/api/v1/auth/google/login?redirectTo=%2F',
+    );
     expect(await screen.findByText('API disponível')).toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'Abrir o assistente' }),
+    ).not.toBeInTheDocument();
   });
 
   it('sends anonymous visitors of /profile to the login page', async () => {
@@ -61,10 +79,13 @@ describe('App', () => {
     renderWithProviders(<App />);
 
     expect(
-      await screen.findByRole('heading', {
-        name: 'La base de tu asistente financiero está lista.',
-      }),
+      await screen.findByRole('heading', { name: 'Asistente financiero' }),
     ).toBeInTheDocument();
+    expect(screen.getByText('Hola, Ana. ¿En qué te ayudo?')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Asistente' })).toHaveAttribute(
+      'aria-current',
+      'page',
+    );
     expect(screen.getByRole('button', { name: 'Cerrar sesión' })).toBeInTheDocument();
     expect(document.documentElement.lang).toBe('es-ES');
   });
@@ -83,6 +104,11 @@ describe('App', () => {
       'Esta área é só para administradores.',
     );
     expect(screen.queryByRole('link', { name: 'Administração' })).not.toBeInTheDocument();
+    // Away from the chat, the floating button leads back to it.
+    expect(screen.getByRole('link', { name: 'Abrir o assistente' })).toHaveAttribute(
+      'href',
+      '/',
+    );
     view.unmount();
 
     vi.mocked(getCurrentUser).mockResolvedValue({ ...user, roles: ['ADMIN', 'USER'] });
@@ -91,5 +117,12 @@ describe('App', () => {
       'href',
       '/admin/ai',
     );
+  });
+
+  it('sends unknown addresses to the home page', async () => {
+    renderWithProviders(<App />, { route: '/qualquer-coisa' });
+    expect(
+      await screen.findByRole('heading', { name: 'Converse com o seu dinheiro.' }),
+    ).toBeInTheDocument();
   });
 });

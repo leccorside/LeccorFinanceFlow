@@ -4,17 +4,21 @@ import { type ReactNode, useEffect } from 'react';
 import {
   Link,
   Navigate,
+  NavLink,
   Route,
   Routes,
   useLocation,
   useNavigate,
 } from 'react-router-dom';
 import { AiProvidersPage } from '../features/admin/AiProvidersPage';
+import { AssistantPage } from '../features/assistant/AssistantPage';
+import { VoiceOrb } from '../features/assistant/VoiceOrb';
 import { LoginPage } from '../features/auth/LoginPage';
 import { ProfilePage } from '../features/profile/ProfilePage';
 import { useI18n } from '../i18n/context';
-import { getCurrentUser, logout } from '../services/auth';
+import { getCurrentUser, googleLoginUrl, logout } from '../services/auth';
 import { getHealth } from '../services/health';
+import { useApplyTheme } from './theme';
 
 function useCurrentUser() {
   return useQuery({
@@ -42,20 +46,25 @@ function useApplyProfileRegion() {
   return me;
 }
 
-function FoundationPage() {
+/** Home for visitors: what the assistant does and the way in. */
+function LandingPage() {
   const { t } = useI18n();
   const health = useQuery({ queryKey: ['health'], queryFn: getHealth, retry: false });
 
   return (
     <motion.section
-      className="foundation-card"
+      className="landing"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.35 }}
+      transition={{ duration: 0.45 }}
     >
-      <span className="eyebrow">LECCOR FINANCE FLOW</span>
-      <h1>{t('home.title')}</h1>
-      <p>{t('home.body')}</p>
+      <VoiceOrb state="idle" size={200} className="voice-orb--hero" />
+      <span className="eyebrow">{t('landing.eyebrow')}</span>
+      <h1>{t('landing.title')}</h1>
+      <p>{t('landing.body')}</p>
+      <a className="button-primary" href={googleLoginUrl('/')}>
+        {t('login.google')}
+      </a>
       <div className="status-row" aria-live="polite">
         <span
           className={health.isSuccess ? 'status-dot status-dot--online' : 'status-dot'}
@@ -64,6 +73,25 @@ function FoundationPage() {
         {health.isSuccess ? t('home.apiOnline') : t('home.apiWaiting')}
       </div>
     </motion.section>
+  );
+}
+
+/** "/": the conversation for signed-in users, the landing for visitors. */
+function HomeRoute() {
+  const { t } = useI18n();
+  const me = useCurrentUser();
+  if (me.isPending) return <p role="status">{t('app.loading')}</p>;
+  if (!me.data) return <LandingPage />;
+  return <AssistantPage firstName={me.data.profile?.firstName ?? null} />;
+}
+
+/** Shortcut back to the conversation from any other page. */
+function FloatingAssistant() {
+  const { t } = useI18n();
+  return (
+    <Link to="/" className="floating-assistant" aria-label={t('assistant.floating')}>
+      <VoiceOrb state="idle" size={56} />
+    </Link>
   );
 }
 
@@ -117,9 +145,12 @@ function Header() {
       <nav aria-label={t('nav.main')}>
         {me.data ? (
           <>
-            <Link to="/profile">{t('nav.profile')}</Link>
+            <NavLink to="/" end>
+              {t('nav.assistant')}
+            </NavLink>
+            <NavLink to="/profile">{t('nav.profile')}</NavLink>
             {me.data.roles.includes('ADMIN') && (
-              <Link to="/admin/ai">{t('nav.admin')}</Link>
+              <NavLink to="/admin/ai">{t('nav.admin')}</NavLink>
             )}
             <button
               type="button"
@@ -138,12 +169,16 @@ function Header() {
 }
 
 export function App() {
-  useApplyProfileRegion();
+  const me = useApplyProfileRegion();
+  const signedIn = Boolean(me.data);
+  useApplyTheme(signedIn);
+  const { pathname } = useLocation();
+  const chat = signedIn && pathname === '/';
 
   return (
-    <div className="app-shell">
+    <div className={chat ? 'app-shell app-shell--chat' : 'app-shell'}>
       <Header />
-      <main className="app-main">
+      <main className={chat ? 'app-main app-main--chat' : 'app-main'}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
           <Route
@@ -164,9 +199,11 @@ export function App() {
               </RequireAuth>
             }
           />
-          <Route path="*" element={<FoundationPage />} />
+          <Route path="/" element={<HomeRoute />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </main>
+      {signedIn && !chat && pathname !== '/login' && <FloatingAssistant />}
     </div>
   );
 }

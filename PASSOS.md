@@ -566,7 +566,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: adiciona desfazer seguro e confirmações destrutivas`
 
-## [ ] PASSO 16 — Interface conversacional premium
+## [x] PASSO 16 — Interface conversacional premium
 
 **Objetivo:** tornar o chat a experiência principal em desktop e mobile.
 
@@ -578,7 +578,44 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** componentes, teclado, leitor de tela básico, 320/375/768/desktop, overflow e estados de erro.
 
-**Sugestão de commit:** `feat: build premium conversational interface`
+**Evidência (09/10/2026):**
+
+- **Shell**: `/` é o chat para quem está logado (`?c=<conversa>`) e uma landing com o orbe e "Entrar com Google" para visitantes; rotas desconhecidas voltam para `/`; navegação com `NavLink` (`aria-current`); botão flutuante do assistente nas demais páginas.
+- **Visual**: tokens de tema em CSS (escuro "espaço profundo" ciano/violeta/magenta e claro), grade holográfica, vidro fosco, gradientes; tema do perfil aplicado (`system` segue o sistema operacional).
+- **Animação de frequência**: `VoiceOrb` em canvas, com 72 barras radiais em volta de um núcleo luminoso:
+  - respira em repouso;
+  - "cometa" girando enquanto pensa;
+  - espectro tipo voz enquanto a resposta é escrita (efeito de digitação + equalizador na bolha);
+  - vermelho em erro;
+  - aceita um `AnalyserNode` real para a voz do PASSO 17.
+- **Chat**:
+  - bolhas com hora;
+  - chips de ferramenta (feito, aguarda confirmação, precisa de escolha, recusado, falhou + estado da planilha);
+  - cartões de escolha para ambiguidade (respondem ao assistente com o id);
+  - cartão de confirmação com resumo localizado (valor, data, conta…) e contagem regressiva, confirmar/cancelar dentro da conversa;
+  - "Desfazer";
+  - sugestões; histórico de conversas (coluna no desktop, gaveta no celular);
+  - skeletons; erros com "Tentar de novo" (texto devolvido à caixa);
+  - caixa de mensagem com Enter/Shift+Enter;
+  - microfone visível e desabilitado até o PASSO 17.
+- **Acessibilidade**:
+  - `role="log"` com a resposta inteira para leitor de tela (a digitação é só visual);
+  - estado do assistente em `role="status"`;
+  - gaveta com `aria-expanded`/`aria-controls`, `inert` quando fechada e Escape devolvendo o foco;
+  - alvos de 44 px; foco visível;
+  - movimento reduzido: orbe estático, texto inteiro de uma vez e animações CSS/framer-motion desligadas.
+- **Backend**: `GET /assistant/confirmations` passa a devolver `conversationId`.
+- **Testes**:
+  - frontend 97 (+24): página do chat (14), orbe (sinal, quadros, movimento reduzido), modelo do chat, tema e App;
+  - backend 302 unitários e 264 de integração (`conversationId` nas confirmações pendentes).
+- **Mutações detectadas**: filtro de confirmações por conversa removido; Shift+Enter enviando (a primeira versão do teste não pegava: corrigido).
+- **Responsivo no Chrome real** (Playwright com API simulada) em 320, 375, 768 e 1280:
+  - sem rolagem horizontal nem elemento além da tela;
+  - estados Pensando → Respondendo → Pronto;
+  - ordem de Tab; gaveta; erro 429; tema claro; botão flutuante; movimento reduzido sem cursor de digitação.
+- **Docker**: suítes nos containers (302 + 264 + 97); `pnpm quality` completo.
+
+**Sugestão de commit:** `feat: entrega a interface conversacional futurista`
 
 ## [ ] PASSO 17 — Voz completa
 

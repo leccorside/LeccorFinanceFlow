@@ -493,8 +493,13 @@ describe('confirmation and ambiguity inside the conversation', () => {
     });
     expect(await db.client.transaction.count({ where: { ownerId: actor.id } })).toBe(1);
 
-    const other = await say(actor, 'Oi');
     const id = turn.confirmations[0]?.id as string;
+    // The chat shows pending confirmations under the conversation they were asked in.
+    expect(
+      (await http(actor, 'get', '/assistant/confirmations').expect(200)).body,
+    ).toEqual([expect.objectContaining({ id, conversationId: turn.conversationId })]);
+
+    const other = await say(actor, 'Oi');
     await http(
       actor,
       'post',

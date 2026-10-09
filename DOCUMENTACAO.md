@@ -329,7 +329,7 @@ O `/auth/me` também passa a expor `locale` como tag BCP 47.
   - `/login`: botão "Entrar com Google", com mensagens de erro traduzidas a partir de `?error=`;
   - `/profile`: protegida, com prévia ao vivo de valor, data/hora no fuso e data de vencimento; envia apenas os campos alterados e marca os campos recusados pela API com `aria-invalid` e mensagem associada;
   - visitante anônimo em rota protegida vai para `/login?redirectTo=...`.
-- **Tema**: a preferência é salva, mas a interface ainda usa só o tema escuro; tema claro e "seguir o sistema" serão aplicados na interface definitiva (PASSO 16).
+- **Tema**: aplicado em `<html data-theme>` (`app/theme.ts`); "Sistema" segue `prefers-color-scheme` ao vivo, e visitantes também seguem o sistema.
 
 ## Conexão Google (Drive/Sheets) e cofre de credenciais (PASSO 07)
 
@@ -742,13 +742,13 @@ Relatórios entram no PASSO 19, junto com a geração; desfazer, no PASSO 15.
 | Ferramenta mudou | versão diferente da registrada gera `confirmation_stale`                                                                                                       |
 | De outra pessoa  | `404` (não revela existência)                                                                                                                                  |
 
-`GET /api/v1/assistant/confirmations` lista as pendentes do usuário, para a interface (PASSO 16) mostrar o botão "Confirmar". `GET /api/v1/assistant/tools` lista as ferramentas permitidas com os schemas.
+`GET /api/v1/assistant/confirmations` lista as pendentes do usuário, com `conversationId` (a conversa em que foi pedida, ou `null`), para a interface mostrar o cartão de confirmação na conversa certa. `GET /api/v1/assistant/tools` lista as ferramentas permitidas com os schemas.
 
 Banco: CHECKs de versão, formato do hash, validade e estado final único; triggers de mesmo dono da conversa e de dono imutável.
 
 ### Assistente conversacional (PASSO 14)
 
-Implementado em `apps/backend/src/assistant`, com `AssistantService`, `ConversationService`, `IntentService`, `grounding.ts` e `assistant.messages.ts`. A tela de chat é o PASSO 16; aqui está a API e o comportamento.
+Implementado em `apps/backend/src/assistant`, com `AssistantService`, `ConversationService`, `IntentService`, `grounding.ts` e `assistant.messages.ts`. A tela de chat está em "Interface conversacional"; aqui está a API e o comportamento.
 
 **Rotas** (sessão obrigatória; escritas com CSRF):
 
@@ -867,6 +867,73 @@ Implementado em `apps/backend/src/ai` e `apps/backend/src/admin`. A IA ainda nã
 - ordem de uso por finalidade, com subir e descer.
 
 Campos de chave são `password`, `autocomplete="off"` e esvaziados assim que a chave é enviada. Textos em pt-BR, en-US e es-ES.
+
+## Interface conversacional (PASSO 16)
+
+O chat é a experiência principal. Não há formulários financeiros: tudo passa pela conversa.
+
+### Rotas e shell
+
+| Rota                    | Quem           | O quê                                                                  |
+| ----------------------- | -------------- | ---------------------------------------------------------------------- |
+| `/`                     | visitante      | Landing com o orbe, a proposta e "Entrar com Google" (volta para `/`). |
+| `/`                     | logado         | Chat; `?c=<id>` abre uma conversa existente.                           |
+| `/profile`, `/admin/ai` | logado / admin | Páginas de apoio, com o botão flutuante que volta ao chat.             |
+| qualquer outra          | todos          | Redireciona para `/`.                                                  |
+
+### Componentes (`apps/frontend/src/features/assistant`)
+
+- `AssistantPage`: layout (lista de conversas + coluna do chat).
+  - Mensagens ficam no cache do React Query por conversa (`['assistant','messages',id]`, sem refetch automático). A resposta de cada turno é anexada ao cache, para que buscar o histórico de novo não corte a animação.
+  - Numa conversa nova, as mensagens locais migram para o cache do id devolvido e a URL ganha `?c=`.
+- `VoiceOrb`: canvas com 72 barras radiais (sinal em `orb-signal.ts`). Estados:
+  - `idle`: respira;
+  - `thinking`: cometa girando;
+  - `speaking`: espectro com envelope de sílabas;
+  - `listening`: reservado ao PASSO 17;
+  - `error`: vermelho.
+  - Com `analyser` (`AnalyserNode`) desenha o espectro real.
+  - É decorativo (`aria-hidden`); com movimento reduzido desenha um quadro estático.
+- `MessageItem`: bolhas de você e do assistente.
+  - A resposta nova é escrita progressivamente (`useTypewriter`) com equalizador e cursor. O texto inteiro vai para leitores de tela uma única vez.
+  - Chips de ferramenta com estado e sincronização da planilha.
+  - Cartões de escolha quando há ambiguidade: o clique envia "Quero “Nome” (id …)".
+- `ConfirmationCard`: resumo da ação (rótulos e valores localizados), contagem regressiva até expirar e botões Confirmar e Cancelar. Eles chamam `/assistant/conversations/:id/confirmations/:cid/confirm|cancel`; o modelo nunca confirma.
+- `ConversationPanel`: nova conversa e histórico.
+  - Coluna fixa a partir de 900 px. Abaixo disso é uma gaveta: botão com `aria-expanded`, `inert` quando fechada, fundo clicável e Escape devolvendo o foco.
+- `Composer`: caixa que cresce até 200 px (Enter envia, Shift+Enter quebra a linha) com limite de 2000 caracteres e contador perto do limite. O microfone fica visível, desabilitado até o PASSO 17.
+- `chat-model.ts`: converte histórico e turnos e descreve resumos. Valores monetários usam `money` com a moeda do registro e datas de calendário usam `calendarDate`. Chaves desconhecidas aparecem de forma legível, nunca quebram a tela.
+
+### Estados e erros
+
+| Situação               | Interface                                                                                          |
+| ---------------------- | -------------------------------------------------------------------------------------------------- |
+| Enviando               | Bolha de três pontos, orbe "Pensando…", envio desabilitado.                                        |
+| Resposta chegando      | Digitação + orbe "Respondendo…"; depois "Pronto para ouvir".                                       |
+| `state: error`         | Bolha marcada em vermelho e orbe em erro.                                                          |
+| Falha de rede ou `429` | Alerta com o motivo ("Muitas mensagens…") e "Tentar de novo"; a mensagem volta para a caixa.       |
+| Conversa inexistente   | "Essa conversa não existe mais." com "Tentar de novo" e "Nova conversa".                           |
+| Carregando             | Skeletons nas mensagens e na lista de conversas.                                                   |
+| Desfazer               | Aviso na conversa ("Desfeito: Mercado." ou "Não há nada para desfazer.") e anúncio em região viva. |
+
+### Tema, movimento e acessibilidade
+
+- **Tokens**: `--bg`, `--surface*`, `--border*`, `--text*`, `--accent`/`-2`/`-3`, `--accent-gradient`, `--danger`, `--warning`, `--success`, `--glow`, `--shadow`, com valores para `dark` e `light`. Nenhum componente usa cor fixa.
+- **Movimento reduzido** (`prefers-reduced-motion`): orbe estático, texto sem digitação, `MotionConfig reducedMotion="user"` e animações CSS praticamente zeradas.
+- **Teclado**: todos os controles são botões ou links reais com foco visível; a ordem de Tab segue a leitura (topo → conversas → chat → caixa).
+- **Rolagem**: o chat usa `flex-direction: column-reverse`, que mantém a última mensagem visível enquanto a resposta cresce, sem rolar por script.
+
+### Verificação visual
+
+Chrome real (Playwright) contra o Vite com a API simulada, nas larguras 320, 375, 768 e 1280. Verifica:
+
+- `scrollWidth` igual à largura da tela e nenhum elemento além da borda;
+- estados do orbe;
+- gaveta e foco;
+- erro 429;
+- tema claro;
+- botão flutuante;
+- movimento reduzido.
 
 ## Voz
 

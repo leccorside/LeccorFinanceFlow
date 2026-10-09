@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 15 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 16 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,32 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Interface conversacional implementada no PASSO 16 (`apps/frontend/src/features/assistant`):
+
+- `AssistantPage.tsx` (layout, cache por conversa, envio/confirmação/desfazer, gaveta), `MessageItem.tsx`, `ConfirmationCard.tsx`, `ConversationPanel.tsx`, `Composer.tsx`.
+- `VoiceOrb.tsx` (canvas) + `orb-signal.ts` (`synthesizeLevels`) + `motion.ts` (`useMediaQuery`, `usePrefersReducedMotion`, `useTypewriter`).
+- `chat-model.ts`: `itemsFromHistory`, `itemFromTurn`, `describeRecord`, `toolLabel`, `errorKey`, `candidateName`.
+- `services/assistant.ts`: cliente das rotas do assistente.
+- `app/App.tsx`: `/` = chat ou landing, `*` → `/`, `NavLink`, `FloatingAssistant`. Tema em `app/theme.ts` (`useApplyTheme`).
+- `styles/index.css`: tokens dos temas `dark`/`light`; o resto do arquivo usa só variáveis. `styles/assistant.css` (carregado em `main.tsx`) traz o visual do chat.
+- `i18n/catalog.ts`: chaves `assistant.*`, `landing.*`, `nav.assistant` (pt/en/es) e `isMessageKey()` para chaves vindas da API (ferramentas e campos). `home.title`/`home.body` saíram.
+- `test/setup.ts`: `getContext` do canvas retorna `null` no jsdom.
+- Backend: `PendingConfirmation.conversationId`.
+
+## Decisões do PASSO 16
+
+- **Sem refetch do histórico após cada turno**: as mensagens ficam no cache por conversa e o turno é anexado. Evita cortar a animação e duplicar a mensagem otimista. O id local só vale até a próxima abertura da conversa.
+- **Conversa adotada**: quando a primeira resposta cria a conversa, a troca de URL não reinicia o estado. O ajuste de estado por mudança de conversa é feito no render, como a documentação do React recomenda, e não num efeito.
+- **Orbe em canvas, com sinal sintético por estado**: não há áudio ainda. O mesmo componente aceita um `AnalyserNode` real no PASSO 17. O sinal é determinístico (somas de senos), sem `Math.random`.
+- **Acessibilidade da digitação**: o texto progressivo é `aria-hidden` e uma cópia integral (`visually-hidden`) é anunciada uma única vez pelo `role="log"`.
+- **Rolagem por CSS** (`column-reverse`) em vez de `scrollIntoView` a cada quadro.
+- **Fora do escopo** (para não antecipar):
+  - tela de "Privacidade e dados" usando `/assistant/data-deletions` (PASSO 20/21);
+  - voz e microfone (PASSO 17);
+  - dashboard (PASSO 18);
+  - início da semana na interface (sem calendário ainda).
+- **Lint do React Compiler** (`react-hooks` v6): sem `useCallback`/`useMemo` manuais e sem `setState` síncrono em efeito.
 
 Undo e exclusões implementados no PASSO 15:
 
@@ -422,6 +448,12 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 16:
+  - O teste de Shift+Enter verificava `sendMessage` antes de a mutação assíncrona rodar, e a mutação "enviar com Shift" sobreviveu. Corrigido verificando que a caixa não foi limpa e esperando a fila.
+  - `.topbar a` vencia `.brand` por especificidade e o gradiente da marca não aparecia; resolvido com `.topbar .brand`.
+  - `@import` de CSS no fim do arquivo é inválido: o `assistant.css` passou a ser importado em `main.tsx`.
+  - O lint do React Compiler recusou `useCallback` com estado e `setState` em efeito; o código foi reescrito sem memoização manual.
+  - Porta 5432 ocupada: subir o stack com `POSTGRES_PORT=55432 BACKEND_PORT=3001`.
 - PASSO 15: **bug real**: o undo de uma criação depois de desfazer uma edição falhava como "registro alterado", porque a comparação incluía a versão (que o próprio undo incrementa). Corrigido comparando conteúdo, inclusive nas parcelas.
   - Também corrigidos: rótulo vazio no undo de edição; falha do Google ao excluir planilha virava `internal_error`.
   - Ambiente: substituições por script falharam algumas vezes porque o Prettier tinha reformatado as linhas âncora. Para trechos formatados, usar o Edit sobre o texto atual.
@@ -488,26 +520,29 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 15 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 16 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 16`
+`INICIE O PASSO 17`
 
-Quando autorizado, executar apenas o PASSO 16 de `PASSOS.md`: interface conversacional (chat como experiência principal, responsiva, acessível).
+Quando autorizado, executar apenas o PASSO 17 de `PASSOS.md`: voz completa (ouvir → transcrever → executar → responder → falar).
 
-- Consumir `POST /assistant/messages` (`state`, `reply`, `actions`, `confirmations`, `candidates`, `suggestions`).
-- Histórico de conversas.
-- Confirmar e cancelar dentro da conversa.
-- Botão "Desfazer" (`POST /assistant/undo`).
-- Telas de exclusão com o resumo antes de confirmar.
+- Microfone no `Composer` (hoje desabilitado).
+- Estado `listening` do `VoiceOrb` e o `analyser` real (`AnalyserNode`) para o espectro do microfone e da fala.
+- Preferências `voice.*` do perfil.
+
+Pendências ligadas ao PASSO 16:
+
+- PASSO 20/21: tela de "Privacidade e dados" usando `/assistant/data-deletions`, com o mesmo `ConfirmationCard`.
+- PASSO 18: início da semana (`weekStartsOn`) nos calendários do dashboard.
+- Bundle do frontend com 573 kB (aviso do Vite acima de 500 kB): avaliar `React.lazy` nas páginas de perfil e administração (PASSO 20).
+- Sincronizar e reconciliar conflitos da planilha pela interface (ver PASSO 11) ainda não tem tela.
 
 Pendências ligadas ao PASSO 15:
 
 - PASSO 21: exportação de dados, retenção, exclusão integral com falha parcial documentada, revogação verificada.
-- PASSO 16/20: tela de "Privacidade e dados" usando `/assistant/data-deletions`.
 
 Pendências ligadas ao PASSO 14:
 
-- PASSO 16: tela de chat consumindo `POST /assistant/messages` (`state`, `confirmations`, `candidates`, `suggestions`), histórico e botões de confirmar ou cancelar.
 - PASSO 17: a voz usa o mesmo `AssistantService.send` com o texto transcrito.
 - Smoke com modelos reais (`RUN_AI_INTEGRATION_TESTS`) ainda não existe: com chaves de teste, rodar o corpus do PROMPT contra cada provedor.
 
@@ -567,7 +602,6 @@ Regras para todo módulo novo:
 
 Pendências conhecidas para passos futuros:
 
-- PASSO 16: aplicar o tema (`preferences.theme`) e o início da semana na interface definitiva; o cliente HTTP (CSRF + refresh) já existe em `services/api.ts`.
 - PASSO 21: desconexão já não apaga planilhas; definir a exclusão explícita de planilhas e a revogação na exclusão de conta.
 - A conexão real com o Google ainda não foi testada ponta a ponta (sem credenciais): ao configurar, confirmar o refresh token e a granularidade de escopos na tela do Google.
 - PASSO 17: usar `voice.gender`/`autoSpeak`/`speakingRate` do perfil na síntese de voz; o comando por conversa "troque sua voz" vai usar `ProfileService.update`.
@@ -582,7 +616,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`) e 14 (`aa6281e`) commitados; o PASSO 15 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`) e 15 (`3142bfd`) commitados; o PASSO 16 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -752,3 +786,19 @@ Pendências conhecidas para passos futuros:
   - migration `action_history_undo` aplicada;
   - teste manual: undo da edição (20 → 10), da criação e `nothing_to_undo`; exclusão de dados confirmada (movimentações e histórico zerados) e segundo uso recusado.
 - `pnpm quality` passou por completo.
+
+## Evidências do PASSO 16
+
+- Frontend: 97 testes (+24), entre eles 14 da página do chat cobrindo:
+  - envio, estados, erro e repetição;
+  - histórico e conversa inexistente;
+  - confirmação, cancelamento e expiração;
+  - escolhas, desfazer, gaveta pelo teclado e coluna larga.
+- Backend: 302 testes unitários e 264 de integração, inclusive `conversationId` nas confirmações pendentes. Tudo verde também nos containers.
+- Mutações detectadas: filtro de confirmações por conversa; envio com Shift+Enter (depois do reforço do teste).
+- Chrome real com a API simulada em 320, 375, 768 e 1280:
+  - sem rolagem horizontal;
+  - Pensando → Respondendo → Pronto;
+  - gaveta com foco devolvido ao botão;
+  - erro 429, tema claro, botão flutuante e movimento reduzido.
+- `pnpm quality` passou por completo; resta só o aviso de bundle acima de 500 kB.

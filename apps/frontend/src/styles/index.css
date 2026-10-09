@@ -1,8 +1,83 @@
 @import 'tailwindcss';
 
+/*
+ * Design tokens. Dark "deep space" is the default (and "system" when the OS is dark);
+ * light keeps the same structure. Every component reads these variables.
+ */
+:root,
+:root[data-theme='dark'] {
+  color-scheme: dark;
+  --bg: #03050b;
+  --glow-1: rgb(62 242 255 / 13%);
+  --glow-2: rgb(139 92 255 / 16%);
+  --grid-line: rgb(120 200 255 / 5%);
+  --surface: rgb(12 18 36 / 70%);
+  --surface-strong: rgb(13 20 40 / 86%);
+  --surface-sunken: rgb(3 7 16 / 72%);
+  --surface-raised: rgb(22 32 60 / 82%);
+  --border: rgb(120 200 255 / 14%);
+  --border-strong: rgb(120 200 255 / 32%);
+  --text: #eaf6ff;
+  --text-soft: #c4d8ec;
+  --text-muted: #8299b2;
+  --accent: #3ef2ff;
+  --accent-2: #8b5cff;
+  --accent-3: #ff4fd8;
+  --accent-gradient: linear-gradient(120deg, #3ef2ff, #8b5cff);
+  --accent-contrast: #02101a;
+  --focus: #3ef2ff;
+  --success: #5cf2a6;
+  --success-surface: rgb(20 80 55 / 35%);
+  --danger: #ff7a8f;
+  --danger-border: rgb(255 122 143 / 38%);
+  --danger-surface: rgb(90 18 36 / 40%);
+  --warning: #ffc078;
+  --warning-border: rgb(255 192 120 / 38%);
+  --warning-surface: rgb(80 55 20 / 32%);
+  --user-bubble: linear-gradient(135deg, rgb(62 242 255 / 22%), rgb(139 92 255 / 26%));
+  --assistant-bubble: rgb(14 22 44 / 78%);
+  --shadow: 0 30px 80px rgb(0 0 0 / 45%);
+  --glow: 0 0 28px rgb(62 242 255 / 30%);
+}
+
+:root[data-theme='light'] {
+  color-scheme: light;
+  --bg: #eef3fb;
+  --glow-1: rgb(0 170 200 / 14%);
+  --glow-2: rgb(110 70 230 / 12%);
+  --grid-line: rgb(40 80 140 / 6%);
+  --surface: rgb(255 255 255 / 78%);
+  --surface-strong: rgb(255 255 255 / 92%);
+  --surface-sunken: rgb(226 234 246 / 80%);
+  --surface-raised: rgb(255 255 255 / 96%);
+  --border: rgb(40 80 140 / 14%);
+  --border-strong: rgb(40 80 140 / 30%);
+  --text: #0b1526;
+  --text-soft: #23344d;
+  --text-muted: #56677f;
+  --accent: #0089a8;
+  --accent-2: #6a3df0;
+  --accent-3: #c21ea6;
+  --accent-gradient: linear-gradient(120deg, #00a7c4, #6a3df0);
+  --accent-contrast: #ffffff;
+  --focus: #6a3df0;
+  --success: #0c8a55;
+  --success-surface: rgb(12 138 85 / 12%);
+  --danger: #c0213f;
+  --danger-border: rgb(192 33 63 / 35%);
+  --danger-surface: rgb(192 33 63 / 9%);
+  --warning: #9a5a00;
+  --warning-border: rgb(154 90 0 / 35%);
+  --warning-surface: rgb(255 192 120 / 22%);
+  --user-bubble: linear-gradient(135deg, rgb(0 167 196 / 16%), rgb(106 61 240 / 16%));
+  --assistant-bubble: rgb(255 255 255 / 88%);
+  --shadow: 0 24px 60px rgb(20 40 80 / 14%);
+  --glow: 0 0 20px rgb(0 137 168 / 22%);
+}
+
 :root {
-  color: #effaf4;
-  background: #07120d;
+  color: var(--text);
+  background: var(--bg);
   font-family:
     Inter,
     ui-sans-serif,
@@ -33,7 +108,7 @@ textarea {
 }
 
 :focus-visible {
-  outline: 3px solid #7de2aa;
+  outline: 3px solid var(--focus);
   outline-offset: 2px;
 }
 
@@ -42,8 +117,8 @@ textarea {
   flex-direction: column;
   min-height: 100vh;
   background:
-    radial-gradient(circle at 15% 20%, rgb(48 141 93 / 24%), transparent 32%),
-    radial-gradient(circle at 85% 80%, rgb(40 93 199 / 16%), transparent 35%), #07120d;
+    radial-gradient(circle at 12% 18%, var(--glow-1), transparent 34%),
+    radial-gradient(circle at 88% 82%, var(--glow-2), transparent 38%), var(--bg);
 }
 
 .topbar {
@@ -53,7 +128,7 @@ textarea {
   align-items: center;
   justify-content: space-between;
   padding: 16px clamp(16px, 4vw, 40px);
-  border-bottom: 1px solid rgb(164 226 190 / 12%);
+  border-bottom: 1px solid var(--border);
 }
 
 .topbar nav {
@@ -65,13 +140,13 @@ textarea {
 .brand,
 .topbar a,
 .link-button {
-  color: #d7e9de;
+  color: var(--text-soft);
   font-weight: 650;
   text-decoration: none;
 }
 
 .brand {
-  color: #7de2aa;
+  color: var(--accent);
   letter-spacing: 0.02em;
 }
 
@@ -96,9 +171,9 @@ textarea {
 .page--narrow {
   width: min(520px, 100%);
   padding: clamp(24px, 5vw, 44px);
-  border: 1px solid rgb(164 226 190 / 16%);
+  border: 1px solid var(--border);
   border-radius: 24px;
-  background: rgb(13 31 22 / 82%);
+  background: var(--surface-strong);
 }
 
 .page h1 {
@@ -127,16 +202,16 @@ textarea {
   min-width: 0;
   margin: 0;
   padding: 20px;
-  border: 1px solid rgb(164 226 190 / 14%);
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: rgb(13 31 22 / 72%);
+  background: var(--surface);
 }
 
 .profile-form legend,
 .preview h2 {
   margin: 0;
   padding: 0 6px;
-  color: #7de2aa;
+  color: var(--accent);
   font-size: 0.85rem;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -150,7 +225,7 @@ textarea {
 
 .field label,
 .field-label {
-  color: #d7e9de;
+  color: var(--text-soft);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -160,30 +235,30 @@ textarea {
   width: 100%;
   min-height: 44px;
   padding: 10px 12px;
-  border: 1px solid rgb(164 226 190 / 24%);
+  border: 1px solid var(--border-strong);
   border-radius: 12px;
-  color: #effaf4;
-  background: rgb(4 12 8 / 70%);
+  color: var(--text);
+  background: var(--surface-sunken);
 }
 
 .field input[readonly] {
-  color: #acc4b6;
-  background: rgb(4 12 8 / 35%);
+  color: var(--text-muted);
+  background: var(--surface-sunken);
 }
 
 .field small {
-  color: #8fa99a;
+  color: var(--text-muted);
   font-size: 0.8rem;
   line-height: 1.4;
 }
 
 .field--invalid input,
 .field--invalid select {
-  border-color: #ff8f8f;
+  border-color: var(--danger);
 }
 
 .field .field-error {
-  color: #ffb4b4;
+  color: var(--danger);
 }
 
 .choice-row {
@@ -197,13 +272,13 @@ textarea {
   gap: 8px;
   align-items: center;
   min-height: 44px;
-  color: #d7e9de;
+  color: var(--text-soft);
 }
 
 .choice input {
   width: 20px;
   height: 20px;
-  accent-color: #5ce899;
+  accent-color: var(--accent);
 }
 
 .preview dl {
@@ -213,13 +288,13 @@ textarea {
 }
 
 .preview dt {
-  color: #8fa99a;
+  color: var(--text-muted);
   font-size: 0.8rem;
 }
 
 .preview dd {
   margin: 0 0 10px;
-  color: #effaf4;
+  color: var(--text);
   font-size: 1.05rem;
   font-variant-numeric: tabular-nums;
 }
@@ -241,8 +316,8 @@ textarea {
   padding: 12px 22px;
   border: 0;
   border-radius: 999px;
-  color: #04110a;
-  background: #5ce899;
+  color: var(--accent-contrast);
+  background: var(--accent-gradient);
   font-weight: 750;
   text-decoration: none;
   cursor: pointer;
@@ -260,7 +335,7 @@ textarea {
 
 .form-status--error,
 .alert {
-  color: #ffb4b4;
+  color: var(--danger);
 }
 
 .card {
@@ -268,9 +343,9 @@ textarea {
   gap: 12px;
   margin-top: 20px;
   padding: 20px;
-  border: 1px solid rgb(164 226 190 / 14%);
+  border: 1px solid var(--border);
   border-radius: 20px;
-  background: rgb(13 31 22 / 72%);
+  background: var(--surface);
 }
 
 .card h2 {
@@ -282,7 +357,7 @@ textarea {
   display: flex;
   gap: 10px;
   align-items: center;
-  color: #d7e9de;
+  color: var(--text-soft);
   font-weight: 650;
 }
 
@@ -294,7 +369,7 @@ textarea {
 }
 
 .connection-details dt {
-  color: #8fa99a;
+  color: var(--text-muted);
 }
 
 .connection-details dd {
@@ -316,7 +391,7 @@ textarea {
   gap: 6px 14px;
   align-items: baseline;
   padding: 12px 14px;
-  border: 1px solid rgb(164 226 190 / 14%);
+  border: 1px solid var(--border);
   border-radius: 14px;
 }
 
@@ -326,20 +401,20 @@ textarea {
 }
 
 .sheet-status {
-  color: #8fa99a;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
 .sheet-list a {
-  color: #7de2aa;
+  color: var(--accent);
   font-weight: 650;
 }
 
 .confirm-box {
   padding: 14px;
-  border: 1px solid rgb(255 196 120 / 35%);
+  border: 1px solid var(--warning-border);
   border-radius: 14px;
-  background: rgb(80 55 20 / 30%);
+  background: var(--warning-surface);
 }
 
 .button-secondary,
@@ -353,41 +428,41 @@ textarea {
 
 .button-secondary {
   justify-self: start;
-  border: 1px solid rgb(164 226 190 / 40%);
-  color: #d7e9de;
+  border: 1px solid var(--border-strong);
+  color: var(--text-soft);
   background: transparent;
 }
 
 .button-danger {
   border: 0;
-  color: #1a0505;
-  background: #ff8f8f;
+  color: var(--accent-contrast);
+  background: var(--danger);
 }
 
 .notice {
-  color: #a8f0c6;
+  color: var(--success);
 }
 
 .alert {
   margin: 16px 0;
   padding: 12px 14px;
-  border: 1px solid rgb(255 143 143 / 35%);
+  border: 1px solid var(--danger-border);
   border-radius: 12px;
-  background: rgb(80 20 20 / 35%);
+  background: var(--danger-surface);
 }
 
 .foundation-card {
   width: min(680px, 100%);
   padding: clamp(28px, 6vw, 56px);
-  border: 1px solid rgb(164 226 190 / 16%);
+  border: 1px solid var(--border);
   border-radius: 28px;
-  background: rgb(13 31 22 / 82%);
-  box-shadow: 0 32px 80px rgb(0 0 0 / 28%);
+  background: var(--surface-strong);
+  box-shadow: var(--shadow);
   backdrop-filter: blur(18px);
 }
 
 .eyebrow {
-  color: #7de2aa;
+  color: var(--accent);
   font-size: 0.75rem;
   font-weight: 800;
   letter-spacing: 0.18em;
@@ -404,7 +479,7 @@ h1 {
 p {
   max-width: 58ch;
   margin: 0;
-  color: #acc4b6;
+  color: var(--text-muted);
   font-size: clamp(1rem, 2vw, 1.12rem);
   line-height: 1.7;
 }
@@ -414,7 +489,7 @@ p {
   align-items: center;
   gap: 10px;
   margin-top: 32px;
-  color: #d7e9de;
+  color: var(--text-soft);
   font-size: 0.9rem;
 }
 
@@ -422,13 +497,13 @@ p {
   width: 9px;
   height: 9px;
   border-radius: 999px;
-  background: #d9a441;
-  box-shadow: 0 0 0 5px rgb(217 164 65 / 12%);
+  background: var(--warning);
+  box-shadow: 0 0 0 5px var(--warning-surface);
 }
 
 .status-dot--online {
-  background: #5ce899;
-  box-shadow: 0 0 0 5px rgb(92 232 153 / 12%);
+  background: var(--success);
+  box-shadow: 0 0 0 5px var(--success-surface);
 }
 
 /* Administration (PASSO 12) */
@@ -449,13 +524,13 @@ p {
   border-radius: 999px;
   padding: 0.15rem 0.6rem;
   font-size: 0.8rem;
-  background: #e5e7eb;
-  color: #374151;
+  background: var(--surface-sunken);
+  color: var(--text-soft);
 }
 
 .badge[data-active='true'] {
-  background: #dcfce7;
-  color: #166534;
+  background: var(--success-surface);
+  color: var(--success);
 }
 
 .admin-table {
@@ -466,7 +541,7 @@ p {
 
 .admin-table th,
 .admin-table td {
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid var(--border);
   padding: 0.5rem;
   text-align: left;
   vertical-align: top;
@@ -505,11 +580,11 @@ p {
 }
 
 .link-button.danger {
-  color: #b91c1c;
+  color: var(--danger);
 }
 
 .hint {
-  color: #6b7280;
+  color: var(--text-muted);
   font-size: 0.9rem;
 }
 
