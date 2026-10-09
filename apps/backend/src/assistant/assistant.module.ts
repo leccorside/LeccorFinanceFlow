@@ -1,16 +1,26 @@
 import { Module } from '@nestjs/common';
+import { AiModule } from '../ai/ai.module.js';
 import { FinanceModule } from '../finance/finance.module.js';
 import { ProfileModule } from '../profile/profile.module.js';
 import { SpreadsheetsModule } from '../spreadsheets/spreadsheets.module.js';
 import { AssistantController } from './assistant.controller.js';
+import { AssistantService } from './assistant.service.js';
+import { ConversationService } from './conversation.service.js';
+import { IntentService } from './intent.service.js';
 import { ToolExecutor } from './tools/tool-executor.js';
 import { ToolRegistry } from './tools/tool-registry.js';
 
-/** Tool registry and safe executor: the only bridge between models and the domain. */
+/** The conversational assistant: conversations, intent routing, model ↔ tool loop. */
 @Module({
-  imports: [FinanceModule, SpreadsheetsModule, ProfileModule],
+  imports: [AiModule, FinanceModule, SpreadsheetsModule, ProfileModule],
   controllers: [AssistantController],
-  providers: [ToolRegistry, ToolExecutor],
-  exports: [ToolRegistry, ToolExecutor],
+  providers: [
+    ToolRegistry,
+    ToolExecutor,
+    ConversationService,
+    IntentService,
+    AssistantService,
+  ],
+  exports: [ToolRegistry, ToolExecutor, AssistantService],
 })
 export class AssistantModule {}

@@ -1,21 +1,117 @@
-import { Controller, Get, HttpCode, Inject, Param, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  HttpCode,
+  Inject,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
+import { z } from 'zod';
 import type { AuthenticatedUser } from '../auth/auth.service.js';
 import { CurrentUser } from '../auth/session-auth.guard.js';
-import { uuidParam } from '../common/validation/zod-validation.pipe.js';
+import { RateLimit } from '../common/security/decorators.js';
+import { dto, uuidParam, validate } from '../common/validation/zod-validation.pipe.js';
+import { type AssistantTurn, AssistantService } from './assistant.service.js';
+import { ConversationService } from './conversation.service.js';
 import { type PendingConfirmation, ToolExecutor } from './tools/tool-executor.js';
 import { type ToolInfo, ToolRegistry } from './tools/tool-registry.js';
 import type { ToolOutcome } from './tools/tool.types.js';
 
+const sendMessage = dto({
+  conversationId: z.uuid().optional(),
+  message: z
+    .string()
+    .trim()
+    .min(1)
+    .max(2000)
+    // Line breaks and tabs are fine in a chat message; other control characters are not.
+    .refine((value) => !/\p{Cc}/u.test(value.replace(/[\n\r\t]/g, '')), {
+      message: 'must not contain control characters',
+    }),
+});
+
+const listMessages = dto({ limit: z.coerce.number().int().min(1).max(200).optional() });
+
 /**
- * The user's side of tool execution: which tools exist for them, and the explicit
- * confirmation (or cancellation) of destructive actions. Conversations arrive in PASSO 14.
+ * The conversation API: messages to the assistant, conversation history, and the user's
+ * explicit confirmation (or cancellation) of destructive actions. Every route needs the
+ * session; writes need CSRF; message sending is rate limited (it calls AI providers).
  */
 @Controller('assistant')
 export class AssistantController {
   constructor(
+    @Inject(AssistantService) private readonly assistant: AssistantService,
+    @Inject(ConversationService) private readonly conversations: ConversationService,
     @Inject(ToolRegistry) private readonly registry: ToolRegistry,
     @Inject(ToolExecutor) private readonly executor: ToolExecutor,
   ) {}
+
+  @Post('messages')
+  @HttpCode(200)
+  @RateLimit({ policy: 'assistant' })
+  send(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(validate(sendMessage)) body: z.infer<typeof sendMessage>,
+  ): Promise<AssistantTurn> {
+    return this.assistant.send(user, body);
+  }
+
+  @Get('suggestions')
+  suggestions(@CurrentUser() user: AuthenticatedUser): Promise<string[]> {
+    return this.assistant.suggestions(user);
+  }
+
+  @Get('conversations')
+  list(@CurrentUser() user: AuthenticatedUser) {
+    return this.conversations.list(user);
+  }
+
+  @Get('conversations/:id/messages')
+  async messages(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParam) id: string,
+    @Query(validate(listMessages)) query: z.infer<typeof listMessages>,
+  ) {
+    const rows = await this.conversations.messages(user, id, query.limit);
+    return rows.map((row) => {
+      const payload = (row.toolPayload ?? {}) as {
+        toolCalls?: { name: string }[];
+        outcome?: ToolOutcome;
+      };
+      return {
+        id: row.id,
+        role: row.role,
+        content: row.role === 'TOOL' ? null : row.content,
+        provider: row.provider,
+        toolName: row.toolName,
+        toolCalls: payload.toolCalls?.map((call) => call.name) ?? [],
+        toolStatus: payload.outcome?.status ?? null,
+        createdAt: row.createdAt.toISOString(),
+      };
+    });
+  }
+
+  @Post('conversations/:id/confirmations/:confirmationId/confirm')
+  @HttpCode(200)
+  confirmInConversation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParam) id: string,
+    @Param('confirmationId', uuidParam) confirmationId: string,
+  ): Promise<AssistantTurn> {
+    return this.assistant.confirm(user, id, confirmationId);
+  }
+
+  @Post('conversations/:id/confirmations/:confirmationId/cancel')
+  @HttpCode(200)
+  cancelInConversation(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', uuidParam) id: string,
+    @Param('confirmationId', uuidParam) confirmationId: string,
+  ): Promise<AssistantTurn> {
+    return this.assistant.cancel(user, id, confirmationId);
+  }
 
   @Get('tools')
   tools(@CurrentUser() user: AuthenticatedUser): ToolInfo[] {

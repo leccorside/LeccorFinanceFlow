@@ -472,7 +472,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: implementa execução autorizada de ferramentas do assistente`
 
-## [ ] PASSO 14 — Assistente e contexto conversacional
+## [x] PASSO 14 — Assistente e contexto conversacional
 
 **Objetivo:** entregar interpretação, diálogo, memória contextual e respostas fundamentadas.
 
@@ -484,7 +484,38 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** corpus PT/EN/ES, contexto, alucinação numérica, falhas de provider e prompt injection.
 
-**Sugestão de commit:** `feat: deliver contextual financial assistant`
+**Evidência (09/10/2026):**
+
+- **Backend**:
+  - `AssistantService`: turno com laço modelo ↔ ferramentas, guarda de números com uma correção, estados (`answered`, `needs_confirmation`, `needs_clarification`, `error`), respostas fixas localizadas para falhas e confirmação ou cancelamento pós-ação na conversa;
+  - `ConversationService`: mensagens em ordem estrita, histórico que começa numa mensagem do usuário, contexto estruturado atualizado só por ferramentas e revalidado contra o banco;
+  - `IntentService`: idioma pt/en/es, tipo (comando, pergunta, conversa) e finalidade da IA, com reserva em `CHAT`;
+  - `grounding.ts`; prompt e textos em `assistant.messages.ts`;
+  - rotas `/assistant/messages`, `/conversations`, `/conversations/:id/messages`, `/conversations/:id/confirmations/:cid/confirm|cancel` e `/suggestions`;
+  - política de limite `assistant` (`ASSISTANT_RATE_LIMIT_MAX_REQUESTS`). Sem migration: `conversations` e `conversation_messages` já existiam.
+- **Unitários**: 301 no total, 27 deste passo:
+  - **corpus PT/EN/ES** com as frases do PROMPT (idioma, tipo e finalidade);
+  - números em formatos pt/en/es; valores com moeda e percentuais citados;
+  - aceitação de valores das ferramentas, arredondamento e combinações; recusa de inventados;
+  - regras do prompt; textos fixos e sugestões nos três idiomas.
+- **Integração**: 247 no total, 14 deste passo, com modelo roteirizado e Postgres real:
+  - "Gastei 89 reais de gasolina hoje" de ponta a ponta (ferramenta, data de hoje, histórico com a conversa, mensagens gravadas, provedor);
+  - **contexto** "E no mês passado?" (período e categoria revalidados) e "Qual delas é a maior?" a partir de resultados anteriores;
+  - **alucinação numérica**: uma correção e retorno aterrado; insistência vira resposta fixa, sem gravar o valor inventado;
+  - **falhas de provedor**: indisponível (resposta fixa no idioma do usuário), reserva no próximo provedor, finalidade configurada, requisição inválida sem fallback, sem configuração, laço infinito cortado;
+  - confirmação na conversa (outra conversa `404`, CSRF, uso único) e ambiguidade com candidatos e cancelamento;
+  - **prompt injection** com modelo "sequestrado" (confirmar, `ownerId`, ids de outra pessoa, ferramenta inexistente: tudo recusado; dados nunca no prompt de sistema);
+  - IDOR de conversas e validação da mensagem.
+- **Mutações detectadas**: guarda de números desligada; contexto sem a categoria; confirmação aceita fora da própria conversa.
+- **Bug de teste corrigido**: o fake de IA guardava a requisição por referência e via mensagens adicionadas depois; agora guarda uma cópia, como um adaptador real.
+- **Docker**:
+  - suítes nos containers (301 + 247);
+  - teste manual sem provedor configurado: turno `error`/`ai_not_configured` com a frase fixa em português e em inglês; conversas, mensagens e sugestões; mensagem vazia `400`; sem CSRF `403`;
+  - título com acento gravado corretamente quando o corpo vai em UTF-8;
+  - `pnpm quality` completo.
+- **Não validado com modelos reais** (sem chaves): o laço e a guarda foram exercitados com um modelo roteirizado. A qualidade da interpretação depende do provedor configurado.
+
+**Sugestão de commit:** `feat: entrega o assistente financeiro com contexto conversacional`
 
 ## [ ] PASSO 15 — Undo e operações destrutivas
 

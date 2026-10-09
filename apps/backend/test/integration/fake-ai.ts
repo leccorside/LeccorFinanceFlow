@@ -15,6 +15,8 @@ export type FakeBehavior = 'ok' | 'hang' | AiErrorKind;
 export class FakeAiClient implements AiProviderClient {
   calls: { apiKey: string; request: ChatRequest }[] = [];
   behavior: FakeBehavior = 'ok';
+  /** Scripted "model": decides tool calls and answers from the request (used when ok). */
+  handler: ((request: ChatRequest) => Partial<ChatResult>) | null = null;
 
   constructor(readonly type: AIProviderType) {}
 
@@ -23,7 +25,8 @@ export class FakeAiClient implements AiProviderClient {
     request: ChatRequest,
     signal: AbortSignal,
   ): Promise<ChatResult> {
-    this.calls.push({ apiKey, request });
+    // A copy, like a real adapter that serializes the request at call time.
+    this.calls.push({ apiKey, request: structuredClone(request) });
     if (this.behavior === 'hang') {
       // Like a real adapter whose fetch is aborted by the timeout signal.
       await new Promise((_resolve, reject) => {
@@ -31,6 +34,16 @@ export class FakeAiClient implements AiProviderClient {
       });
     }
     if (this.behavior !== 'ok') throw new AiProviderError(this.behavior as AiErrorKind);
+    if (this.handler) {
+      const scripted = this.handler(request);
+      const toolCalls = scripted.toolCalls ?? [];
+      return {
+        text: scripted.text ?? null,
+        toolCalls,
+        finishReason: toolCalls.length > 0 ? 'tool_calls' : 'stop',
+        usage: null,
+      };
+    }
     return {
       text: `resposta de ${this.type} (${request.model})`,
       toolCalls: [],
@@ -49,6 +62,7 @@ export class FakeAiClients implements AiProviderClients {
     for (const client of [this.OPENAI, this.GEMINI, this.ANTHROPIC]) {
       client.calls = [];
       client.behavior = 'ok';
+      client.handler = null;
     }
   }
 }

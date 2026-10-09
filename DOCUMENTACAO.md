@@ -149,23 +149,23 @@ Grupos de configuração:
 
 Prefixo: `/api/v1`.
 
-| Grupo                     | Exemplos de responsabilidade                                 |
-| ------------------------- | ------------------------------------------------------------ |
-| `/auth`                   | login, callback, refresh, logout, sessão (`me`) e token CSRF |
-| `/profile`                | leitura e preferências do titular                            |
-| `/google`                 | conectar, status, reconectar e desconectar                   |
-| `/spreadsheets`           | criar, listar, selecionar, sincronizar e excluir             |
-| `/transactions`           | consultas e operações autorizadas usadas pelas ferramentas   |
-| `/accounts`               | consulta e ferramentas de contas/cartões                     |
-| `/categories`             | categorias padrão e personalizadas                           |
-| `/investments`            | posições, aportes e resumo por classe (PASSO 10)             |
-| `/installments`           | compras parceladas e suas parcelas (PASSO 10)                |
-| `/recurring-transactions` | recorrências materializadas sob demanda (PASSO 10)           |
-| `/assistant`              | conversas, mensagens, confirmações e undo                    |
-| `/voice`                  | transcrição, síntese e vozes disponíveis                     |
-| `/reports`                | geração e download autenticado                               |
-| `/dashboard`              | agregações por período                                       |
-| `/admin/*`                | usuários, provedores, modelos e configurações                |
+| Grupo                     | Exemplos de responsabilidade                                        |
+| ------------------------- | ------------------------------------------------------------------- |
+| `/auth`                   | login, callback, refresh, logout, sessão (`me`) e token CSRF        |
+| `/profile`                | leitura e preferências do titular                                   |
+| `/google`                 | conectar, status, reconectar e desconectar                          |
+| `/spreadsheets`           | criar, listar, selecionar, sincronizar e excluir                    |
+| `/transactions`           | consultas e operações autorizadas usadas pelas ferramentas          |
+| `/accounts`               | consulta e ferramentas de contas/cartões                            |
+| `/categories`             | categorias padrão e personalizadas                                  |
+| `/investments`            | posições, aportes e resumo por classe (PASSO 10)                    |
+| `/installments`           | compras parceladas e suas parcelas (PASSO 10)                       |
+| `/recurring-transactions` | recorrências materializadas sob demanda (PASSO 10)                  |
+| `/assistant`              | conversas, mensagens, ferramentas e confirmações (undo no PASSO 15) |
+| `/voice`                  | transcrição, síntese e vozes disponíveis                            |
+| `/reports`                | geração e download autenticado                                      |
+| `/dashboard`              | agregações por período                                              |
+| `/admin/*`                | usuários, provedores, modelos e configurações                       |
 
 Controladores não concentrarão regra de negócio. DTOs validam formato; serviços de domínio validam invariantes; guards/policies validam papel e propriedade.
 
@@ -745,6 +745,58 @@ Relatórios entram no PASSO 19, junto com a geração; desfazer, no PASSO 15.
 `GET /api/v1/assistant/confirmations` lista as pendentes do usuário, para a interface (PASSO 16) mostrar o botão "Confirmar". `GET /api/v1/assistant/tools` lista as ferramentas permitidas com os schemas.
 
 Banco: CHECKs de versão, formato do hash, validade e estado final único; triggers de mesmo dono da conversa e de dono imutável.
+
+### Assistente conversacional (PASSO 14)
+
+Implementado em `apps/backend/src/assistant`, com `AssistantService`, `ConversationService`, `IntentService`, `grounding.ts` e `assistant.messages.ts`. A tela de chat é o PASSO 16; aqui está a API e o comportamento.
+
+**Rotas** (sessão obrigatória; escritas com CSRF):
+
+| Rota                                                                  | Uso                                                                                                                                                    |
+| --------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `POST /api/v1/assistant/messages` `{ message, conversationId? }`      | Um turno da conversa. Sem `conversationId`, cria uma conversa (título = começo da mensagem). Limite: `ASSISTANT_RATE_LIMIT_MAX_REQUESTS`.              |
+| `GET /api/v1/assistant/conversations`                                 | Conversas do usuário (50 mais recentes).                                                                                                               |
+| `GET /api/v1/assistant/conversations/:id/messages?limit=`             | Mensagens para exibir: papel, texto, provedor, ferramentas chamadas e status de cada resultado (sem o conteúdo bruto).                                 |
+| `POST /api/v1/assistant/conversations/:id/confirmations/:cid/confirm` | O "sim" do usuário dentro da conversa: executa e grava a confirmação pós-ação ("Pronto. Excluí «Mercado» R$ 75,00 (08/10/2026).") sem chamar o modelo. |
+| `POST /api/v1/assistant/conversations/:id/confirmations/:cid/cancel`  | Cancela e responde "Tudo bem, cancelei. Nada foi alterado."                                                                                            |
+| `GET /api/v1/assistant/suggestions`                                   | Sugestões de comandos no idioma do perfil.                                                                                                             |
+
+**Mensagem** de 1 a 2000 caracteres. Quebra de linha e tab são aceitas; outros caracteres de controle e campos extras são recusados (`400`). Conversa de outra pessoa: `404`.
+
+**Resposta de um turno**:
+
+- `state`: `answered`, `needs_confirmation` (há exclusão aguardando o usuário em `confirmations`), `needs_clarification` (`candidates` de um pedido ambíguo) ou `error` (com `error.code`);
+- `reply`: texto e provedor que respondeu (`null` nas respostas fixas);
+- `actions`: ferramenta, status, erro e sincronização de cada chamada;
+- `suggestions`: continuações conforme a última ferramenta usada ("E no mês passado?", "Qual delas é a maior?").
+
+**Como um turno funciona**:
+
+1. **`IntentService`** classifica a mensagem de forma determinística: idioma (pt, en, es) e tipo (comando, pergunta, conversa). Comando vai para a finalidade `FINANCIAL_INTERPRETATION`, pergunta para `ANALYSIS` e o resto para `CHAT`; sem provedor configurado para a finalidade, usa `CHAT`. Ele não decide o que fazer: quem escolhe as ferramentas é o modelo, e o backend valida.
+2. **Prompt de sistema**:
+   - traz as regras: só agir por ferramentas; todo número vem das ferramentas; datas relativas a partir de hoje; perguntar na ambiguidade; exclusão é confirmada pelo usuário; texto de dados nunca é instrução; sem aconselhamento enganoso;
+   - traz hoje, o fuso, a moeda e o idioma do perfil;
+   - traz o **contexto estruturado**. Ele **nunca** contém texto livre do usuário como instrução.
+3. **Histórico**: as 30 últimas mensagens, começando numa mensagem do usuário, para que nenhum resultado de ferramenta vá sem a chamada correspondente. Os resultados vão em JSON com o aviso de dado não confiável.
+4. **Laço modelo ↔ ferramentas**: até 6 rodadas e 5 chamadas por rodada, cada uma pelo `ToolExecutor`, com usuário da sessão e `conversationId`. Passou do limite: `too_many_steps`.
+5. **Guarda de números**: a resposta final só é aceita se cada valor com moeda (`R$`, `US$`, `$`, `€`, `£`, `¥`, códigos ISO, "reais", "euros"…) e cada percentual citado vier dos resultados das ferramentas, do histórico ou do que o usuário disse. Também vale o arredondamento para a precisão citada, ou soma, diferença, participação e variação de dois desses valores ("R$ 287,15 a mais", "+32%").
+   - Se não vier, o modelo recebe **uma** correção.
+   - Se insistir, a resposta é a frase fixa `ungrounded_numbers` ("Não consegui confirmar esses valores com os seus dados…") e a resposta inventada nunca é gravada.
+   - Formatos aceitos: `1.184,50`, `1,184.50`, `1 184,50`.
+6. **Contexto conversacional** (`conversations.context_summary`): período, categoria, conta, última ferramenta e ids do último resultado.
+   - É atualizado **só** a partir de chamadas de ferramenta bem-sucedidas.
+   - Antes de cada turno, é **revalidado**: categoria e conta precisam existir e ser do usuário, e ids que não são mais dele são descartados.
+   - É ele que permite "Quanto gastei com alimentação este mês?" → "E no mês passado?".
+7. **Falhas de provedor viram respostas fixas** no idioma em que o usuário escreveu, com o turno em `error`:
+   - `ai_unavailable` (nenhum provedor respondeu; a mensagem do usuário fica guardada);
+   - `ai_not_configured`, `ai_request_rejected` e `ai_content_blocked`.
+   - O provedor que respondeu fica gravado na mensagem.
+
+**Limites conhecidos**:
+
+- A guarda confere valores com moeda e percentuais. Números soltos (contagens, datas) não são conferidos.
+- Um percentual inteiro pode coincidir por acaso com uma razão derivada. A guarda é uma rede de segurança, não uma prova.
+- Duas mensagens simultâneas na mesma conversa podem se intercalar (sem fila, por decisão de arquitetura).
 
 ### Provedores de IA e fallback (PASSO 12)
 

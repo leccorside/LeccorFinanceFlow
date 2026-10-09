@@ -64,6 +64,7 @@ export class RateLimitGuard implements CanActivate {
       const limits = {
         auth: this.env.AUTH_RATE_LIMIT_MAX_REQUESTS,
         spreadsheets: this.env.SPREADSHEET_RATE_LIMIT_MAX_REQUESTS,
+        assistant: this.env.ASSISTANT_RATE_LIMIT_MAX_REQUESTS,
       } as const;
       buckets.push({
         key: `${policy.policy}:${client}`,
