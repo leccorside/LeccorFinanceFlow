@@ -7,6 +7,7 @@ import {
 } from '../common/crypto/credential-vault.js';
 import { APP_ENV, type AppEnv } from '../config/env.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { UsageService } from '../usage/usage.service.js';
 import type {
   AIConfiguration,
   AIPurpose,
@@ -69,6 +70,7 @@ export class AiService {
     @Inject(CREDENTIAL_VAULT) private readonly vault: CredentialVault | null,
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Inject(AI_PROVIDER_CLIENTS) private readonly clients: AiProviderClients,
+    @Inject(UsageService) private readonly usage: UsageService,
   ) {}
 
   async chat(
@@ -102,6 +104,14 @@ export class AiService {
       try {
         const result = await this.call(configuration, key, request);
         attempts.push({ ...attempt, outcome: 'ok' });
+        await this.usage.record({
+          kind: 'AI_CHAT',
+          provider: attempt.provider,
+          model: attempt.model,
+          inputUnits: result.usage?.inputTokens,
+          outputUnits: result.usage?.outputTokens,
+          outcome: 'ok',
+        });
         return {
           result,
           provider: configuration.provider.type,
@@ -112,6 +122,12 @@ export class AiService {
       } catch (error) {
         if (!(error instanceof AiProviderError)) throw error;
         attempts.push({ ...attempt, outcome: error.kind });
+        await this.usage.record({
+          kind: 'AI_CHAT',
+          provider: attempt.provider,
+          model: attempt.model,
+          outcome: error.kind,
+        });
         if (!error.recoverable) {
           throw new ApiException(
             HttpStatus.UNPROCESSABLE_ENTITY,

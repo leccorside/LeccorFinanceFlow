@@ -4,6 +4,8 @@ import type { AuthenticatedUser } from '../auth/auth.service.js';
 import { ApiException, ResourceNotFoundException } from '../common/errors/api-error.js';
 import { APP_ENV, type AppEnv, type VoiceProviderConfig } from '../config/env.js';
 import { PrismaService } from '../database/prisma.service.js';
+import { SettingsService } from '../settings/settings.service.js';
+import { UsageService } from '../usage/usage.service.js';
 import type { VoiceGender } from '../generated/prisma/enums.js';
 import { ACCEPTED_AUDIO_TYPES, acceptedType, matchesSignature } from './audio.js';
 import {
@@ -42,12 +44,18 @@ export class VoiceService {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Inject(VOICE_CLIENTS) private readonly clients: VoiceClients,
+    @Inject(SettingsService) private readonly settings: SettingsService,
+    @Inject(UsageService) private readonly usage: UsageService,
   ) {}
 
-  capabilities(): VoiceCapabilities {
+  /** Available = a provider is configured AND the admin has not turned it off. */
+  async capabilities(): Promise<VoiceCapabilities> {
+    const settings = await this.settings.all();
     return {
-      transcription: this.env.VOICE.transcription.length > 0,
-      speech: this.env.VOICE.speech.length > 0,
+      transcription:
+        this.env.VOICE.transcription.length > 0 &&
+        settings['voice.transcription.enabled'],
+      speech: this.env.VOICE.speech.length > 0 && settings['voice.speech.enabled'],
       maxAudioBytes: this.env.VOICE.maxAudioBytes,
       maxAudioSeconds: this.env.VOICE.maxAudioSeconds,
       audioTypes: ACCEPTED_AUDIO_TYPES,
@@ -106,6 +114,7 @@ export class VoiceService {
             signal,
           ),
         'transcription',
+        { input: audio.length, output: (text) => text.length },
       );
       const text = result.replace(/\s+/g, ' ').trim().slice(0, 2000);
       if (!text) {
@@ -138,6 +147,7 @@ export class VoiceService {
       (client, key, model, signal) =>
         client.synthesize(key, { text, gender, locale, model }, signal),
       'speech',
+      { input: text.length, output: (speech) => speech.audio.length },
     );
     return result;
   }
@@ -151,7 +161,19 @@ export class VoiceService {
       signal: AbortSignal,
     ) => Promise<T>,
     kind: 'transcription' | 'speech',
+    units: { input: number; output: (result: T) => number },
   ): Promise<{ result: T; provider: string }> {
+    const enabled = await this.settings.get(
+      kind === 'transcription' ? 'voice.transcription.enabled' : 'voice.speech.enabled',
+    );
+    if (!enabled) {
+      throw new ApiException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'voice_disabled',
+        'A voz foi desativada pela administração. Use o texto.',
+      );
+    }
+    const usageKind = kind === 'transcription' ? 'VOICE_TRANSCRIPTION' : 'VOICE_SPEECH';
     if (chain.length === 0) {
       throw new ApiException(
         HttpStatus.SERVICE_UNAVAILABLE,
@@ -176,10 +198,25 @@ export class VoiceService {
           model,
           AbortSignal.timeout(this.env.VOICE.timeoutMs),
         );
+        await this.usage.record({
+          kind: usageKind,
+          provider: config.provider,
+          model,
+          inputUnits: units.input,
+          outputUnits: units.output(result),
+          outcome: 'ok',
+        });
         return { result, provider: config.provider };
       } catch (error) {
         if (!(error instanceof AiProviderError)) throw error;
         attempts.push({ provider: config.provider, outcome: error.kind });
+        await this.usage.record({
+          kind: usageKind,
+          provider: config.provider,
+          model,
+          inputUnits: units.input,
+          outcome: error.kind,
+        });
         if (!error.recoverable) {
           throw new ApiException(
             HttpStatus.UNPROCESSABLE_ENTITY,

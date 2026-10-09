@@ -757,7 +757,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: gera relatórios seguros em pdf e xlsx`
 
-## [ ] PASSO 20 — Painel administrativo
+## [x] PASSO 20 — Painel administrativo
 
 **Objetivo:** administrar usuários, papéis, integrações e configurações globais.
 
@@ -769,7 +769,32 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** RBAC, promoção/rebaixamento seguro, bloqueio, configuração e vazamento de chave.
 
-**Sugestão de commit:** `feat: implement secure administration console`
+**Evidência (09/10/2026):**
+
+- **Backend**:
+  - `GET /admin/overview`: usuários, Google conectado, planilhas, mensagens, relatórios, IA ativa, consumo de 30 dias por provedor/modelo com custo estimado e estado da voz;
+  - `GET /admin/users` (busca, filtros, paginação), `PATCH /admin/users/:id/status` e `PATCH /admin/users/:id/admin`;
+  - `GET/PATCH /admin/settings`.
+- **Regras de admin**: ninguém altera a própria conta; sempre resta um admin ativo; admin de `ADMIN_EMAILS` não é rebaixado aqui. As mudanças rodam numa transação com `SELECT … FOR UPDATE` sobre os papéis de admin. Bloquear revoga todas as sessões na hora.
+- **Configurações globais** (tabela `system_settings`, chaves fixas com schema estrito), com efeito real:
+  - cadastros abertos (login recusa conta nova com `signups_closed`);
+  - assistente ligado (`assistant_disabled`);
+  - transcrição e fala ligadas (`voice_disabled`);
+  - preços para estimar o consumo.
+- **Consumo**: migration `20261009190723_usage_events` (tabela anônima, CHECK de volumes, `down.sql`). Cada tentativa de IA e de voz grava provedor, modelo, volumes e resultado; o custo é calculado em `Decimal`.
+- **Frontend** (`/admin`, carregado sob demanda): abas Visão geral, Usuários, Provedores de IA e Configurações:
+  - ações com confirmação e erros explicados;
+  - nenhuma chave exibida (voz mostra só "chave configurada" ou "sem chave");
+  - login, chat e voz com as mensagens novas.
+- **Testes**:
+  - backend 334 unitários e 312 de integração (+15 de admin e contagem de tabelas da migration);
+  - frontend 133 (+8).
+- **Cenários cobertos**: RBAC (401/403 em todas as rotas), CSRF, promoção e rebaixamento com efeito imediato, autoalteração, admin de ambiente, **rebaixamento cruzado simultâneo (um vence, o outro 403)**, bloqueio com sessões revogadas antes de qualquer uso, busca/filtros/paginação, validação das configurações, cadastros fechados, pausas, consumo e custo exatos, **nenhuma chave em resposta alguma**.
+- **Mutações detectadas**: autoalteração liberada; sessões não revogadas ao bloquear (a primeira versão do teste não pegava: reforçado); cadastros fechados ignorados; trava `FOR UPDATE` removida (3 de 3).
+- **Docker**: suítes nos containers (334 + 312 + 133) e teste manual (403 para usuário, pausa do chat, bloqueio derruba a sessão, autoalteração recusada, sem chaves na resposta); `pnpm quality` completo.
+- **Chrome real**: telas em 320, 375 e 1280 sem rolagem horizontal (e-mail longo e tamanho do título corrigidos depois da verificação).
+
+**Sugestão de commit:** `feat: implementa console administrativo seguro`
 
 ## [ ] PASSO 21 — Privacidade, exclusão e endurecimento
 

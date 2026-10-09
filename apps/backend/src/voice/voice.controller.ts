@@ -29,7 +29,7 @@ export class VoiceController {
   constructor(@Inject(VoiceService) private readonly voice: VoiceService) {}
 
   @Get('capabilities')
-  capabilities(): VoiceCapabilities {
+  capabilities(): Promise<VoiceCapabilities> {
     return this.voice.capabilities();
   }
 

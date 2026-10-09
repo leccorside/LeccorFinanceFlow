@@ -1016,6 +1016,66 @@ Os formatos seguem a documentação das APIs e não foram exercitados contra os 
   | Provedor indisponível           | alerta, sem "Tentar de novo" (o áudio não foi guardado) |
   | Falha ao ler em voz alta        | aviso discreto; a resposta continua no chat             |
 
+## Console administrativo (PASSO 20)
+
+Área `/admin` (abas Visão geral, Usuários, Provedores de IA e Configurações). Todas as rotas `/api/v1/admin/*` exigem sessão e o papel **ADMIN** no backend (`RolesGuard`); escritas exigem CSRF. A interface só esconde o menu, e quem decide é sempre a API.
+
+### Rotas
+
+| Rota                                           | Uso                                                                                                                                                    |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /admin/overview`                          | Contadores (usuários, Google, planilhas, mensagens e relatórios em 30 dias, IA ativa), consumo por provedor/modelo com custo estimado e estado da voz. |
+| `GET /admin/users?q&status&role&page&pageSize` | Busca por e-mail ou nome; filtros; até 100 por página. Cada item traz `isSelf` e `adminFromEnvironment`.                                               |
+| `PATCH /admin/users/:id/status`                | `{ status: ACTIVE \| BLOCKED }`. Bloquear revoga **todas** as sessões na hora.                                                                         |
+| `PATCH /admin/users/:id/admin`                 | `{ admin: true \| false }`. Vale na próxima requisição do usuário (os papéis são lidos a cada requisição).                                             |
+| `GET/PATCH /admin/settings`                    | Configurações globais (abaixo).                                                                                                                        |
+
+### Regras de usuários e papéis
+
+| Regra                                                                                                                  | Erro                         |
+| ---------------------------------------------------------------------------------------------------------------------- | ---------------------------- |
+| Ninguém altera o próprio status ou papel; outro admin precisa fazer                                                    | `422 admin_self_change`      |
+| Sempre há ao menos um admin ativo                                                                                      | `422 last_admin`             |
+| Admin que vem de `ADMIN_EMAILS` não é rebaixado aqui (o próximo login devolveria o papel); remova o e-mail da variável | `422 admin_from_environment` |
+| Conta bloqueada não vira admin                                                                                         | `422 user_blocked`           |
+| Quem perdeu o papel no meio da operação                                                                                | `403 forbidden`              |
+
+As mudanças correm numa transação que trava todas as atribuições de ADMIN (`SELECT … FOR UPDATE`) e reconfere que quem age ainda é admin ativo. Dois admins rebaixando um ao outro ao mesmo tempo: um vence e o outro recebe 403, então nunca ficam os dois sem papel. Cada ação gera um log `AdminAudit` (ids, sem dados pessoais).
+
+### Configurações globais
+
+Guardadas em `system_settings`. Só existem estas chaves, cada uma com schema estrito; uma linha ausente ou inválida vale o padrão. O cache de leitura é de 2 s.
+
+| Chave                                                  | Padrão | Efeito                                                                                                                                                |
+| ------------------------------------------------------ | ------ | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signups.enabled`                                      | `true` | Desligado, o login com Google de uma conta **nova** termina em `/login?error=signups_closed`. Contas existentes e e-mails de `ADMIN_EMAILS` entram.   |
+| `assistant.enabled`                                    | `true` | Desligado, `POST /assistant/messages` responde `503 assistant_disabled` e o chat mostra o aviso.                                                      |
+| `voice.transcription.enabled` / `voice.speech.enabled` | `true` | Desligados, as capacidades vêm `false` e as rotas respondem `503 voice_disabled`. Provedores e chaves da voz continuam no ambiente (`STT_*`/`TTS_*`). |
+| `usage.prices`                                         | `[]`   | Até 60 preços `{ kind, provider, model, input, output }` em USD por milhão de unidades (texto decimal).                                               |
+
+### Consumo estimado
+
+A tabela `usage_events` é anônima: guarda tipo, provedor, modelo, volumes e resultado, sem usuário nem conteúdo. Cada **tentativa** é gravada, inclusive as que falharam (que entram no fallback); tentativas sem chave não chamam o provedor e não são gravadas.
+
+Unidades por tipo:
+
+| `kind`                | Entrada           | Saída           |
+| --------------------- | ----------------- | --------------- |
+| `AI_CHAT`             | tokens de entrada | tokens de saída |
+| `VOICE_SPEECH`        | caracteres lidos  | bytes de áudio  |
+| `VOICE_TRANSCRIPTION` | bytes de áudio    | caracteres      |
+
+O custo estimado é `entrada/1.000.000 × preço de entrada`, mais `saída/1.000.000 × preço de saída` (este só para `AI_CHAT`). É calculado em `Decimal` com 6 casas, somente para modelos com preço configurado; os demais aparecem como "sem preço". É uma estimativa, não substitui a fatura dos provedores.
+
+### Segredos
+
+Nenhuma resposta de `/admin` contém chaves:
+
+- as de IA ficam cifradas e não são devolvidas (PASSO 12);
+- as de voz aparecem só como `keyConfigured: true`/`false`.
+
+O teste de integração procura as chaves configuradas em todas as respostas do admin.
+
 ## Segurança
 
 ### Segurança da API (PASSO 05)

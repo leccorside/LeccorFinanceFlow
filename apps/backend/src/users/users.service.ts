@@ -4,6 +4,7 @@ import type { GoogleIdentity } from '../auth/google-identity.provider.js';
 import { APP_ENV, type AppEnv } from '../config/env.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { Prisma, type User } from '../generated/prisma/client.js';
+import { SettingsService } from '../settings/settings.service.js';
 
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
@@ -14,6 +15,7 @@ export class UsersService {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(APP_ENV) private readonly env: AppEnv,
+    @Inject(SettingsService) private readonly settings: SettingsService,
   ) {}
 
   /**
@@ -112,6 +114,13 @@ export class UsersService {
       });
     }
 
+    // Closed signups keep existing accounts working; configured admins can always enter.
+    if (
+      !this.env.ADMIN_EMAILS.includes(email) &&
+      !(await this.settings.get('signups.enabled'))
+    ) {
+      throw new AuthError('signups_closed');
+    }
     return this.prisma.user.create({
       data: {
         email,

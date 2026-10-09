@@ -476,3 +476,251 @@
   border-radius: 24px;
   background: var(--surface);
 }
+
+/* ───────────── Administration (PASSO 20) ───────────── */
+.admin-shell {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 18px;
+  align-self: start;
+  width: min(1180px, 100%);
+}
+
+.app-main:has(> .admin-shell) {
+  place-items: start center;
+}
+
+.admin-tabs {
+  display: flex;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  scrollbar-width: none;
+}
+
+.admin-tabs a {
+  display: inline-flex;
+  align-items: center;
+  min-height: 40px;
+  padding: 0 16px;
+  border-radius: 999px;
+  color: var(--text-soft);
+  font-weight: 650;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.admin-tabs a[aria-current='page'] {
+  color: var(--accent-contrast);
+  background: var(--accent-gradient);
+  box-shadow: var(--glow);
+}
+
+.admin-page {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 16px;
+}
+
+.admin-page .page-header {
+  margin: 0;
+}
+
+.admin-page h1 {
+  max-width: none;
+  margin: 0 0 4px;
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+}
+
+.table-scroll {
+  overflow-x: auto;
+}
+
+.admin-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.ok-text {
+  color: var(--success);
+}
+
+.danger-text {
+  color: var(--danger);
+}
+
+.badge--on {
+  color: var(--success);
+  background: var(--success-surface);
+}
+
+.badge--off {
+  color: var(--danger);
+  background: var(--danger-surface);
+}
+
+.badge--admin {
+  color: var(--accent-contrast);
+  background: var(--accent-gradient);
+}
+
+.admin-voice {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+}
+
+.admin-voice-chain h3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+
+.admin-voice-chain ol {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--text-soft);
+}
+
+.admin-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+  align-items: end;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.admin-filters .button-secondary {
+  justify-self: start;
+}
+
+.admin-users {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.admin-user {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: var(--surface);
+}
+
+.admin-user--blocked {
+  border-color: var(--danger-border);
+}
+
+.admin-user-main {
+  display: grid;
+  flex: 1 1 240px;
+  gap: 4px;
+  min-width: 0;
+}
+
+.admin-user-main strong,
+.admin-user-main > .hint {
+  overflow-wrap: anywhere;
+}
+
+.admin-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.admin-user-meta {
+  font-size: 0.8rem;
+}
+
+.admin-user-actions {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.admin-user-actions .confirm-box {
+  display: grid;
+  gap: 8px;
+  max-width: 420px;
+}
+
+.admin-user-actions .confirm-box p {
+  color: var(--text);
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.admin-pager {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+}
+
+.admin-settings {
+  display: grid;
+  gap: 16px;
+}
+
+.admin-settings fieldset {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+}
+
+.admin-settings legend {
+  padding: 0 6px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.toggle-row {
+  display: grid;
+  gap: 2px;
+}
+
+.price-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: end;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface-sunken);
+}
+
+.price-row .field {
+  flex: 1 1 140px;
+  min-width: 0;
+}
+
+.price-row .link-button {
+  min-width: 44px;
+  min-height: 44px;
+}

@@ -191,6 +191,13 @@ enum ActionKind {
   DELETE
 }
 
+/// What a usage event measures (aggregates only; no user is recorded).
+enum UsageKind {
+  AI_CHAT
+  VOICE_TRANSCRIPTION
+  VOICE_SPEECH
+}
+
 enum AuthAttemptPurpose {
   LOGIN
   GOOGLE_CONNECTION
@@ -813,4 +820,26 @@ model AssistantConfirmation {
   @@index([ownerId, createdAt])
   @@index([expiresAt])
   @@map("assistant_confirmations")
+}
+
+// ──────────────────────────── Usage (PASSO 20) ────────────────────────────
+
+/// One provider attempt (AI chat or voice), for the admin's consumption estimate.
+/// Deliberately anonymous: no user, no content, only volumes and the outcome.
+model UsageEvent {
+  id          String    @id @default(uuid(7)) @db.Uuid
+  kind        UsageKind
+  provider    String    @db.VarChar(30)
+  model       String    @db.VarChar(150)
+  /// AI_CHAT: input tokens. VOICE_SPEECH: characters read. VOICE_TRANSCRIPTION: audio bytes.
+  inputUnits  Int       @default(0) @map("input_units")
+  /// AI_CHAT: output tokens. VOICE_SPEECH: audio bytes. VOICE_TRANSCRIPTION: characters.
+  outputUnits Int       @default(0) @map("output_units")
+  /// "ok" or the failure class (timeout, rate_limited…).
+  outcome     String    @db.VarChar(40)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([createdAt])
+  @@index([kind, provider, model])
+  @@map("usage_events")
 }

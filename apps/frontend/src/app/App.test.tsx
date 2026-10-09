@@ -120,7 +120,7 @@ describe('App', () => {
     renderWithProviders(<App />);
     expect(await screen.findByRole('link', { name: 'Administração' })).toHaveAttribute(
       'href',
-      '/admin/ai',
+      '/admin',
     );
   });
 

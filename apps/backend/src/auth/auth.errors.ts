@@ -11,6 +11,7 @@ export type AuthErrorCode =
   | 'email_not_verified'
   | 'account_blocked'
   | 'account_conflict'
+  | 'signups_closed'
   | 'invalid_session';
 
 export class AuthError extends Error {

@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 19 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 20 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,32 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Console administrativo implementado no PASSO 20:
+
+- Backend:
+  - `src/admin/admin.controller.ts` (overview, users, status, admin, settings), `admin-users.service.ts` (regras + `locked()` com `FOR UPDATE` + `AdminAudit`), `admin-overview.service.ts` (`overview`, `estimateCost`);
+  - `src/settings` (`SettingsService` global: `SETTINGS`, `settingsUpdate`, cache de 2 s);
+  - `src/usage` (`UsageService.record`, global).
+- Integrações:
+  - `AiService.chat` grava cada tentativa; `VoiceService` grava cada tentativa e respeita as chaves liga/desliga (`capabilities` virou assíncrono);
+  - `UsersService.findOrCreate` recusa conta nova com cadastros fechados (`AuthError('signups_closed')`);
+  - `AssistantService.send` recusa com `assistant_disabled`.
+- Migration `20261009190723_usage_events` (enum `UsageKind`, tabela, índices, CHECK, `down.sql`); `migration.int-spec` agora espera 25 tabelas.
+- Frontend:
+  - `features/admin/AdminRoutes.tsx` (abas + rotas aninhadas, lazy em `/admin/*`), `AdminOverviewPage`, `AdminUsersPage`, `AdminSettingsPage`;
+  - `services/admin.ts`; estilos no fim de `styles/dashboard.css`;
+  - `LoginPage` conhece `signups_closed`.
+- Testes: `test/integration/admin.int-spec.ts` (15) e `features/admin/AdminPages.test.tsx` (8).
+
+## Decisões do PASSO 20
+
+- **Invariantes no backend, sob trava**: nunca em si mesmo, nunca sem admin ativo, `ADMIN_EMAILS` não é rebaixado aqui. Como só outro admin ativo age, "último admin" decorre da regra de si mesmo; a trava `FOR UPDATE` cobre a corrida entre dois admins (testada e com mutação detectada).
+- **Bloqueio revoga sessões na hora** (antes só caíam no próximo uso).
+- **Configurações com chaves fixas** e schema por chave em `system_settings`, em vez de chave/valor livre: nada desconhecido entra e o padrão vale sem linha no banco.
+- **Voz continua configurada pelo ambiente**: o admin só liga/desliga e vê se há chave. Unificar com as chaves cifradas de IA ficou fora (seria outro fluxo de segredo).
+- **Consumo anônimo por tentativa** (inclui falhas, o que mostra o fallback) e custo só com preço informado pelo admin. Os preços das APIs mudam, por isso não há tabela fixa no código.
+- **Auditoria** por log estruturado (`AdminAudit`, ids apenas), sem tabela nova.
 
 Relatórios implementados no PASSO 19 (`apps/backend/src/reports`):
 
@@ -145,7 +171,7 @@ Voz implementada no PASSO 17:
 - **Duração**: limitada pelo gravador (`MAX_AUDIO_DURATION_SECONDS`). O servidor não decodifica áudio, então a garantia dele é o tamanho.
 - **Fala só por `messageId`**: a rota não sintetiza texto arbitrário. Não é um TTS gratuito, e o dono da conversa é conferido.
 - **Velocidade aplicada no navegador** (`playbackRate`), igual para qualquer provedor. A voz (gênero) é escolhida no servidor a partir do perfil.
-- **Chaves da voz pelo ambiente**, não pela tela de administração de IA (que é por finalidade de chat). Avaliar unificar no PASSO 20.
+- **Chaves da voz pelo ambiente**, não pela tela de administração de IA (que é por finalidade de chat). Mantido no PASSO 20 (o admin só liga/desliga).
 - **Fallback de fala no navegador (`speechSynthesis`) não foi feito**: o gênero da voz não é confiável entre sistemas. Sem TTS, a resposta fica no texto.
 
 Interface conversacional implementada no PASSO 16 (`apps/frontend/src/features/assistant`):
@@ -481,7 +507,7 @@ Perfil e i18n implementados no PASSO 06:
 - **Headers de segurança próprios** (sem helmet), para uma API JSON. A CSP do frontend fica para o PASSO 21.
 - **Erros 5xx nunca vazam a mensagem original**; Prisma P2025 → 404, P2002/P2003 → 409; erros de middleware com `status` + `type` (body-parser) → seu 4xx.
 - **Módulo de sondagem só nos testes**: valida a infraestrutura sem criar rotas de domínio antes do PASSO 09.
-- **`ADMIN_EMAILS` só concede**: remover da lista não rebaixa (ação explícita no PASSO 20).
+- **`ADMIN_EMAILS` só concede**: remover da lista não rebaixa; o rebaixamento é explícito no console (PASSO 20), que recusa rebaixar quem ainda está na lista.
 
 ## Decisões do PASSO 04
 
@@ -536,6 +562,12 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 20:
+  - **Mutação sobrevivente**: "não revogar sessões ao bloquear" passou no primeiro teste, porque o guard já revoga a sessão de um usuário bloqueado na próxima requisição e o teste fazia uma requisição antes de olhar o banco. Agora o teste abre duas sessões e confere logo após o bloqueio.
+  - **Tentativa sem chave** não chama o provedor e não gera consumo; o primeiro teste esperava falhas do Gemini sem chave configurada.
+  - **Custo com 4 casas** escondia volumes pequenos ("0.0000"); passou para 6.
+  - **Visual**: e-mail longo dentro da confirmação alargava a lista no celular (`overflow-wrap` + `flex: 1 1 240px`); o `h1` global gigante foi reduzido nas páginas de admin; a linha de preços empilhava os campos no desktop (grid `auto-fit` com coluna extra), resolvido com flex.
+  - **Migration**: o teste de migration conta tabelas e precisou de 25.
 - PASSO 19:
   - **pdfkit**: cada `doc.text()` move `doc.y`, e os indicadores saíam fora de posição. O helper `text()` agora restaura o cursor e o layout usa só coordenadas explícitas.
   - **Reticências no pdfkit**: com `lineBreak: false` o texto ainda quebrava. A reticência só funciona com `height` de uma linha + `ellipsis`.
@@ -632,11 +664,21 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 19 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 20 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 20`
+`INICIE O PASSO 21`
 
-Quando autorizado, executar apenas o PASSO 20 de `PASSOS.md`: painel administrativo.
+Quando autorizado, executar apenas o PASSO 21 de `PASSOS.md`: privacidade, exclusão e endurecimento.
+
+- Tela de "Privacidade e dados" usando `/assistant/data-deletions`.
+- Exportação e retenção (incluir `usage_events` antigos e registros `EXPIRED` de relatórios).
+- Revisão OWASP/LGPD completa.
+
+Pendências ligadas ao PASSO 20:
+
+- Auditoria administrativa persistente (hoje é log); avaliar tabela própria no PASSO 21.
+- Chaves de voz pela administração (hoje ambiente).
+- Consumo por usuário não existe por desenho (eventos anônimos).
 
 Pendências ligadas ao PASSO 19:
 
@@ -650,17 +692,16 @@ Pendências ligadas ao PASSO 18:
 - Confirmar e corrigir a causa do intermitente do `undo.int-spec` (ver erros conhecidos).
 - Compras parceladas no painel (`/installments`): hoje as parcelas entram como despesas e contas a pagar, mas não há um bloco próprio de parcelamentos.
 - Patrimônio a preço de mercado depende de uma fonte de cotações (fora do escopo).
-- Bundle principal em ~603 kB (o aviso do Vite continua): avaliar `React.lazy` em perfil e administração (PASSO 20).
+- Bundle principal ainda acima de 500 kB (aviso do Vite); relatórios, painel e admin já são lazy. Avaliar `manualChunks` para framer-motion/axios.
 
 Pendências ligadas ao PASSO 17:
 
 - Smoke real de voz com chaves de teste (OpenAI e Gemini): confirmar a transcrição de `audio/webm` no Gemini, que não está na lista oficial de formatos dele, e os modelos padrão.
-- PASSO 20: decidir se a voz passa a usar as chaves cifradas da administração (hoje só o ambiente) e mostrar o estado da voz no painel admin.
 - Rate limit da voz é por IP, como o resto; avaliar por usuário.
 
 Pendências ligadas ao PASSO 16:
 
-- PASSO 20/21: tela de "Privacidade e dados" usando `/assistant/data-deletions`, com o mesmo `ConfirmationCard`.
+- PASSO 21: tela de "Privacidade e dados" usando `/assistant/data-deletions`, com o mesmo `ConfirmationCard`.
 - Sincronizar e reconciliar conflitos da planilha pela interface (ver PASSO 11) ainda não tem tela.
 
 Pendências ligadas ao PASSO 15:
@@ -678,7 +719,6 @@ Pendências ligadas ao PASSO 13:
 
 Pendências ligadas ao PASSO 12:
 
-- PASSO 20: o restante da administração (usuários, admins, configurações globais) entra no mesmo `AdminModule`.
 - Smoke real com chaves de teste (`RUN_AI_INTEGRATION_TESTS`) ainda não existe; os formatos das três APIs seguem a documentação e não foram exercitados contra os serviços reais.
 
 Pendências ligadas ao PASSO 11:
@@ -729,7 +769,6 @@ Pendências conhecidas para passos futuros:
 - A conexão real com o Google ainda não foi testada ponta a ponta (sem credenciais): ao configurar, confirmar o refresh token e a granularidade de escopos na tela do Google.
 - `packages/contracts` ainda não é usado: os tipos de perfil existem no backend e no frontend. Avaliar mover os contratos públicos para lá quando o build do pacote estiver integrado ao Docker.
 - Rate limits do assistente e da voz são por IP; avaliar por usuário.
-- PASSO 20: ao bloquear um usuário, chamar `AuthService.revokeAllSessions`; promoção e rebaixamento de admins.
 - Rate limit pelo proxy do Vite: todo o tráfego do navegador chega com o IP do container do frontend (um único bucket); em produção, configurar `TRUST_PROXY` atrás do proxy reverso.
 - Login real com Google ainda não foi testado ponta a ponta (sem credenciais). Ao configurar, confirmar que o `iss` do ID token é `https://accounts.google.com` (o Google às vezes usa `accounts.google.com` sem esquema em outros fluxos).
 - Avaliar expiração absoluta da sessão (hoje o refresh é deslizante) e uma tela de "sessões ativas".
@@ -738,7 +777,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`), 17 (`30f054a`) e 18 (`a0d428e`) commitados; o PASSO 19 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`), 17 (`30f054a`), 18 (`a0d428e`) e 19 (`428f929`) commitados; o PASSO 20 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -983,4 +1022,24 @@ Pendências conhecidas para passos futuros:
   - arquivos `-rw-------` na pasta do dono;
   - 410 e arquivo apagado após expirar.
 - Chrome real em 320, 375 e 1280, sem rolagem horizontal.
+- `pnpm quality` passou por completo.
+
+## Evidências do PASSO 20
+
+- Backend: 334 testes unitários e 312 de integração, 15 deles de admin:
+  - RBAC e CSRF;
+  - promoção e rebaixamento; autoalteração; `ADMIN_EMAILS`;
+  - corrida entre dois admins;
+  - bloqueio com sessões revogadas;
+  - lista, configurações, cadastros fechados e pausas;
+  - consumo e custo;
+  - ausência de chaves.
+- Frontend: 133 testes.
+- Mutações detectadas:
+  - autoalteração liberada;
+  - revogação removida (após reforço do teste);
+  - cadastros fechados ignorados;
+  - trava `FOR UPDATE` removida (3/3).
+- Docker real: 403 para usuário, chat pausado (`assistant_disabled`), bloqueio derruba a sessão, autoalteração recusada, respostas sem chaves.
+- Chrome real em 320, 375 e 1280 sem rolagem horizontal.
 - `pnpm quality` passou por completo.

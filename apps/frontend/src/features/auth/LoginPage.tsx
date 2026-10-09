@@ -11,6 +11,7 @@ const KNOWN_ERRORS = new Set([
   'email_not_verified',
   'account_blocked',
   'account_conflict',
+  'signups_closed',
   'oauth_not_configured',
 ]);
 

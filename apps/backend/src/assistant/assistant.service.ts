@@ -1,14 +1,15 @@
-import { HttpException, Inject, Injectable } from '@nestjs/common';
+import { HttpException, HttpStatus, Inject, Injectable } from '@nestjs/common';
 import { type AiChatOutcome, AiService } from '../ai/ai.service.js';
 import type { ChatMessage, ChatRequest } from '../ai/ai.types.js';
 import type { AuthenticatedUser } from '../auth/auth.service.js';
-import { ResourceNotFoundException } from '../common/errors/api-error.js';
+import { ApiException, ResourceNotFoundException } from '../common/errors/api-error.js';
 import { ownedBy } from '../common/security/ownership.js';
 import { PrismaService } from '../database/prisma.service.js';
 import { formatCalendarDate, todayIn } from '../finance/dates.js';
 import { userSettings } from '../finance/user-settings.js';
 import type { AIProviderType, AIPurpose } from '../generated/prisma/enums.js';
 import { type LocaleTag, toLocaleTag } from '../profile/profile.schemas.js';
+import { SettingsService } from '../settings/settings.service.js';
 import {
   confirmedText,
   groundingCorrection,
@@ -95,12 +96,20 @@ export class AssistantService {
     @Inject(ToolExecutor) private readonly executor: ToolExecutor,
     @Inject(ConversationService) private readonly conversations: ConversationService,
     @Inject(IntentService) private readonly intents: IntentService,
+    @Inject(SettingsService) private readonly settingsService: SettingsService,
   ) {}
 
   async send(
     user: User,
     input: { conversationId?: string | undefined; message: string },
   ): Promise<AssistantTurn> {
+    if (!(await this.settingsService.get('assistant.enabled'))) {
+      throw new ApiException(
+        HttpStatus.SERVICE_UNAVAILABLE,
+        'assistant_disabled',
+        'O assistente está em pausa pela administração. Tente mais tarde.',
+      );
+    }
     const settings = await userSettings(this.prisma, user.id);
     const profileLocale = toLocaleTag(settings.locale);
     const intent = this.intents.classify(input.message);

@@ -10,7 +10,6 @@ import {
   useLocation,
   useNavigate,
 } from 'react-router-dom';
-import { AiProvidersPage } from '../features/admin/AiProvidersPage';
 import { AssistantPage } from '../features/assistant/AssistantPage';
 import { VoiceOrb } from '../features/assistant/VoiceOrb';
 import { LoginPage } from '../features/auth/LoginPage';
@@ -21,6 +20,9 @@ import { getHealth } from '../services/health';
 import { useApplyTheme } from './theme';
 
 /** Charts (Recharts) load only when the dashboard is opened, not with the chat. */
+const AdminRoutes = lazy(async () => ({
+  default: (await import('../features/admin/AdminRoutes')).AdminRoutes,
+}));
 const ReportsPage = lazy(async () => ({
   default: (await import('../features/reports/ReportsPage')).ReportsPage,
 }));
@@ -160,7 +162,7 @@ function Header() {
             <NavLink to="/reports">{t('nav.reports')}</NavLink>
             <NavLink to="/profile">{t('nav.profile')}</NavLink>
             {me.data.roles.includes('ADMIN') && (
-              <NavLink to="/admin/ai">{t('nav.admin')}</NavLink>
+              <NavLink to="/admin">{t('nav.admin')}</NavLink>
             )}
             <button
               type="button"
@@ -221,11 +223,13 @@ export function App() {
             }
           />
           <Route
-            path="/admin/ai"
+            path="/admin/*"
             element={
               <RequireAuth>
                 <RequireAdmin>
-                  <AiProvidersPage />
+                  <Suspense fallback={<p role="status">{t('app.loading')}</p>}>
+                    <AdminRoutes />
+                  </Suspense>
                 </RequireAdmin>
               </RequireAuth>
             }
