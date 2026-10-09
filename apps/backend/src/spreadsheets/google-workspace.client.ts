@@ -81,6 +81,8 @@ export interface GoogleWorkspaceClient {
     spreadsheetId: string,
     ranges: string[],
   ): Promise<CellValue[][][]>;
+  /** Moves a file the app created to the user's Drive trash (recoverable there for 30 days). */
+  trashFile(token: string, fileId: string): Promise<void>;
 }
 
 export type CellValue = string | number | boolean;
@@ -196,6 +198,13 @@ export class HttpGoogleWorkspaceClient implements GoogleWorkspaceClient {
       { method: 'GET' },
     )) as { valueRanges?: { values?: CellValue[][] }[] };
     return ranges.map((_, index) => body.valueRanges?.[index]?.values ?? []);
+  }
+
+  async trashFile(token: string, fileId: string): Promise<void> {
+    await this.call(token, `${DRIVE_FILES_URL}/${encodeURIComponent(fileId)}?fields=id`, {
+      method: 'PATCH',
+      body: JSON.stringify({ trashed: true }),
+    });
   }
 
   private async call(token: string, url: string, init: RequestInit): Promise<unknown> {

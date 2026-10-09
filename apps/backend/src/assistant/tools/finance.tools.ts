@@ -722,6 +722,7 @@ export function financeTools(deps: FinanceToolDeps): ToolSpec[] {
     defineTool({
       name: 'delete_transaction',
       version: 1,
+      confirmation: 'configurable',
       description:
         'Exclui uma movimentação. Informe transactionId ou um filtro (match). Se mais de uma combinar, nada é excluído e os candidatos voltam para o usuário escolher. Sempre exige confirmação explícita do usuário.',
       input: z

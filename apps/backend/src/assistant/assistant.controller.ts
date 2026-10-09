@@ -32,6 +32,28 @@ const sendMessage = dto({
     }),
 });
 
+/** Kinds of high-impact deletion, each with its own confirmation. */
+const dataDeletion = dto({
+  scope: z.enum(['conversations', 'financial_data', 'spreadsheet', 'account']),
+  conversationId: z.uuid().optional(),
+  spreadsheetId: z.uuid().optional(),
+})
+  .refine((body) => body.scope === 'conversations' || body.conversationId === undefined, {
+    message: 'conversationId only applies to conversations',
+    path: ['conversationId'],
+  })
+  .refine((body) => body.scope === 'spreadsheet' || body.spreadsheetId === undefined, {
+    message: 'spreadsheetId only applies to spreadsheet',
+    path: ['spreadsheetId'],
+  });
+
+const DELETION_TOOLS = {
+  conversations: 'delete_conversation_history',
+  financial_data: 'delete_financial_data',
+  spreadsheet: 'delete_spreadsheet',
+  account: 'delete_my_account',
+} as const;
+
 const listMessages = dto({ limit: z.coerce.number().int().min(1).max(200).optional() });
 
 /**
@@ -111,6 +133,38 @@ export class AssistantController {
     @Param('confirmationId', uuidParam) confirmationId: string,
   ): Promise<AssistantTurn> {
     return this.assistant.cancel(user, id, confirmationId);
+  }
+
+  /** "Desfazer" outside a conversation (same rules as the assistant tool). */
+  @Post('undo')
+  @HttpCode(200)
+  undo(@CurrentUser() user: AuthenticatedUser): Promise<ToolOutcome> {
+    return this.executor.execute(
+      { user, conversationId: null },
+      { name: 'undo_last_action', arguments: {} },
+    );
+  }
+
+  /**
+   * Asks for a high-impact deletion. Never deletes by itself: it answers with the
+   * confirmation (summary, expiry) that the user then confirms or cancels.
+   */
+  @Post('data-deletions')
+  @HttpCode(200)
+  requestDeletion(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body(validate(dataDeletion)) body: z.infer<typeof dataDeletion>,
+  ): Promise<ToolOutcome> {
+    return this.executor.execute(
+      { user, conversationId: null },
+      {
+        name: DELETION_TOOLS[body.scope],
+        arguments: {
+          ...(body.conversationId ? { conversationId: body.conversationId } : {}),
+          ...(body.spreadsheetId ? { spreadsheetId: body.spreadsheetId } : {}),
+        },
+      },
+    );
   }
 
   @Get('tools')

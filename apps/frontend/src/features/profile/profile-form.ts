@@ -18,6 +18,7 @@ export interface ProfileFormState {
   timeZone: string;
   theme: Theme;
   weekStartsOn: WeekStart;
+  confirmSimpleDeletes: boolean;
   gender: VoiceGender;
   autoSpeak: boolean;
   speakingRate: number;
@@ -36,6 +37,7 @@ export function toFormState(profile: Profile): ProfileFormState {
     timeZone: profile.timeZone,
     theme: profile.preferences.theme,
     weekStartsOn: profile.preferences.weekStartsOn,
+    confirmSimpleDeletes: profile.preferences.confirmSimpleDeletes,
     gender: profile.voice.gender,
     autoSpeak: profile.voice.autoSpeak,
     speakingRate: profile.voice.speakingRate,
@@ -65,6 +67,8 @@ export function diffProfile(
   if (original.theme !== current.theme) preferences.theme = current.theme;
   if (original.weekStartsOn !== current.weekStartsOn)
     preferences.weekStartsOn = current.weekStartsOn;
+  if (original.confirmSimpleDeletes !== current.confirmSimpleDeletes)
+    preferences.confirmSimpleDeletes = current.confirmSimpleDeletes;
   if (Object.keys(preferences).length > 0) update.preferences = preferences;
 
   const voice: NonNullable<ProfileUpdate['voice']> = {};
@@ -87,6 +91,7 @@ const API_PATH_TO_FIELD: Record<string, ProfileField> = {
   timeZone: 'timeZone',
   'preferences.theme': 'theme',
   'preferences.weekStartsOn': 'weekStartsOn',
+  'preferences.confirmSimpleDeletes': 'confirmSimpleDeletes',
   'voice.gender': 'gender',
   'voice.autoSpeak': 'autoSpeak',
   'voice.speakingRate': 'speakingRate',

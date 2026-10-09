@@ -39,7 +39,7 @@ const baseProfile: Profile = {
   locale: 'pt-BR',
   currency: 'BRL',
   timeZone: 'America/Sao_Paulo',
-  preferences: { theme: 'system', weekStartsOn: 'monday' },
+  preferences: { theme: 'system', weekStartsOn: 'monday', confirmSimpleDeletes: true },
   voice: { gender: 'FEMALE', autoSpeak: true, speakingRate: 1 },
   updatedAt: '2026-10-08T12:00:00.000Z',
 };
@@ -115,6 +115,26 @@ describe('ProfilePage', () => {
       await screen.findByRole('heading', { name: 'Your profile' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Profile updated.')).toBeInTheDocument();
+  });
+
+  it('lets the user turn off the confirmation of simple deletions', async () => {
+    vi.mocked(updateProfile).mockResolvedValue({
+      ...baseProfile,
+      preferences: { ...baseProfile.preferences, confirmSimpleDeletes: false },
+    });
+    renderPage();
+    const toggle = await screen.findByRole('checkbox', {
+      name: 'Pedir confirmação antes de excluir um lançamento',
+    });
+    expect(toggle).toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(/sempre pedem confirmação/);
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByRole('button', { name: 'Salvar alterações' }));
+    await waitFor(() =>
+      expect(updateProfile).toHaveBeenCalledWith({
+        preferences: { confirmSimpleDeletes: false },
+      }),
+    );
   });
 
   it('does not call the API when nothing changed', async () => {

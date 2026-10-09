@@ -21,6 +21,6 @@ import { SheetSyncService } from './sync/sheet-sync.service.js';
       useFactory: () => new HttpGoogleWorkspaceClient(),
     },
   ],
-  exports: [SpreadsheetsService, SheetSyncService],
+  exports: [SpreadsheetsService, SheetSyncService, GOOGLE_WORKSPACE_CLIENT],
 })
 export class SpreadsheetsModule {}

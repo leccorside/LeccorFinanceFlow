@@ -1,4 +1,9 @@
-import { describeTarget, systemPrompt, texts } from './assistant.messages.js';
+import {
+  confirmedText,
+  describeTarget,
+  systemPrompt,
+  texts,
+} from './assistant.messages.js';
 import {
   citedValues,
   groundedSet,
@@ -135,5 +140,37 @@ describe('prompt and fixed texts', () => {
     for (const locale of ['pt-BR', 'en-US', 'es-ES'] as const) {
       expect(texts(locale).suggestions.length).toBeGreaterThanOrEqual(4);
     }
+  });
+});
+
+describe('post-confirmation texts', () => {
+  it('describes each kind of deletion with the values of the result', () => {
+    const plain = (text: string) => text.replace(/\s/g, ' ');
+    expect(
+      confirmedText('pt-BR', 'delete_conversation_history', {
+        deleted: { conversations: 3 },
+      }),
+    ).toBe('Pronto. Apaguei 3 conversa(s) do histórico.');
+    expect(
+      confirmedText('en-US', 'delete_financial_data', {
+        deleted: { transactions: 12, accounts: 2 },
+      }),
+    ).toMatch(/12 transactions and 2 accounts/);
+    expect(
+      confirmedText('es-ES', 'delete_spreadsheet', {
+        deleted: { name: 'Casa' },
+        trashedInGoogleDrive: true,
+      }),
+    ).toBe('Listo. La hoja «Casa» se movió a la papelera de Google Drive.');
+    expect(confirmedText('pt-BR', 'delete_my_account', {})).toBe(
+      'Sua conta foi excluída. Até logo.',
+    );
+    expect(
+      plain(
+        confirmedText('pt-BR', 'delete_transaction', {
+          deleted: { description: 'Mercado', amount: '75.00', currency: 'BRL' },
+        }),
+      ),
+    ).toBe('Pronto. Excluí «Mercado» R$ 75,00.');
   });
 });

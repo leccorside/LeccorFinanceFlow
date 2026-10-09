@@ -187,6 +187,9 @@ export class ToolExecutor {
         candidates: prepared.candidates,
       };
     }
+    if (spec.confirmation === 'configurable' && !(await this.wantsConfirmation(ctx))) {
+      return this.run(ctx, spec, prepared.input);
+    }
     const row = await this.prisma.assistantConfirmation.create({
       data: {
         ownerId: ctx.user.id,
@@ -209,6 +212,16 @@ export class ToolExecutor {
         summary: prepared.summary,
       },
     };
+  }
+
+  /** Profile preference "confirmSimpleDeletes" (default: ask). */
+  private async wantsConfirmation(ctx: ToolContext): Promise<boolean> {
+    const profile = await this.prisma.userProfile.findUnique({
+      where: { userId: ctx.user.id },
+      select: { preferences: true },
+    });
+    const preferences = profile?.preferences as { confirmSimpleDeletes?: unknown } | null;
+    return preferences?.confirmSimpleDeletes !== false;
   }
 
   private async run(

@@ -37,7 +37,7 @@ interface FakeFile {
   sheets: FakeSheet[];
 }
 
-type Method = 'find' | 'create' | 'get' | 'batchUpdate' | 'values';
+type Method = 'find' | 'create' | 'get' | 'batchUpdate' | 'values' | 'trash';
 
 /**
  * In-memory Google Drive/Sheets. Applies batchUpdate requests with the rules that matter
@@ -152,6 +152,11 @@ export class FakeWorkspace implements GoogleWorkspaceClient {
       while (rows.length > 0 && rows.at(-1)?.length === 0) rows.pop();
       return structuredClone(rows);
     });
+  }
+
+  async trashFile(token: string, fileId: string): Promise<void> {
+    this.enter('trash', token);
+    this.file(fileId).deleted = true; // trashed files are invisible to the app afterwards
   }
 
   // ── Helpers that act like a person editing the sheet in Google Sheets. ──

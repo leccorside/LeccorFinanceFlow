@@ -517,7 +517,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: entrega o assistente financeiro com contexto conversacional`
 
-## [ ] PASSO 15 — Undo e operações destrutivas
+## [x] PASSO 15 — Undo e operações destrutivas
 
 **Objetivo:** permitir desfazer com segurança e controlar exclusões críticas.
 
@@ -529,7 +529,42 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** undo create/update/delete, concorrência, expiração, duplo uso e ownership.
 
-**Sugestão de commit:** `feat: add safe undo and destructive confirmations`
+**Evidência (09/10/2026):**
+
+- **Backend**:
+  - `UndoService`: reversores genéricos por entidade (criação, edição, exclusão), com tratamento de parcelas e de ocorrências de recorrência;
+  - lote por transação (`batch_id`) e auditoria do undo (`undo_of_id`);
+  - ferramentas `undo_last_action`, `delete_conversation_history`, `delete_financial_data`, `delete_spreadsheet` (lixeira do Drive) e `delete_my_account`;
+  - rotas `POST /assistant/undo` e `POST /assistant/data-deletions`;
+  - confirmação configurável (`preferences.confirmSimpleDeletes`);
+  - textos pós-confirmação por tipo;
+  - migration `20261009050357_action_history_undo` (colunas, índice, FK, CHECK, `down.sql`);
+  - `trashFile` no cliente do Drive.
+- **Frontend**: controle "Pedir confirmação antes de excluir um lançamento" no perfil (pt/en/es).
+- **Unitários**: 302 no total, contrato do registro atualizado e textos pós-confirmação.
+- **Integração**: 264 no total, 17 deste passo:
+  - **undo de criação, edição e exclusão** (mesmo id restaurado, versão e `PENDING_SYNC`), repetido indo mais para trás sem refazer, auditoria;
+  - lote do aporte; compra parcelada e recorrência restauradas;
+  - alvo alterado fora do histórico, referência que impede (com rollback) e ação irreversível, todos explicados;
+  - **concorrência**: 3 undos simultâneos, um vence;
+  - **ownership**;
+  - undo pelo assistente com conversa e sincronização da reversão na planilha;
+  - confirmação configurável (direto, desfazível; ambiguidade e outros tipos continuam perguntando);
+  - histórico de conversas (alvo mudado → `stale`, outra pessoa `404`, **duplo uso** `409`);
+  - conversa que se apaga ainda responde;
+  - dados financeiros (escopo do usuário, categorias do sistema intactas);
+  - planilha (lixeira do Drive; falha do Google não apaga nada);
+  - conta (sessão encerrada, Google revogado, outros intactos);
+  - **expiração** `410` e validação do pedido.
+- **Mutações detectadas**: alvo alterado ignorado; trava de concorrência removida; exclusão de dados sem filtro de dono.
+- **Bug real corrigido**: undo em vários passos falhava porque a comparação incluía a versão, que o próprio undo incrementa. Agora compara conteúdo, inclusive nas parcelas.
+- **Bugs corrigidos durante os testes**: rótulo vazio no undo de edição (agora vem do registro); falha do Google ao excluir planilha virava `internal_error` (agora `google_unavailable` etc.).
+- **Docker**:
+  - migration aplicada; suítes nos containers (302 + 264 + 73);
+  - teste manual: undo da edição (20 → 10), da criação e "nada a desfazer"; exclusão de dados com resumo, confirmada, segundo uso `confirmation_used`, histórico apagado;
+  - `pnpm quality` completo.
+
+**Sugestão de commit:** `feat: adiciona desfazer seguro e confirmações destrutivas`
 
 ## [ ] PASSO 16 — Interface conversacional premium
 

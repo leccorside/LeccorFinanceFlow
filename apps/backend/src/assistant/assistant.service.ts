@@ -10,7 +10,7 @@ import { userSettings } from '../finance/user-settings.js';
 import type { AIProviderType, AIPurpose } from '../generated/prisma/enums.js';
 import { type LocaleTag, toLocaleTag } from '../profile/profile.schemas.js';
 import {
-  describeTarget,
+  confirmedText,
   groundingCorrection,
   systemPrompt,
   texts,
@@ -212,18 +212,24 @@ export class AssistantService {
     turn.record(outcome);
     const content =
       outcome.status === 'ok'
-        ? texts(locale).deleted(
-            describeTarget(
-              (outcome.data as { deleted?: Record<string, unknown> }).deleted ?? {},
-              locale,
-            ),
+        ? confirmedText(
+            locale,
+            outcome.tool,
+            (outcome.data ?? {}) as Record<string, unknown>,
           )
         : texts(locale).actionFailed(
             outcome.status === 'error' ? outcome.message : texts(locale).rejected,
           );
-    const reply = await this.conversations.addAssistant(conversation.id, content, null, {
-      payload: { confirmation: { id: confirmationId, outcome } },
+    // The confirmed action may have deleted this very conversation (or the whole account):
+    // then the answer is returned but there is nowhere left to store it.
+    const stillThere = await this.prisma.conversation.count({
+      where: { id: conversation.id },
     });
+    const reply = stillThere
+      ? await this.conversations.addAssistant(conversation.id, content, null, {
+          payload: { confirmation: { id: confirmationId, outcome } },
+        })
+      : { id: '', content, createdAt: new Date() };
     return outcome.status === 'ok'
       ? turn.build(reply, null)
       : turn.fail(reply, errorOf(outcome));

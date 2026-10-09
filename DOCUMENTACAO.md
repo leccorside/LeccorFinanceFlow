@@ -559,7 +559,7 @@ Cada criação, edição e exclusão de conta, categoria ou movimentação grava
 
 - **Criação**: estado completo depois.
 - **Edição**: só os campos alterados, antes e depois.
-- **Exclusão**: estado completo antes, o suficiente para restaurar no undo (PASSO 15).
+- **Exclusão**: estado completo antes, o suficiente para restaurar no undo (PASSO 15, ver "Operações destrutivas").
 
 Dados de sincronização e de propriedade ficam fora dos snapshots. Não é log técnico.
 
@@ -917,7 +917,49 @@ Conteúdo financeiro é dado não confiável. Apenas mensagens de sistema contro
 
 Exclusões ambíguas ou de alto impacto exigem confirmação vinculada a um snapshot da ação. Um token expirado ou cujo alvo mudou é rejeitado. Exclusões de planilha, dados financeiros, histórico ou conta têm confirmações distintas.
 
-Implementado no PASSO 13 para as ferramentas do assistente (ver "Tool Registry e executor seguro"). Todas as exclusões feitas pela IA pedem confirmação. Tornar configurável a confirmação de exclusões simples e inequívocas (PROMPT §35) fica para o PASSO 15, junto com o undo.
+Implementado nos PASSOS 13 e 15 pelas ferramentas do assistente (ver "Tool Registry e executor seguro"), com o mesmo token de uso único, validade de 5 minutos e hash do alvo.
+
+**Desfazer (PASSO 15)**: `UndoService` (`apps/backend/src/finance/undo.service.ts`), ferramenta `undo_last_action` ("desfaça o que acabei de fazer") e `POST /api/v1/assistant/undo`.
+
+- **Uma ação = um lote**: todas as linhas de histórico gravadas na mesma transação do banco recebem o mesmo `batch_id` (atribuído automaticamente pelo `ActionHistoryService`). Por exemplo, um aporte grava a movimentação e a quantidade, e as duas voltam juntas.
+- **Ordem**: desfaz o lote mais recente do usuário ainda não revertido, da linha mais nova para a mais antiga, numa única transação:
+  - criação → o registro é removido; uma compra parcelada sai com as parcelas, e uma recorrência com as ocorrências geradas e não editadas;
+  - edição → os campos alterados voltam ao valor anterior (versão +1, `PENDING_SYNC`); numa recorrência, as ocorrências afetadas também voltam;
+  - exclusão → o registro é recriado **com o mesmo id** a partir do snapshot, com parcelas e ocorrências; a planilha que não existe mais fica desvinculada.
+- **Repetir "desfazer" vai mais para trás**, nunca refaz. O próprio undo é gravado como linhas de auditoria (`undo_of_id`, não reversíveis).
+- **Quando não dá, explica e não muda nada** (rollback):
+
+  | Código                | Situação                                                                                                                 |
+  | --------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+  | `nothing_to_undo`     | não há o que desfazer                                                                                                    |
+  | `undo_target_changed` | o registro mudou depois da ação (comparação de conteúdo, não de versão); desfazer apagaria essa mudança                  |
+  | `undo_not_possible`   | dados relacionados impedem: conta que já tem movimentações, nome em uso, referência apagada                              |
+  | `undo_irreversible`   | ação marcada como irreversível                                                                                           |
+  | `undo_in_progress`    | outro undo simultâneo do mesmo lote venceu; o lote é reivindicado com trava de linha, então nunca é revertido duas vezes |
+
+- A reversão é sincronizada com a planilha como qualquer escrita: `sync` no resultado.
+- O histórico de outro usuário nunca é considerado.
+
+**Confirmação configurável (PROMPT §35)**:
+
+- Com a preferência do perfil `preferences.confirmSimpleDeletes = false` (padrão `true`; há controle na tela de perfil), a exclusão de **uma** movimentação identificada sem ambiguidade é executada direto e pode ser desfeita.
+- Ambiguidade continua sempre perguntando.
+- Exclusões de conta, investimento, recorrência, parcelamento, planilha, dados e conta do usuário sempre pedem confirmação.
+
+**Exclusões de alto impacto**, cada uma com confirmação e resumo próprios:
+
+| Escopo (`POST /api/v1/assistant/data-deletions`)          | Ferramenta                    | O que faz                                                                                                                                                                                                                                 |
+| --------------------------------------------------------- | ----------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `conversations` (`conversationId` opcional)               | `delete_conversation_history` | Apaga uma ou todas as conversas e mensagens. Não toca em dados financeiros. Irreversível.                                                                                                                                                 |
+| `financial_data`                                          | `delete_financial_data`       | Apaga movimentações, parcelamentos, recorrências, investimentos, contas, categorias próprias, histórico de alterações (contém snapshots dos dados) e estados de sincronização. Não altera a planilha no Google nem a conta. Irreversível. |
+| `spreadsheet` (`spreadsheetId` opcional; padrão: a ativa) | `delete_spreadsheet`          | Manda o arquivo para a **lixeira do Google Drive** (recuperável lá por 30 dias) e só depois remove a planilha do app. Os dados financeiros continuam, desvinculados. Se o Google falhar, nada é removido (`google_unavailable`…).         |
+| `account`                                                 | `delete_my_account`           | Revoga a conexão Google (melhor esforço) e exclui o usuário com todos os seus dados e sessões. As planilhas continuam no Drive da pessoa. Irreversível.                                                                                   |
+
+- A rota **nunca exclui sozinha**: devolve a confirmação (resumo, validade). O usuário confirma em `POST /api/v1/assistant/confirmations/:id/confirm` ou dentro da conversa.
+- O resumo diz o que será perdido (contagens, `irreversible: true`).
+- Mudou algo entre a pergunta e o "sim" (nova conversa, novo lançamento, planilha alterada): `409 confirmation_stale`.
+- Confirmada dentro de uma conversa que ela mesma apaga, a resposta volta para a tela mas não é gravada.
+- Exportação de dados, política de retenção e revisão LGPD completa ficam para o PASSO 21.
 
 ### Privacidade
 

@@ -67,6 +67,8 @@ const photoUrl = z
 export const preferencesSchema = dto({
   theme: z.enum(['system', 'light', 'dark']),
   weekStartsOn: z.enum(['monday', 'sunday']),
+  /** false: a single, unambiguous transaction deletion runs without asking (undo still works). */
+  confirmSimpleDeletes: z.boolean(),
 }).partial();
 
 export type Preferences = Required<z.infer<typeof preferencesSchema>>;
@@ -74,6 +76,7 @@ export type Preferences = Required<z.infer<typeof preferencesSchema>>;
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: 'system',
   weekStartsOn: 'monday',
+  confirmSimpleDeletes: true,
 };
 
 export const voiceSchema = dto({

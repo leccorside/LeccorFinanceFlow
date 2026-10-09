@@ -53,6 +53,9 @@ const ptBR = {
   'profile.voice.gender': 'Voz',
   'profile.voice.female': 'Feminina',
   'profile.voice.male': 'Masculina',
+  'profile.confirmSimpleDeletes': 'Pedir confirmação antes de excluir um lançamento',
+  'profile.confirmSimpleDeletesHint':
+    'Desligado, o assistente exclui na hora um lançamento identificado sem dúvida (dá para desfazer). Exclusões de contas, planilhas e dados sempre pedem confirmação.',
   'profile.voice.autoSpeak': 'Ler as respostas em voz alta',
   'profile.voice.rate': 'Velocidade da fala',
   'profile.theme': 'Tema',
@@ -273,6 +276,9 @@ const enUS: Messages = {
   'profile.voice.gender': 'Voice',
   'profile.voice.female': 'Female',
   'profile.voice.male': 'Male',
+  'profile.confirmSimpleDeletes': 'Ask before deleting a transaction',
+  'profile.confirmSimpleDeletesHint':
+    'When off, the assistant deletes a clearly identified transaction right away (it can be undone). Deleting accounts, spreadsheets or data always asks.',
   'profile.voice.autoSpeak': 'Read answers out loud',
   'profile.voice.rate': 'Speaking rate',
   'profile.theme': 'Theme',
@@ -490,6 +496,9 @@ const esES: Messages = {
   'profile.voice.gender': 'Voz',
   'profile.voice.female': 'Femenina',
   'profile.voice.male': 'Masculina',
+  'profile.confirmSimpleDeletes': 'Pedir confirmación antes de eliminar un movimiento',
+  'profile.confirmSimpleDeletesHint':
+    'Desactivado, el asistente elimina al momento un movimiento identificado sin duda (se puede deshacer). Eliminar cuentas, hojas o datos siempre pide confirmación.',
   'profile.voice.autoSpeak': 'Leer las respuestas en voz alta',
   'profile.voice.rate': 'Velocidad del habla',
   'profile.theme': 'Tema',

@@ -199,3 +199,66 @@ export function describeTarget(
   }
   return parts.join(' ');
 }
+
+type Done = (data: Record<string, unknown>) => string;
+
+const DONE: Record<LocaleTag, Record<string, Done>> = {
+  'pt-BR': {
+    delete_conversation_history: (data) =>
+      `Pronto. Apaguei ${count(data, 'conversations')} conversa(s) do histórico.`,
+    delete_financial_data: (data) =>
+      `Pronto. Apaguei seus dados financeiros do aplicativo (${count(data, 'transactions')} movimentações e ${count(data, 'accounts')} contas). Sua planilha no Google não foi alterada.`,
+    delete_spreadsheet: (data) =>
+      data.trashedInGoogleDrive
+        ? `Pronto. A planilha «${name(data)}» foi para a lixeira do Google Drive.`
+        : `Pronto. A planilha «${name(data)}» não é mais usada pelo aplicativo.`,
+    delete_my_account: () => 'Sua conta foi excluída. Até logo.',
+  },
+  'en-US': {
+    delete_conversation_history: (data) =>
+      `Done. I deleted ${count(data, 'conversations')} conversation(s) from the history.`,
+    delete_financial_data: (data) =>
+      `Done. I deleted your financial data in the app (${count(data, 'transactions')} transactions and ${count(data, 'accounts')} accounts). Your Google spreadsheet was not changed.`,
+    delete_spreadsheet: (data) =>
+      data.trashedInGoogleDrive
+        ? `Done. The spreadsheet «${name(data)}» was moved to the Google Drive trash.`
+        : `Done. The spreadsheet «${name(data)}» is no longer used by the app.`,
+    delete_my_account: () => 'Your account was deleted. Goodbye.',
+  },
+  'es-ES': {
+    delete_conversation_history: (data) =>
+      `Listo. Eliminé ${count(data, 'conversations')} conversación(es) del historial.`,
+    delete_financial_data: (data) =>
+      `Listo. Eliminé tus datos financieros de la aplicación (${count(data, 'transactions')} movimientos y ${count(data, 'accounts')} cuentas). Tu hoja de Google no se modificó.`,
+    delete_spreadsheet: (data) =>
+      data.trashedInGoogleDrive
+        ? `Listo. La hoja «${name(data)}» se movió a la papelera de Google Drive.`
+        : `Listo. La hoja «${name(data)}» ya no la usa la aplicación.`,
+    delete_my_account: () => 'Tu cuenta fue eliminada. Hasta pronto.',
+  },
+};
+
+function count(data: Record<string, unknown>, key: string): number {
+  const value = (data.deleted as Record<string, unknown> | undefined)?.[key];
+  return typeof value === 'number' ? value : 0;
+}
+
+function name(data: Record<string, unknown>): string {
+  return String((data.deleted as Record<string, unknown> | undefined)?.name ?? '').slice(
+    0,
+    120,
+  );
+}
+
+/** Deterministic text after a confirmed action (values from the tool result only). */
+export function confirmedText(
+  locale: LocaleTag,
+  tool: string,
+  data: Record<string, unknown>,
+): string {
+  const special = DONE[locale][tool];
+  if (special) return special(data);
+  return texts(locale).deleted(
+    describeTarget((data.deleted as Record<string, unknown> | undefined) ?? {}, locale),
+  );
+}

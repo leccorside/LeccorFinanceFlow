@@ -10,7 +10,7 @@ const profile: Profile = {
   locale: 'pt-BR',
   currency: 'BRL',
   timeZone: 'America/Sao_Paulo',
-  preferences: { theme: 'system', weekStartsOn: 'monday' },
+  preferences: { theme: 'system', weekStartsOn: 'monday', confirmSimpleDeletes: true },
   voice: { gender: 'FEMALE', autoSpeak: true, speakingRate: 1 },
   updatedAt: null,
 };

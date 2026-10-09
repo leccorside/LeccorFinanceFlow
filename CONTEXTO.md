@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 14 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 15 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,34 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Undo e exclusões implementados no PASSO 15:
+
+- `src/finance/undo.service.ts`: `undoLast(user, { conversationId? })` → `{ undone: [{ historyId, entityType, entityId, action, label }] }`.
+  - `ENTITIES` mapeia o tipo para o delegate do Prisma (versão e sincronização).
+  - `columns` tira relações e extras; `matches` compara conteúdo sem `version`.
+  - Tratamento próprio: `dropParcels`, `dropUntouchedOccurrences`, `restoreOccurrences`, `recreatable` (desvincula planilha apagada).
+  - Erros: `nothing_to_undo`, `undo_irreversible`, `undo_in_progress`, `undo_target_changed`, `undo_not_possible` (P2002/P2003/P2025).
+- `ActionHistoryService.record`: `batch_id` automático por transação (`WeakMap` do `tx`); `undoOfId` grava auditoria não reversível.
+- `src/assistant/tools/data.tools.ts`: `undo_last_action` e as quatro exclusões (prepare com contagens e estado; run em transação). Na planilha, primeiro o Drive e depois o banco.
+- `ToolSpec.confirmation: 'configurable'` (só `delete_transaction`); `ToolExecutor.wantsConfirmation` lê `preferences.confirmSimpleDeletes`.
+- `AssistantService.confirm`: textos por tipo (`confirmedText`); não grava a resposta quando a conversa sumiu.
+- `GoogleWorkspaceClient.trashFile` (PATCH `trashed: true`); `SpreadsheetsModule` exporta `GOOGLE_WORKSPACE_CLIENT`.
+- Rotas: `POST /assistant/undo` e `POST /assistant/data-deletions` (`scope`: conversations, financial_data, spreadsheet, account).
+- Frontend: preferência no perfil.
+- Testes: `test/integration/undo.int-spec.ts` (17) e textos em `assistant.spec.ts`.
+
+## Decisões do PASSO 15
+
+- **Lote por transação**: o que uma operação grava junta é desfeito junto. Como é automático, nenhum serviço precisou mudar.
+- **Undo não refaz**: o undo vira auditoria não reversível, e o próximo "desfazer" pega o lote anterior.
+- **Comparação de conteúdo, não de versão**: só se bloqueia quando o conteúdo mudou desde a ação. Assim se protegem mudanças fora do histórico (propagação de recorrência, edição direta) sem travar undos em sequência.
+- **Recriação com o mesmo id**: links e linhas da planilha voltam a casar. A versão sobe e o registro fica `PENDING_SYNC`.
+- **Undo não pede confirmação**: restaura um estado anterior válido e é auditado. As quatro exclusões de alto impacto sempre pedem.
+- **Exclusão de dados financeiros apaga o histórico de alterações**, porque ele contém snapshots dos dados (LGPD); depois disso não há undo.
+- **Planilha vai para a lixeira do Drive** (recuperável) antes de sair do banco. Se o Google falhar, nada sai.
+- **Exclusão de conta**: revogação do Google em melhor esforço, para que uma falha externa não prenda a conta.
+- **Fora do escopo** (PASSO 21): exportação, retenção, revisão OWASP e LGPD completas.
 
 Assistente implementado no PASSO 14 (`src/assistant`):
 
@@ -394,6 +422,9 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 15: **bug real**: o undo de uma criação depois de desfazer uma edição falhava como "registro alterado", porque a comparação incluía a versão (que o próprio undo incrementa). Corrigido comparando conteúdo, inclusive nas parcelas.
+  - Também corrigidos: rótulo vazio no undo de edição; falha do Google ao excluir planilha virava `internal_error`.
+  - Ambiente: substituições por script falharam algumas vezes porque o Prettier tinha reformatado as linhas âncora. Para trechos formatados, usar o Edit sobre o texto atual.
 - PASSO 14:
   - **teste**: o fake de IA guardava a requisição por referência (via mensagens adicionadas depois da chamada). Corrigido com `structuredClone`.
   - **ambiente**: o Bash tool come barras invertidas em `node -e` e heredocs (`/\s/` virou `/s/`, `\p{Cc}` virou `p{Cc}`). Para código com barra invertida, usar Edit ou script gravado pelo Write (`String.fromCharCode(92)`).
@@ -457,17 +488,22 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 14 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 15 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 15`
+`INICIE O PASSO 16`
 
-Quando autorizado, executar apenas o PASSO 15 de `PASSOS.md`: undo e operações destrutivas.
+Quando autorizado, executar apenas o PASSO 16 de `PASSOS.md`: interface conversacional (chat como experiência principal, responsiva, acessível).
 
-- Reversores por `ActionHistory`: CREATE, UPDATE (com `before`) e DELETE com snapshot; `INSTALLMENT` com `parcels`; `RECURRING_TRANSACTION` com `occurrences`.
-- Ferramenta `undo_last_action` no registro.
-- Confirmação configurável para exclusões simples.
-- Exclusões de planilha, histórico, dados e conta com confirmações próprias, reaproveitando `assistant_confirmations`.
-- Sincronizar a reversão com a planilha.
+- Consumir `POST /assistant/messages` (`state`, `reply`, `actions`, `confirmations`, `candidates`, `suggestions`).
+- Histórico de conversas.
+- Confirmar e cancelar dentro da conversa.
+- Botão "Desfazer" (`POST /assistant/undo`).
+- Telas de exclusão com o resumo antes de confirmar.
+
+Pendências ligadas ao PASSO 15:
+
+- PASSO 21: exportação de dados, retenção, exclusão integral com falha parcial documentada, revogação verificada.
+- PASSO 16/20: tela de "Privacidade e dados" usando `/assistant/data-deletions`.
 
 Pendências ligadas ao PASSO 14:
 
@@ -477,14 +513,12 @@ Pendências ligadas ao PASSO 14:
 
 Pendências ligadas ao PASSO 13:
 
-- PASSO 15: undo (`undo_last_action`) e confirmação configurável para exclusões simples; exclusão de planilha, histórico e conta com confirmações próprias.
 - PASSO 19: ferramenta `generate_report`.
 - `switch_spreadsheet` não existe: o serviço de planilhas ainda não troca a planilha ativa.
 - Limpeza de confirmações expiradas: hoje elas só deixam de valer (índice em `expires_at` pronto para uma limpeza futura, sem fila).
 
 Pendências ligadas ao PASSO 12:
 
-- PASSO 14: guardar `provider`/`model` de `AiChatOutcome` na mensagem da conversa; mapear `ai_unavailable`, `ai_not_configured` e `ai_request_rejected` para respostas ao usuário; usar `ASSISTANT_RATE_LIMIT_MAX_REQUESTS`.
 - PASSO 20: o restante da administração (usuários, admins, configurações globais) entra no mesmo `AdminModule`.
 - Smoke real com chaves de teste (`RUN_AI_INTEGRATION_TESTS`) ainda não existe; os formatos das três APIs seguem a documentação e não foram exercitados contra os serviços reais.
 
@@ -548,7 +582,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`) e 13 (`1d56f09`) commitados; o PASSO 14 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`) e 14 (`aa6281e`) commitados; o PASSO 15 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -706,3 +740,15 @@ Pendências conhecidas para passos futuros:
   - acento gravado corretamente com corpo UTF-8.
 - `pnpm quality` passou por completo.
 - Não validado com modelos reais (sem chaves de provedor).
+
+## Evidências do PASSO 15
+
+- Backend no host e no container: 302 testes unitários e 264 de integração (17 de undo e exclusões). Frontend: 73 testes. Nenhum banco de teste restante.
+- Mutações detectadas:
+  - alvo alterado ignorado;
+  - trava de concorrência removida;
+  - exclusão de dados sem filtro de dono.
+- Docker:
+  - migration `action_history_undo` aplicada;
+  - teste manual: undo da edição (20 → 10), da criação e `nothing_to_undo`; exclusão de dados confirmada (movimentações e histórico zerados) e segundo uso recusado.
+- `pnpm quality` passou por completo.

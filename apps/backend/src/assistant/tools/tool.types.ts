@@ -49,6 +49,11 @@ export interface ToolSpec<S extends z.ZodType = z.ZodType> {
   risk: ToolRisk;
   /** Writes sync the active spreadsheet afterwards unless set to false. */
   syncAfter?: boolean;
+  /**
+   * Destructive tools: "always" asks the user (default); "configurable" lets a resolved,
+   * unambiguous target run directly when the user turned confirmations off (undo still works).
+   */
+  confirmation?: 'always' | 'configurable';
   /** Destructive tools only: resolve the target without changing anything. */
   prepare?: (
     ctx: ToolContext,

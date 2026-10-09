@@ -336,6 +336,16 @@ function ProfileForm({
               <option value="sunday">{t('profile.week.sunday')}</option>
             </select>
           ))}
+          <label className="choice">
+            <input
+              type="checkbox"
+              checked={form.confirmSimpleDeletes}
+              aria-describedby="confirm-deletes-hint"
+              onChange={(e) => set('confirmSimpleDeletes', e.target.checked)}
+            />
+            {t('profile.confirmSimpleDeletes')}
+          </label>
+          <small id="confirm-deletes-hint">{t('profile.confirmSimpleDeletesHint')}</small>
         </fieldset>
 
         <aside className="preview" aria-labelledby="preview-title">

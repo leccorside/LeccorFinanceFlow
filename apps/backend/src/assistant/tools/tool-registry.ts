@@ -9,9 +9,16 @@ import { InstallmentsService } from '../../finance/installments.service.js';
 import { InvestmentsService } from '../../finance/investments.service.js';
 import { RecurringTransactionsService } from '../../finance/recurring-transactions.service.js';
 import { TransactionsService } from '../../finance/transactions.service.js';
+import { UndoService } from '../../finance/undo.service.js';
+import { GoogleConnectionService } from '../../google/google-connection.service.js';
 import { ProfileService } from '../../profile/profile.service.js';
+import {
+  GOOGLE_WORKSPACE_CLIENT,
+  type GoogleWorkspaceClient,
+} from '../../spreadsheets/google-workspace.client.js';
 import { SpreadsheetsService } from '../../spreadsheets/spreadsheets.service.js';
 import { SheetSyncService } from '../../spreadsheets/sync/sheet-sync.service.js';
+import { dataTools } from './data.tools.js';
 import { financeTools } from './finance.tools.js';
 import type { ToolContext, ToolRisk, ToolSpec } from './tool.types.js';
 import { workspaceTools } from './workspace.tools.js';
@@ -48,6 +55,9 @@ export class ToolRegistry {
     @Inject(SpreadsheetsService) spreadsheets: SpreadsheetsService,
     @Inject(SheetSyncService) sheetSync: SheetSyncService,
     @Inject(ProfileService) profiles: ProfileService,
+    @Inject(UndoService) undo: UndoService,
+    @Inject(GOOGLE_WORKSPACE_CLIENT) workspace: GoogleWorkspaceClient,
+    @Inject(GoogleConnectionService) google: GoogleConnectionService,
   ) {
     const all = [
       ...financeTools({
@@ -61,6 +71,7 @@ export class ToolRegistry {
         investments,
       }),
       ...workspaceTools({ prisma, spreadsheets, sheetSync, profiles }),
+      ...dataTools({ prisma, undo, spreadsheets, workspace, google }),
     ];
     for (const tool of all) this.register(tool);
   }

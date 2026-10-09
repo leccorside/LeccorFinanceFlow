@@ -18,6 +18,7 @@ import { InvestmentsService } from './investments.service.js';
 import { RecurrenceMaterializer } from './recurrence-materializer.js';
 import { RecurringTransactionsService } from './recurring-transactions.service.js';
 import { TransactionsService } from './transactions.service.js';
+import { UndoService } from './undo.service.js';
 
 const SERVICES = [
   AccountsService,
@@ -29,6 +30,7 @@ const SERVICES = [
   InstallmentsService,
   RecurringTransactionsService,
   InvestmentsService,
+  UndoService,
 ];
 
 @Module({

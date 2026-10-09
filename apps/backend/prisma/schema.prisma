@@ -768,13 +768,20 @@ model ActionHistory {
   afterState     Json?            @map("after_state")
   isReversible   Boolean          @default(true) @map("is_reversible")
   revertedAt     DateTime?        @map("reverted_at") @db.Timestamptz(3)
+  /// Rows written by the same operation (one database transaction) share it: undone together.
+  batchId        String?          @map("batch_id") @db.Uuid
+  /// Set on the rows an undo writes (audit): the row they reverted. Never undone themselves.
+  undoOfId       String?          @map("undo_of_id") @db.Uuid
   createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
 
   owner        User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   conversation Conversation?         @relation(fields: [conversationId], references: [id], onDelete: SetNull)
   messages     ConversationMessage[]
+  undoOf       ActionHistory?        @relation("ActionUndo", fields: [undoOfId], references: [id], onDelete: SetNull)
+  undoneBy     ActionHistory[]       @relation("ActionUndo")
 
   @@index([ownerId, createdAt])
+  @@index([batchId])
   @@index([entityType, entityId])
   @@index([conversationId])
   @@map("action_history")

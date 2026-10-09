@@ -16,6 +16,9 @@ const registry = () => {
     none,
     none,
     none,
+    none,
+    none,
+    none,
   );
 };
 
@@ -59,6 +62,7 @@ describe('ToolRegistry', () => {
         'create_spreadsheet',
         'sync_spreadsheet',
         'change_voice_preference',
+        'undo_last_action',
       ]),
     );
   });
@@ -94,9 +98,13 @@ describe('ToolRegistry', () => {
     const destructive = tools.filter((tool) => tool.risk === 'destructive');
     expect(destructive.map((tool) => tool.name).sort()).toEqual([
       'delete_account',
+      'delete_conversation_history',
+      'delete_financial_data',
       'delete_installment_purchase',
       'delete_investment',
+      'delete_my_account',
       'delete_recurring_transaction',
+      'delete_spreadsheet',
       'delete_transaction',
     ]);
     expect(destructive.every((tool) => typeof tool.prepare === 'function')).toBe(true);

@@ -15,7 +15,7 @@ export interface Profile {
   locale: Locale;
   currency: string;
   timeZone: string;
-  preferences: { theme: Theme; weekStartsOn: WeekStart };
+  preferences: { theme: Theme; weekStartsOn: WeekStart; confirmSimpleDeletes: boolean };
   voice: { gender: VoiceGender; autoSpeak: boolean; speakingRate: number };
   updatedAt: string | null;
 }

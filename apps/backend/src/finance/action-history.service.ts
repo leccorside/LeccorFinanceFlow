@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { AuthenticatedUser } from '../auth/auth.service.js';
 import { ownedBy } from '../common/security/ownership.js';
@@ -65,6 +66,8 @@ export interface ActionRecord {
   before?: Snapshot | null;
   after?: Snapshot | null;
   conversationId?: string | null;
+  /** Undo audit rows only: the row this one reverts (never reversible itself). */
+  undoOfId?: string;
 }
 
 export interface ActionHistoryItem {
@@ -76,8 +79,18 @@ export interface ActionHistoryItem {
   after: unknown;
   isReversible: boolean;
   revertedAt: string | null;
+  /** Rows of the same operation share it (undone together). */
+  batchId: string | null;
+  /** Set when the row records an undo. */
+  undoOfId: string | null;
   createdAt: string;
 }
+
+/**
+ * One batch per database transaction: every row an operation writes inside the same
+ * `$transaction` (e.g. a contribution: transaction + investment) is undone as one action.
+ */
+const batches = new WeakMap<object, string>();
 
 /**
  * Functional history for undo (PASSO 15) and user-facing audit. NOT a technical log:
@@ -88,8 +101,15 @@ export class ActionHistoryService {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async record(tx: Prisma.TransactionClient, entry: ActionRecord): Promise<void> {
+    let batchId = batches.get(tx);
+    if (!batchId) {
+      batchId = randomUUID();
+      batches.set(tx, batchId);
+    }
     await tx.actionHistory.create({
       data: {
+        batchId,
+        ...(entry.undoOfId ? { undoOfId: entry.undoOfId, isReversible: false } : {}),
         ownerId: entry.ownerId,
         entityType: entry.entityType,
         entityId: entry.entityId,
@@ -119,6 +139,8 @@ export class ActionHistoryService {
       after: row.afterState,
       isReversible: row.isReversible,
       revertedAt: row.revertedAt?.toISOString() ?? null,
+      batchId: row.batchId,
+      undoOfId: row.undoOfId,
       createdAt: row.createdAt.toISOString(),
     }));
   }
