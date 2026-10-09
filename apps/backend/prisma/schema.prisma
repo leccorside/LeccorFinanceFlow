@@ -226,6 +226,7 @@ model User {
   updatedSettings       SystemSetting[]
   sessions              UserSession[]
   authAttempts          AuthLoginAttempt[]
+  confirmations         AssistantConfirmation[]
 
   @@index([status])
   @@map("users")
@@ -419,19 +420,19 @@ model Spreadsheet {
 /// of the user-editable cells as written (or as imported). Detects sheet-only, app-only and
 /// concurrent changes without keeping a copy of the data. Not a log.
 model SpreadsheetRowState {
-  id              String      @id @default(uuid(7)) @db.Uuid
-  spreadsheetId   String      @map("spreadsheet_id") @db.Uuid
+  id              String   @id @default(uuid(7)) @db.Uuid
+  spreadsheetId   String   @map("spreadsheet_id") @db.Uuid
   /// Data tab key: transactions, accounts or investments.
-  tab             String      @db.VarChar(30)
-  recordId        String      @map("record_id") @db.Uuid
-  exportedVersion Int         @map("exported_version")
-  rowHash         String      @map("row_hash") @db.Char(64)
+  tab             String   @db.VarChar(30)
+  recordId        String   @map("record_id") @db.Uuid
+  exportedVersion Int      @map("exported_version")
+  rowHash         String   @map("row_hash") @db.Char(64)
   /// Created from a sheet row whose ID was not written back yet: a retry links, never duplicates.
-  awaitingLink    Boolean     @default(false) @map("awaiting_link")
+  awaitingLink    Boolean  @default(false) @map("awaiting_link")
   /// Set while the record is in CONFLICT: why, and the sheet's editable values at that time.
-  conflictReason  String?     @map("conflict_reason") @db.VarChar(80)
-  conflictValues  Json?       @map("conflict_values")
-  updatedAt       DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  conflictReason  String?  @map("conflict_reason") @db.VarChar(80)
+  conflictValues  Json?    @map("conflict_values")
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
 
   spreadsheet Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
 
@@ -662,10 +663,11 @@ model Conversation {
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
 
-  owner         User                  @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  spreadsheet   Spreadsheet?          @relation(fields: [spreadsheetId], references: [id], onDelete: SetNull)
+  owner         User                    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  spreadsheet   Spreadsheet?            @relation(fields: [spreadsheetId], references: [id], onDelete: SetNull)
   messages      ConversationMessage[]
   actionHistory ActionHistory[]
+  confirmations AssistantConfirmation[]
 
   @@index([ownerId, updatedAt])
   @@index([spreadsheetId])
@@ -776,4 +778,32 @@ model ActionHistory {
   @@index([entityType, entityId])
   @@index([conversationId])
   @@map("action_history")
+}
+
+/// A destructive tool call waiting for the user's explicit confirmation. Single use, short
+/// lived and bound to the target's state: a changed target invalidates it. Confirmed only by
+/// the user through the API (never by the model).
+model AssistantConfirmation {
+  id                String    @id @default(uuid(7)) @db.Uuid
+  ownerId           String    @map("owner_id") @db.Uuid
+  conversationId    String?   @map("conversation_id") @db.Uuid
+  toolName          String    @map("tool_name") @db.VarChar(100)
+  toolVersion       Int       @map("tool_version") @db.SmallInt
+  /// Validated arguments as the tool will receive them.
+  arguments         Json
+  /// SHA-256 of the target's state when asked; compared again on confirmation.
+  targetFingerprint String    @map("target_fingerprint") @db.Char(64)
+  /// What the user is asked to confirm (safe fields only, for the UI and the answer).
+  summary           Json
+  expiresAt         DateTime  @map("expires_at") @db.Timestamptz(3)
+  usedAt            DateTime? @map("used_at") @db.Timestamptz(3)
+  canceledAt        DateTime? @map("canceled_at") @db.Timestamptz(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  owner        User          @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  conversation Conversation? @relation(fields: [conversationId], references: [id], onDelete: SetNull)
+
+  @@index([ownerId, createdAt])
+  @@index([expiresAt])
+  @@map("assistant_confirmations")
 }

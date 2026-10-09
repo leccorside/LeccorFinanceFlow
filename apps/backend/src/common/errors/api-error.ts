@@ -17,6 +17,7 @@ const DEFAULTS: Record<number, { code: string; message: string }> = {
   404: { code: 'not_found', message: 'Recurso não encontrado.' },
   405: { code: 'method_not_allowed', message: 'Método não permitido.' },
   409: { code: 'conflict', message: 'Conflito com o estado atual do recurso.' },
+  410: { code: 'gone', message: 'O recurso não está mais disponível.' },
   413: { code: 'payload_too_large', message: 'Conteúdo maior que o permitido.' },
   415: { code: 'unsupported_media_type', message: 'Tipo de conteúdo não suportado.' },
   422: { code: 'unprocessable', message: 'A operação não é permitida com esses dados.' },

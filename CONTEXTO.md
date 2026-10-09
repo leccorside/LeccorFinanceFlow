@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 12 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 13 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,29 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Ferramentas do assistente implementadas no PASSO 13 (`src/assistant`):
+
+- `tools/tool.types.ts`: `ToolSpec` (name, version, description, input Zod estrito, roles, risk, syncAfter, prepare, run), `defineTool`, `ToolOutcome`, `fingerprintOf` (SHA-256 de JSON canônico), `toModelContent` + `TOOL_RESULT_NOTICE`.
+- `tools/resolvers.ts`: `accountId`, `categoryId` (`"Pai > Filha"`) e `investmentId` por nome, só entre os registros do usuário; `onlyOne` (id ou nome).
+- `tools/finance.tools.ts` (26) e `tools/workspace.tools.ts` (planilha e voz, 4). Cada ferramenta revalida com o DTO do domínio (`createTransactionSchema.parse` etc.) e chama o serviço com `{ conversationId }`.
+- `tools/tool-registry.ts`: `definitionsFor(user)` (para o `AiService`), `infoFor` e `get`; valida o contrato na construção.
+- `tools/tool-executor.ts`: `execute(ctx, { name, arguments })`, `confirm(ctx, id)`, `cancel`, `pending`; `CONFIRMATION_TTL_MS` = 5 min; sincronização depois de escritas.
+- `assistant.controller.ts` (`/assistant/tools`, `/assistant/confirmations…`) e `AssistantModule` (exporta registry e executor).
+- Migration `assistant_confirmations`; código padrão `410 gone` no contrato de erros.
+- Testes: `tool-registry.spec.ts` (6) e `test/integration/tools.int-spec.ts` (16).
+
+## Decisões do PASSO 13
+
+- **Confirmação só pelo usuário, por HTTP**: nenhuma ferramenta tem argumento de confirmação, e o schema estrito recusa `confirmed`/`confirmationId`. Assim, nem o modelo nem um texto de planilha conseguem confirmar.
+- **Confirmação ligada ao estado do alvo** (hash de id + versão; na compra parcelada, ids e versões das parcelas) e à versão da ferramenta. Qualquer mudança invalida, e a confirmação é marcada como usada antes de executar (uso único mesmo se falhar).
+- **Ambiguidade nunca executa**: filtro com mais de um resultado devolve até 5 candidatos com campos seguros; o usuário escolhe e o modelo chama de novo com o id.
+- **Toda exclusão pede confirmação**. A opção configurável para exclusões simples (PROMPT §35) fica para o PASSO 15, com o undo.
+- **Nomes resolvidos no backend**: o modelo diz "Nubank" ou "Transporte > Combustível"; o backend procura só nos registros do usuário e, se não achar ou achar vários, devolve as opções em vez de adivinhar.
+- **Dupla validação**: schema da ferramenta (estrito, para o modelo) e DTO do domínio (as mesmas regras da API REST). Ownership e regras ficam nos serviços.
+- **Erros viram resultado, não exceção**: o modelo sempre recebe `ToolOutcome`; erros inesperados viram `internal_error` sem detalhes. A rota de confirmação usa HTTP (404/409/410) para problemas da própria confirmação.
+- **Sincronização depois de cada escrita** (exceto planilha e voz). Falha do Google vira `PENDING_SYNC`, sem desfazer a escrita, para que a resposta reflita o estado real.
+- **Sem ferramenta de relatório** até o PASSO 19.
 
 Camada de IA implementada no PASSO 12 (`src/ai`, `src/admin`, frontend `features/admin`):
 
@@ -345,6 +368,9 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 13: sem bug de produção.
+  - Substituição em lote por indentação duplicou linhas (padrão com menos espaços casa dentro do de mais espaços): corrigido reinserindo pela linha âncora.
+  - No teste manual, `head -c` cortava o JSON e `/tmp` do Git Bash não existe para o Node no Windows: usar pipe por stdin.
 - PASSO 12: sem bug de produção. Os ajustes foram:
   - testes que esperavam o `env` completo agora incluem `AI`;
   - dois testes de tela ajustados (texto repetido, dado assíncrono);
@@ -401,14 +427,24 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 12 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 13 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 13`
+`INICIE O PASSO 14`
 
-Quando autorizado, executar apenas o PASSO 13 de `PASSOS.md`: Tool Registry e executor seguro.
+Quando autorizado, executar apenas o PASSO 14 de `PASSOS.md`: assistente e contexto conversacional.
 
-- As ferramentas viram `ToolDefinition` (JSON Schema) para o `AiService`.
-- O executor valida os argumentos com os DTOs Zod existentes, injeta usuário e planilha do lado do servidor, chama os serviços de domínio com `context.conversationId` e, nas escritas, `SheetSyncService.sync`.
+- Conversa e mensagens (`Conversation`/`ConversationMessage`, já no schema).
+- Laço modelo ↔ ferramentas: `AiService.chat('CHAT', { system, messages, tools: registry.definitionsFor(user) })` → `ToolExecutor.execute({ user, conversationId }, call)` → `toModelContent(outcome)` como mensagem `tool`.
+- Guardar `provider` na mensagem do assistente.
+- Pendentes de confirmação aparecem para o usuário com `GET /assistant/confirmations`.
+- Usar `ASSISTANT_RATE_LIMIT_MAX_REQUESTS`.
+
+Pendências ligadas ao PASSO 13:
+
+- PASSO 15: undo (`undo_last_action`) e confirmação configurável para exclusões simples; exclusão de planilha, histórico e conta com confirmações próprias.
+- PASSO 19: ferramenta `generate_report`.
+- `switch_spreadsheet` não existe: o serviço de planilhas ainda não troca a planilha ativa.
+- Limpeza de confirmações expiradas: hoje elas só deixam de valer (índice em `expires_at` pronto para uma limpeza futura, sem fila).
 
 Pendências ligadas ao PASSO 12:
 
@@ -476,7 +512,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`) e 11 (`d02f00c`) commitados; o PASSO 12 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`) e 12 (`8cac5be`) commitados; o PASSO 13 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -605,3 +641,18 @@ Pendências conhecidas para passos futuros:
   - `/admin/ai` servido pelo Vite.
 - `pnpm quality` passou por completo.
 - Não validado contra as APIs reais da OpenAI, do Google e da Anthropic (sem chaves de teste).
+
+## Evidências do PASSO 13
+
+- Backend no host e no container: 274 testes unitários (6 novos) e 233 de integração (16 de ferramentas; o teste de migrations agora espera 24 tabelas, e a nova migration reverte pelo `down.sql`). Nenhum banco de teste restante.
+- Mutações detectadas:
+  - papel não verificado;
+  - destrutiva executando sem confirmação;
+  - hash do alvo ignorado;
+  - validade da confirmação ignorada.
+- Docker, com sessão sintética removida:
+  - migration aplicada;
+  - 30 ferramentas, 5 destrutivas;
+  - confirmação por HTTP executou a exclusão (histórico `CREATE,DELETE`);
+  - `403` sem CSRF, `409` no segundo uso, `404` para id inexistente, `401` anônimo.
+- `pnpm quality` passou por completo.

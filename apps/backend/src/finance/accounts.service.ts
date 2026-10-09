@@ -77,7 +77,11 @@ export class AccountsService {
     return row;
   }
 
-  async create(user: User, input: CreateAccountInput): Promise<AccountResponse> {
+  async create(
+    user: User,
+    input: CreateAccountInput,
+    context: { conversationId?: string } = {},
+  ): Promise<AccountResponse> {
     const currency =
       input.currency ?? (await userSettings(this.prisma, user.id)).currency;
     this.validateCardFields(input, input.type);
@@ -100,6 +104,7 @@ export class AccountsService {
         await this.history.record(tx, {
           ownerId: user.id,
           entityType: 'FINANCIAL_ACCOUNT',
+          conversationId: context.conversationId ?? null,
           entityId: created.id,
           action: 'CREATE',
           after: snapshotOf(created),
@@ -114,6 +119,7 @@ export class AccountsService {
     user: User,
     id: string,
     input: UpdateAccountInput,
+    context: { conversationId?: string } = {},
   ): Promise<AccountResponse> {
     const current = await this.findOwned(user, id);
     if (input.version !== undefined && input.version !== current.version) {
@@ -142,6 +148,7 @@ export class AccountsService {
           await this.history.record(tx, {
             ownerId: user.id,
             entityType: 'FINANCIAL_ACCOUNT',
+            conversationId: context.conversationId ?? null,
             entityId: id,
             action: 'UPDATE',
             ...diff,
@@ -154,7 +161,11 @@ export class AccountsService {
   }
 
   /** Accounts referenced by transactions or plans cannot be deleted: archive them instead. */
-  async delete(user: User, id: string): Promise<void> {
+  async delete(
+    user: User,
+    id: string,
+    context: { conversationId?: string } = {},
+  ): Promise<void> {
     const current = await this.findOwned(user, id);
     const usage = await Promise.all([
       this.prisma.transaction.count({
@@ -180,6 +191,7 @@ export class AccountsService {
       await this.history.record(tx, {
         ownerId: user.id,
         entityType: 'FINANCIAL_ACCOUNT',
+        conversationId: context.conversationId ?? null,
         entityId: id,
         action: 'DELETE',
         before: snapshotOf(current),

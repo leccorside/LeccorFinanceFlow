@@ -426,7 +426,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: adiciona provedores de ia configuráveis com fallback`
 
-## [ ] PASSO 13 — Tool Registry e executor seguro
+## [x] PASSO 13 — Tool Registry e executor seguro
 
 **Objetivo:** criar a única ponte permitida entre IA e domínio.
 
@@ -438,7 +438,39 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** cada tool, tool inexistente, schema inválido, IDOR, confirmação expirada e injeção.
 
-**Sugestão de commit:** `feat: implement authorized assistant tool execution`
+**Evidência (09/10/2026):**
+
+- **Backend**:
+  - `src/assistant/tools`: `ToolSpec`/`ToolOutcome`; `ToolRegistry` (allowlist, JSON Schema estrito, filtro por papel); `ToolExecutor` (validação, papel, conversa, ambiguidade, confirmação, execução, sincronização);
+  - 30 ferramentas financeiras, de planilha e de voz, com resolução por nome restrita ao usuário;
+  - rotas `GET /assistant/tools`, `GET /assistant/confirmations` e `POST /assistant/confirmations/:id/confirm|cancel`;
+  - migration `20261009035926_assistant_confirmations` (CHECKs, triggers de dono, `down.sql`);
+  - `AccountsService` e `CategoriesService` passaram a registrar `conversationId` no histórico.
+- **Relatórios**: ficam com o PASSO 19, que cria a geração. Registrar uma ferramenta sem geração levaria o modelo a prometer o que não existe.
+- **Unitários**: 274 no total, 6 deste passo:
+  - contrato do registro: nomes únicos, versão, descrição, schema estrito, nenhum campo de usuário ou confirmação;
+  - destrutivas com `prepare`; filtro por papel;
+  - hash independente da ordem;
+  - texto do usuário sem escapar do JSON.
+- **Integração**: 233 no total, 16 deste passo, com Postgres real e Google simulado:
+  - **cada ferramenta** (contas, categorias, transações por nome, resumo, séries, contas a vencer e vencidas, parcelas, recorrência, investimento e aporte, voz, planilha);
+  - **ferramenta inexistente** (inclusive nomes "de comando" e de 500 caracteres);
+  - **schema inválido** (`ownerId`, `userId`, `confirmed`, `confirmationId`, `role`, tipo errado, id e nome juntos), sem ecoar valores;
+  - papel ausente; conversa de outra pessoa;
+  - **IDOR** em 8 ferramentas e na confirmação ou cancelamento de outra pessoa;
+  - **destrutiva ambígua** ("apague o gasto do mercado" com 3 candidatos) não executa;
+  - confirmação só pelo usuário (CSRF), uso único;
+  - **confirmação expirada**, cancelada, alvo alterado e alvo apagado;
+  - todas as destrutivas com confirmação; parcela recusada antes;
+  - **injeção** em descrição e observação tratada como dado;
+  - sincronização depois de escrita (`SYNCED`, `PENDING_SYNC` com Google fora do ar).
+- **Mutações detectadas**: papel não verificado; destrutiva sem confirmação; hash do alvo ignorado; validade ignorada.
+- **Docker**:
+  - migration aplicada; suítes nos containers (274 + 233);
+  - teste manual com sessão sintética removida: 30 ferramentas (5 destrutivas), anônimo `401`, confirmação sem CSRF `403`, confirmação executa a exclusão (histórico `CREATE,DELETE`), segunda vez `409 confirmation_used`, id inexistente `404`;
+  - `pnpm quality` completo.
+
+**Sugestão de commit:** `feat: implementa execução autorizada de ferramentas do assistente`
 
 ## [ ] PASSO 14 — Assistente e contexto conversacional
 

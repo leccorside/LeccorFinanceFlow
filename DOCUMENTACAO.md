@@ -682,6 +682,70 @@ Para toda resposta quantitativa:
 
 Contexto conversacional guarda referências seguras, como período, categoria e IDs de resultados anteriores, sempre revalidados antes do uso.
 
+### Tool Registry e executor seguro (PASSO 13)
+
+Implementado em `apps/backend/src/assistant/tools`. É a única ponte entre um modelo e o domínio. O assistente (PASSO 14) vai entregar `ToolRegistry.definitionsFor(user)` ao `AiService` e passar cada chamada proposta ao `ToolExecutor.execute`.
+
+**Contrato de cada ferramenta** (`ToolSpec`):
+
+- nome `snake_case` e versão;
+- descrição escrita para o modelo;
+- schema Zod **estrito** (vira JSON Schema com `additionalProperties: false`);
+- papéis permitidos;
+- risco (`read`, `write` ou `destructive`);
+- `prepare` (obrigatório nas destrutivas) e `run`.
+
+O registro recusa, na inicialização, nome inválido ou repetido, schema não estrito e destrutiva sem `prepare`.
+
+**Ferramentas** (30):
+
+| Grupo                     | Ferramentas                                                                                                                                                                                                                                                                                                           |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Consultas                 | `list_accounts`, `list_categories`, `search_transactions`, `get_financial_summary`, `get_expenses_by_period`, `get_income_by_period`, `get_upcoming_bills`, `get_overdue_bills`, `list_installment_purchases`, `list_recurring_transactions`, `list_investments`, `get_investments_summary`, `get_spreadsheet_status` |
+| Escritas                  | `create_transaction`, `update_transaction` (devolve antes e depois), `create_account`, `update_account`, `create_category`, `create_installment_purchase`, `create_recurring_transaction`, `create_investment`, `add_investment_contribution`, `create_spreadsheet`, `sync_spreadsheet`, `change_voice_preference`    |
+| Destrutivas (confirmação) | `delete_transaction`, `delete_account`, `delete_investment`, `delete_recurring_transaction`, `delete_installment_purchase`                                                                                                                                                                                            |
+
+Relatórios entram no PASSO 19, junto com a geração; desfazer, no PASSO 15.
+
+**Referências por nome**:
+
+- Conta, categoria (inclusive `"Transporte > Combustível"`) e investimento podem vir pelo id ou pelo nome que o usuário disse.
+- O nome é procurado **só entre os registros do próprio usuário**, sem diferenciar maiúsculas e acentos.
+- Nenhum encontrado: `*_not_found`, com os nomes disponíveis.
+- Vários encontrados: `*_ambiguous`, com os candidatos. Nunca é escolhido um ao acaso.
+- A data padrão é hoje, no fuso do usuário.
+
+**Ordem do executor**:
+
+1. **Allowlist**: nome desconhecido gera `rejected: unknown_tool`.
+2. **Papel**: o usuário vem sempre da sessão; sem papel permitido, `forbidden`. O modelo só recebe as ferramentas permitidas.
+3. **Conversa**: `conversationId` de outra pessoa gera `invalid_context`.
+4. **Argumentos**: validação estrita. Campo extra (`ownerId`, `userId`, `confirmed`, `confirmationId`, `role`…), tipo errado ou id e nome juntos geram `invalid_arguments`, só com caminho e regra, sem os valores enviados.
+5. **Destrutivas**:
+   - `prepare` resolve o alvo sem alterar nada;
+   - mais de um candidato gera `ambiguous` com até 5 candidatos (campos seguros), e nada é executado;
+   - um único alvo gera `confirmation_required`, com resumo e um token salvo em `assistant_confirmations`.
+6. **Execução** pelo serviço de domínio, com todas as regras, o ownership (`404` para id de outra pessoa) e o `ActionHistory`, que inclui o `conversationId`.
+7. **Sincronização** da planilha ativa depois de escritas: `sync` = `SYNCED`, `PENDING_SYNC` (Google falhou; a escrita continua valendo), `CONFLICT` ou `NO_SPREADSHEET`.
+8. **Resultado sempre estruturado**: `ok`, `confirmation_required`, `ambiguous`, `rejected` ou `error` (código do domínio, sem detalhe interno).
+   - `toModelContent` serializa em JSON com o aviso de que textos em `data`/`candidates` são dados do usuário, nunca instruções.
+   - Um texto não consegue "fechar" o JSON e injetar campos.
+
+**Confirmações** (`assistant_confirmations`):
+
+| Propriedade      | Garantia                                                                                                                                                       |
+| ---------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Quem confirma    | **só o usuário**, por `POST /api/v1/assistant/confirmations/:id/confirm` (sessão + CSRF). Nenhum argumento de ferramenta confirma, então o modelo não consegue |
+| Validade         | 5 minutos (`410 confirmation_expired`)                                                                                                                         |
+| Uso único        | `409 confirmation_used`; cancelada: `POST …/:id/cancel` → `409 confirmation_canceled`                                                                          |
+| Alvo mudou       | o estado (id + versão) vira um hash SHA-256 na pergunta e é recalculado na confirmação; mudou ou sumiu: `409 confirmation_stale`, nada é executado             |
+| Ferramenta mudou | versão diferente da registrada gera `confirmation_stale`                                                                                                       |
+| De outra pessoa  | `404` (não revela existência)                                                                                                                                  |
+
+`GET /api/v1/assistant/confirmations` lista as pendentes do usuário, para a interface (PASSO 16) mostrar o botão "Confirmar". `GET /api/v1/assistant/tools` lista as ferramentas permitidas com os schemas.
+
+Banco: CHECKs de versão, formato do hash, validade e estado final único; triggers de mesmo dono da conversa e de dono imutável.
+
 ### Provedores de IA e fallback (PASSO 12)
 
 Implementado em `apps/backend/src/ai` e `apps/backend/src/admin`. A IA ainda não conversa com o usuário: esta é a camada que o assistente (PASSOS 13 e 14) vai usar.
@@ -800,6 +864,8 @@ Conteúdo financeiro é dado não confiável. Apenas mensagens de sistema contro
 ### Operações destrutivas
 
 Exclusões ambíguas ou de alto impacto exigem confirmação vinculada a um snapshot da ação. Um token expirado ou cujo alvo mudou é rejeitado. Exclusões de planilha, dados financeiros, histórico ou conta têm confirmações distintas.
+
+Implementado no PASSO 13 para as ferramentas do assistente (ver "Tool Registry e executor seguro"). Todas as exclusões feitas pela IA pedem confirmação. Tornar configurável a confirmação de exclusões simples e inequívocas (PROMPT §35) fica para o PASSO 15, junto com o undo.
 
 ### Privacidade
 

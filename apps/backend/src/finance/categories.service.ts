@@ -119,7 +119,11 @@ export class CategoriesService {
     return row;
   }
 
-  async create(user: User, input: CreateCategoryInput): Promise<CategoryResponse> {
+  async create(
+    user: User,
+    input: CreateCategoryInput,
+    context: { conversationId?: string } = {},
+  ): Promise<CategoryResponse> {
     const { locale } = await userSettings(this.prisma, user.id);
     const parentId = input.parentId ?? null;
     if (parentId) {
@@ -155,6 +159,7 @@ export class CategoriesService {
         entityType: 'CATEGORY',
         entityId: created.id,
         action: 'CREATE',
+        conversationId: context.conversationId ?? null,
         after: snapshotOf(created),
       });
       return created;
