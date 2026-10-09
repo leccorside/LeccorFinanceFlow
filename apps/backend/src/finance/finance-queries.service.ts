@@ -66,7 +66,7 @@ export interface FinancialSummary {
 }
 
 export interface PeriodSeries {
-  type: 'INCOME' | 'EXPENSE';
+  type: 'INCOME' | 'EXPENSE' | 'INVESTMENT';
   from: string;
   to: string;
   groupBy: 'day' | 'month';
@@ -200,10 +200,10 @@ export class FinanceQueriesService {
     };
   }
 
-  /** Incomes or expenses per day or month (database sums per day, folded with Decimal). */
+  /** Incomes, expenses or investments per day or month (database sums, folded with Decimal). */
   async byPeriod(
     user: User,
-    type: 'INCOME' | 'EXPENSE',
+    type: 'INCOME' | 'EXPENSE' | 'INVESTMENT',
     fromText: string,
     toText: string,
     groupBy: 'day' | 'month' = 'month',

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
-import { type ReactNode, useEffect } from 'react';
+import { lazy, type ReactNode, Suspense, useEffect } from 'react';
 import {
   Link,
   Navigate,
@@ -19,6 +19,11 @@ import { useI18n } from '../i18n/context';
 import { getCurrentUser, googleLoginUrl, logout } from '../services/auth';
 import { getHealth } from '../services/health';
 import { useApplyTheme } from './theme';
+
+/** Charts (Recharts) load only when the dashboard is opened, not with the chat. */
+const DashboardPage = lazy(async () => ({
+  default: (await import('../features/dashboard/DashboardPage')).DashboardPage,
+}));
 
 function useCurrentUser() {
   return useQuery({
@@ -148,6 +153,7 @@ function Header() {
             <NavLink to="/" end>
               {t('nav.assistant')}
             </NavLink>
+            <NavLink to="/dashboard">{t('nav.dashboard')}</NavLink>
             <NavLink to="/profile">{t('nav.profile')}</NavLink>
             {me.data.roles.includes('ADMIN') && (
               <NavLink to="/admin/ai">{t('nav.admin')}</NavLink>
@@ -169,6 +175,7 @@ function Header() {
 }
 
 export function App() {
+  const { t } = useI18n();
   const me = useApplyProfileRegion();
   const signedIn = Boolean(me.data);
   useApplyTheme(signedIn);
@@ -181,6 +188,16 @@ export function App() {
       <main className={chat ? 'app-main app-main--chat' : 'app-main'}>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/dashboard"
+            element={
+              <RequireAuth>
+                <Suspense fallback={<p role="status">{t('dashboard.loading')}</p>}>
+                  <DashboardPage />
+                </Suspense>
+              </RequireAuth>
+            }
+          />
           <Route
             path="/profile"
             element={

@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { z } from 'zod';
 import type { ToolDefinition } from '../../ai/ai.types.js';
+import { DashboardService } from '../../dashboard/dashboard.service.js';
 import { PrismaService } from '../../database/prisma.service.js';
 import { AccountsService } from '../../finance/accounts.service.js';
 import { CategoriesService } from '../../finance/categories.service.js';
@@ -20,6 +21,7 @@ import { SpreadsheetsService } from '../../spreadsheets/spreadsheets.service.js'
 import { SheetSyncService } from '../../spreadsheets/sync/sheet-sync.service.js';
 import { dataTools } from './data.tools.js';
 import { financeTools } from './finance.tools.js';
+import { insightTools } from './insight.tools.js';
 import type { ToolContext, ToolRisk, ToolSpec } from './tool.types.js';
 import { workspaceTools } from './workspace.tools.js';
 
@@ -58,6 +60,7 @@ export class ToolRegistry {
     @Inject(UndoService) undo: UndoService,
     @Inject(GOOGLE_WORKSPACE_CLIENT) workspace: GoogleWorkspaceClient,
     @Inject(GoogleConnectionService) google: GoogleConnectionService,
+    @Inject(DashboardService) dashboard: DashboardService,
   ) {
     const all = [
       ...financeTools({
@@ -72,6 +75,7 @@ export class ToolRegistry {
       }),
       ...workspaceTools({ prisma, spreadsheets, sheetSync, profiles }),
       ...dataTools({ prisma, undo, spreadsheets, workspace, google }),
+      ...insightTools({ dashboard }),
     ];
     for (const tool of all) this.register(tool);
   }

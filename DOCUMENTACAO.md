@@ -164,7 +164,7 @@ Prefixo: `/api/v1`.
 | `/assistant`              | conversas, mensagens, ferramentas e confirmações (undo no PASSO 15) |
 | `/voice`                  | capacidades, transcrição e leitura em voz alta (PASSO 17)           |
 | `/reports`                | geração e download autenticado                                      |
-| `/dashboard`              | agregações por período                                              |
+| `/dashboard`              | painel por período, por moeda, com insights (PASSO 18)              |
 | `/admin/*`                | usuários, provedores, modelos e configurações                       |
 
 Controladores não concentrarão regra de negócio. DTOs validam formato; serviços de domínio validam invariantes; guards/policies validam papel e propriedade.
@@ -1100,11 +1100,102 @@ Implementado nos PASSOS 13 e 15 pelas ferramentas do assistente (ver "Tool Regis
 
 O desenho considera minimização, consentimento, transparência, portabilidade, revogação e exclusão. Política de retenção e backups deverá ser aprovada antes da produção.
 
-## Dashboard e insights
+## Dashboard e insights (PASSO 18)
 
-As visualizações usarão agregações do backend e oferecerão períodos hoje, semana, mês, 3 meses, 6 meses, ano e personalizado. Recharts renderizará gráficos acessíveis e responsivos.
+`GET /api/v1/dashboard?period=month` (sessão obrigatória). O painel é uma visão sobre as **mesmas consultas** do resto da API, então cada número bate com a rota correspondente.
 
-Insights são comparações determinísticas ou análises apoiadas por dados. Não prometerão retorno, não substituirão aconselhamento profissional e indicarão o período analisado.
+### Períodos
+
+Calculados a partir de "hoje" **no fuso do perfil**. Cobrem a unidade de calendário inteira, então contas agendadas para o fim do mês entram como pendentes.
+
+| `period`                | Intervalo                                                     | Anterior (comparação)           | Série                       |
+| ----------------------- | ------------------------------------------------------------- | ------------------------------- | --------------------------- |
+| `today`                 | hoje                                                          | ontem                           | dia                         |
+| `week`                  | semana que contém hoje (início em `preferences.weekStartsOn`) | semana anterior                 | dia                         |
+| `month` (padrão)        | 1º ao último dia do mês                                       | mês anterior                    | dia                         |
+| `3m` / `6m`             | do 1º dia de 2/5 meses atrás ao fim do mês atual              | os 3/6 meses anteriores         | mês                         |
+| `year`                  | 1º/jan a 31/dez                                               | ano anterior                    | mês                         |
+| `custom` (`from`, `to`) | as datas dadas, até 5 anos                                    | mesmo número de dias logo antes | dia até 62 dias, depois mês |
+
+Validação:
+
+- `from`/`to` só com `custom`, e então os dois;
+- datas reais e `from` ≤ `to` (400);
+- mais de 5 anos → `period_too_long` (422).
+
+As séries trazem todos os dias ou meses do período, com zero onde não houve movimento.
+
+### Resposta (por moeda; moedas nunca são somadas)
+
+| Campo                                        | Origem                                              | Observação                                                       |
+| -------------------------------------------- | --------------------------------------------------- | ---------------------------------------------------------------- |
+| `cards.incomes` / `expenses` / `investments` | `/finance/summary` do período                       | concluído + pendente; `pendingIncomes`/`pendingExpenses` à parte |
+| `cards.savings` / `savingsRate`              | receitas − despesas **concluídas**                  | "economia realizada"; taxa `null` sem receita recebida           |
+| `cards.accountsBalance`                      | soma de `/accounts?includeArchived=true`            | hoje                                                             |
+| `cards.invested`                             | `/investments/summary`                              | custo (sem cotação)                                              |
+| `cards.netWorth`                             | contas + investido                                  | patrimônio                                                       |
+| `cards.upcomingBills` / `overdueBills`       | `/finance/upcoming-bills?days=7` e `/overdue-bills` | total e quantidade                                               |
+| `previous`                                   | `/finance/summary` do período anterior              |                                                                  |
+| `cashFlow[]`                                 | `/finance/*-by-period` (incluindo investimentos)    | `incomes`, `expenses`, `investments`, `net`                      |
+| `netWorth[]`                                 | ver abaixo                                          | fim de cada dia ou mês                                           |
+| `categories[]`                               | despesas por categoria raiz do resumo               | com participação                                                 |
+| `investments.byClass[]`                      | `/investments/summary`                              | com participação                                                 |
+
+Fora dos blocos por moeda vêm `bills.upcoming`/`overdue` (até 5 de cada) e `insights[]`.
+
+**Evolução patrimonial**: no fim de cada intervalo soma:
+
+- saldos iniciais das contas;
+- movimentos **concluídos** das contas (mesmos sinais do saldo);
+- custo inicial dos investimentos, a partir do dia do cadastro;
+- aportes concluídos.
+
+Um aporte tira de uma conta e põe no investimento, por isso não muda o total. Transferências entre contas também não.
+
+### Insights
+
+Calculados em `src/dashboard/insights.ts` só com os números acima. A interface monta a frase no idioma do usuário a partir de `kind` + `values` (valores em texto decimal exato).
+
+| `kind`            | Quando aparece                                                     | Tom                                |
+| ----------------- | ------------------------------------------------------------------ | ---------------------------------- |
+| `overdue_bills`   | há contas vencidas                                                 | atenção                            |
+| `upcoming_bills`  | há contas nos próximos 7 dias                                      | neutro                             |
+| `expenses_change` | variação de despesas ≥ 5% contra o período anterior (com base > 0) | alta = atenção, queda = positivo   |
+| `expense_ratio`   | receita > 0: despesas em % da receita                              | > 100% atenção, > 80% neutro       |
+| `category_change` | categoria com ≥ 5% das despesas que cresceu ≥ 20% (a maior alta)   | atenção                            |
+| `top_category`    | maior categoria e sua participação                                 | neutro                             |
+| `savings_rate`    | receita recebida nos últimos 3 meses (até hoje) > 0                | economia > 0 positivo, < 0 atenção |
+
+Regras:
+
+- nunca há previsão, recomendação ou promessa de rendimento;
+- cada insight mostra o período analisado, e a área traz o aviso de que não é recomendação financeira;
+- o assistente lê os mesmos insights pela ferramenta `get_financial_insights`.
+
+### Interface (`/dashboard`)
+
+- Seletor de período (grupo de botões com `aria-pressed`); "Personalizado" abre De/Até e só consulta depois de "Aplicar" com período válido. Seletor de moeda quando há mais de uma.
+- Cards com comparação ("+25% vs. período anterior") ou pendência ("R$ 120,00 ainda pendente").
+- Gráficos Recharts responsivos:
+  - fluxo de caixa: barras de receitas e despesas e linha de resultado;
+  - evolução patrimonial: área;
+  - gastos por categoria: rosca com legenda;
+  - investimentos por classe: barras.
+
+  Cores vêm dos tokens do tema e acompanham a troca de tema. Com movimento reduzido, as animações ficam desligadas.
+
+- **Acessibilidade dos gráficos**: o desenho fica `aria-hidden`, sem elementos focáveis dentro (a camada de teclado do Recharts está desligada), e cada gráfico tem:
+  - título;
+  - frase-resumo ("Receitas de R$ 7.700,00 e despesas de R$ 3.487,20 no período, por dia.");
+  - "Ver dados em tabela", uma tabela real com cabeçalhos de linha e coluna e os valores exatos.
+- **Estados**:
+  - carregando: skeleton;
+  - erro: "Tentar de novo";
+  - sem dados: convite para registrar pelo assistente.
+
+  Trocar de período mantém os dados anteriores esmaecidos até a resposta chegar.
+
+- A página é carregada sob demanda (chunk próprio, ~435 kB com o Recharts), sem pesar na abertura do chat.
 
 ## Relatórios
 

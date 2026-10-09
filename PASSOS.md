@@ -659,7 +659,7 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Sugestão de commit:** `feat: adiciona interação completa por voz`
 
-## [ ] PASSO 18 — Dashboard e insights financeiros
+## [x] PASSO 18 — Dashboard e insights financeiros
 
 **Objetivo:** oferecer visão financeira visual baseada nos mesmos dados.
 
@@ -671,7 +671,43 @@ Mutações no `RolesGuard` e no `CsrfGuard` foram detectadas pelos testes. No Do
 
 **Testes necessários:** agregações, limites de data/fuso, acessibilidade de gráficos e responsividade.
 
-**Sugestão de commit:** `feat: add financial dashboard and grounded insights`
+**Evidência (09/10/2026):**
+
+- **Backend** (`src/dashboard`):
+  - `GET /dashboard?period=today|week|month|3m|6m|year|custom&from&to`;
+  - períodos no fuso do perfil, semana conforme `weekStartsOn`, unidades de calendário inteiras e o período anterior equivalente para comparação;
+  - séries diárias até 62 dias e mensais acima disso, sem buracos;
+  - por moeda (nunca somadas):
+    - cards: patrimônio, saldo em contas, receitas, despesas, economia realizada, aportes, a pagar em 7 dias e vencidas;
+    - fluxo de caixa, evolução patrimonial, gastos por categoria e investimentos por classe;
+  - tudo calculado pelas mesmas consultas de `/finance/*`, `/accounts` e `/investments/summary`.
+- **Insights determinísticos**:
+  - contas vencidas e a vencer;
+  - variação de despesas contra o período anterior;
+  - despesas em % da receita;
+  - categoria que mais cresceu e maior categoria;
+  - taxa de economia dos últimos 3 meses.
+
+  Têm limiares contra ruído, nunca dividem por zero, mostram o período analisado e trazem aviso de que não são recomendação. Também estão disponíveis para o assistente (`get_financial_insights`).
+
+- **Frontend** (`/dashboard`, "Painel"):
+  - seletor de período e período personalizado validado; seletor de moeda;
+  - cards com comparação e pendências; insights em frases (pt/en/es);
+  - quatro gráficos Recharts responsivos, cada um com resumo em frase e **tabela de dados acessível**, e o desenho escondido de leitores de tela;
+  - listas de contas;
+  - estados vazio, erro com repetição e carregando;
+  - tema claro/escuro; página carregada sob demanda (chunk próprio).
+- **Testes**:
+  - backend 324 unitários (+9: períodos, fuso, semana, bissexto, buckets e insights) e 286 de integração (+8: painel igual às rotas existentes, insights, séries mensais e patrimônio, fuso, semana, período personalizado, posse e ferramenta do assistente);
+  - frontend 119 (+12).
+- **Mutações detectadas**: entrada de transferências fora do patrimônio; período anterior trocado pelo atual; limiar de participação da categoria removido.
+- **Chrome real**:
+  - 320, 375, 768 (claro) e 1280 (escuro e claro): sem rolagem horizontal e gráficos desenhados;
+  - nada focável dentro do gráfico escondido; troca de período e personalizado enviados certo.
+  - **Corrigidos depois da verificação**: o painel estourava para 626 px no celular (trilhas do grid sem `minmax(0, 1fr)`), e a pizza do Recharts deixava um elemento focável dentro do `aria-hidden`.
+- **Docker**: suítes nos containers (324 + 286 + 119); `pnpm quality` completo.
+
+**Sugestão de commit:** `feat: adiciona painel financeiro e insights baseados nos dados`
 
 ## [ ] PASSO 19 — Relatórios PDF e XLSX
 

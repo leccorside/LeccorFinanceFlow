@@ -19,6 +19,7 @@ const registry = () => {
     none,
     none,
     none,
+    none,
   );
 };
 

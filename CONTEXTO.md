@@ -2,7 +2,7 @@
 
 ## Estado em 09/10/2026
 
-O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 17 foram implementados e validados.
+O repositório continha somente `PROMPT.md` e não estava inicializado como repositório Git. A fase de planejamento foi concluída e os PASSOS 01 a 18 foram implementados e validados.
 
 Arquivos criados nesta fase:
 
@@ -59,6 +59,32 @@ Proteção da API implementada no PASSO 05:
 - `ADMIN_EMAILS` concede `ADMIN` no login (`UsersService.grantConfiguredAdmin`);
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
+
+Painel implementado no PASSO 18:
+
+- Backend `src/dashboard`:
+  - `periods.ts` (`resolvePeriod`, `bucketsOf`, `bucketEnd`, `MAX_DASHBOARD_DAYS`, `DAILY_UP_TO_DAYS`);
+  - `insights.ts` (`buildInsights`, limiares);
+  - `dashboard.service.ts` (`overview`, `insights`, `netWorthSeries`), `dashboard.controller.ts` (`dashboardQuery`), `dashboard.module.ts` (importa `FinanceModule`, exporta o serviço).
+- Ajustes:
+  - `FinanceQueriesService.byPeriod` aceita `INVESTMENT`;
+  - ferramenta `get_financial_insights` (`assistant/tools/insight.tools.ts`); `ToolRegistry` ganhou o 15º parâmetro (`DashboardService`) e `AssistantModule` importa `DashboardModule`.
+- Frontend `features/dashboard`:
+  - `DashboardPage.tsx`, `charts.tsx` (quatro gráficos), `ChartCard.tsx` (resumo + tabela), `chart-colors.ts` (`useChartColors`), `dashboard-format.ts` (`insightText`, `changeLabel`, `bucketLabel`, `formatPercent`);
+  - `services/dashboard.ts` e `dashboard.types.ts`; `styles/dashboard.css`;
+  - rota `/dashboard` carregada com `React.lazy`; navegação "Painel".
+- Testes: `src/dashboard/dashboard.spec.ts` (9), `test/integration/dashboard.int-spec.ts` (8), `DashboardPage.test.tsx` (9), `dashboard-format.test.ts` (3). `test/setup.ts` ganhou um stub de `ResizeObserver`.
+
+## Decisões do PASSO 18
+
+- **Uma rota que reaproveita as consultas existentes** em vez de SQL novo: os números são os mesmos de `/finance/summary`, `/accounts` e `/investments/summary`, e o teste de integração compara um a um.
+- **Períodos como unidades de calendário inteiras**: o mês vai até o último dia, para que as contas a vencer apareçam como pendentes; a comparação é com o período equivalente anterior.
+- **Patrimônio a custo** (sem cotação, porque não há fonte de preços) e só com movimentos concluídos.
+- **Economia "realizada"** usa só o concluído. Receitas e despesas dos cards incluem o pendente, com o valor pendente mostrado à parte.
+- **Insights sem IA generativa**: regras determinísticas com limiares; a frase é montada no cliente a partir de valores exatos. Nada de previsão ou recomendação. O assistente lê os mesmos insights pela ferramenta.
+- **Gráfico acessível = resumo + tabela**: o SVG fica escondido de leitores de tela e sem foco, e a tabela é a fonte acessível.
+- **Números no gráfico**: o Recharts recebe `Number` só para desenhar; textos, tabelas e tooltips formatam os decimais da API.
+- **Recharts sob demanda**: a página do painel é um chunk separado (`React.lazy`).
 
 Voz implementada no PASSO 17:
 
@@ -480,6 +506,14 @@ Perfil e i18n implementados no PASSO 06:
 - **Não usar `Get-Content`/`Set-Content` do PowerShell 5.1 para editar arquivos**: lê como ANSI e grava UTF-8 com BOM, corrompendo acentos e caracteres como `—` (aconteceu com `schema.prisma`, que deixou de validar). Arquivos corrigidos; editar só com ferramentas que preservam UTF-8 sem BOM.
 - PASSO 04: o primeiro `.env.example` revisado trazia `GOOGLE_REDIRECT_URI` preenchido com ID/segredo vazios, o que violaria a regra "todas juntas" e impediria o backend de subir. Corrigido: só ID + segredo decidem; o redirect tem padrão. Um teste agora valida o `.env.example` real (o arquivo é copiado para a imagem para o teste rodar também no container).
 - PASSO 04: no teste do adapter, passar `iss`/`exp` como claims não funciona, porque `setIssuer`/`setExpirationTime` do `jose` sobrescrevem; usar os overrides dedicados do helper.
+- PASSO 18:
+  - No celular, o painel estourava para 626 px: em `display: grid` a trilha `auto` cresce até o tamanho mínimo do SVG do gráfico. Corrigido com `grid-template-columns: minmax(0, 1fr)` no painel e no corpo. Lição: todo grid que contém gráfico precisa de `minmax(0, …)`.
+  - O `Pie` do Recharts tem `rootTabIndex=0` por padrão, o que deixava um elemento focável dentro do `aria-hidden`; agora é `rootTabIndex={-1}` (e `accessibilityLayer={false}` nos demais gráficos).
+  - Escolher "Personalizado" consultava a API sem datas (400). O botão selecionado e o período aplicado foram separados.
+  - O jsdom não tem `ResizeObserver`: há um stub no setup, e os testes leem os resumos e tabelas.
+  - Testing Library já normaliza o espaço não separável do `Intl`; não substituir nos textos esperados.
+  - O `undo.int-spec` intermitente reapareceu ("undoes step by step…", linha do 1º undo) numa rodada com 3 execuções em paralelo; não se repetiu em mais 48 execuções sob carga. O teste agora falha com o resultado e o histórico da entidade na mensagem. Hipótese: empate de `createdAt` (precisão de ms) com desempate pelo uuid7, que não é monotônico dentro do mesmo ms. Correção candidata: coluna de sequência no `action_history`, mas só depois de confirmar.
+  - Um Vite antigo ficou preso na porta 5173 (escutando em `::1`); o `netstat` precisa olhar IPv6 para encerrá-lo.
 - PASSO 17:
   - **Bug real**: numa conversa nova, uma resposta que chega antes de o React renderizar (a voz envia a mensagem de dentro de outro callback) gravava o cache só com a resposta, e a pergunta do usuário sumia. Corrigido com `freshRef`, espelho síncrono das mensagens locais. Só o teste E2E de voz reproduz; o fluxo digitado não.
   - `AudioContext` suspenso pela política de autoplay deixaria a fala muda quando roteada pelo analisador. Agora se tenta `resume()` e, se não rodar, toca sem o analisador.
@@ -559,14 +593,21 @@ Perfil e i18n implementados no PASSO 06:
 
 ## Próxima ação
 
-O PASSO 17 está concluído. Para continuar, aguardar o usuário autorizar:
+O PASSO 18 está concluído. Para continuar, aguardar o usuário autorizar:
 
-`INICIE O PASSO 18`
+`INICIE O PASSO 19`
 
-Quando autorizado, executar apenas o PASSO 18 de `PASSOS.md`: dashboard e insights financeiros.
+Quando autorizado, executar apenas o PASSO 19 de `PASSOS.md`: relatórios PDF e XLSX.
 
-- Consumir `/finance/*`, `/accounts`, `/installments` e `/investments/summary`.
-- Usar `weekStartsOn` nos calendários.
+- Reaproveitar `DashboardService` e `FinanceQueriesService` para os números, para que relatório, painel e assistente batam.
+- Ferramenta `generate_report` pendente desde o PASSO 13.
+
+Pendências ligadas ao PASSO 18:
+
+- Confirmar e corrigir a causa do intermitente do `undo.int-spec` (ver erros conhecidos).
+- Compras parceladas no painel (`/installments`): hoje as parcelas entram como despesas e contas a pagar, mas não há um bloco próprio de parcelamentos.
+- Patrimônio a preço de mercado depende de uma fonte de cotações (fora do escopo).
+- Bundle principal em ~603 kB (o aviso do Vite continua): avaliar `React.lazy` em perfil e administração (PASSO 20).
 
 Pendências ligadas ao PASSO 17:
 
@@ -577,8 +618,6 @@ Pendências ligadas ao PASSO 17:
 Pendências ligadas ao PASSO 16:
 
 - PASSO 20/21: tela de "Privacidade e dados" usando `/assistant/data-deletions`, com o mesmo `ConfirmationCard`.
-- PASSO 18: início da semana (`weekStartsOn`) nos calendários do dashboard.
-- Bundle do frontend com 573 kB (aviso do Vite acima de 500 kB): avaliar `React.lazy` nas páginas de perfil e administração (PASSO 20).
 - Sincronizar e reconciliar conflitos da planilha pela interface (ver PASSO 11) ainda não tem tela.
 
 Pendências ligadas ao PASSO 15:
@@ -619,7 +658,6 @@ Pendências ligadas aos PASSOS 09 e 10:
   - o aporte grava `TRANSACTION:CREATE` + `INVESTMENT:UPDATE` (agrupar por proximidade ou por `conversationId` ao desfazer).
 - PASSO 13: as tools do assistente devem chamar os serviços passando `context.conversationId`:
   - `InstallmentsService.create`, `RecurringTransactionsService.create/update/delete`, `InvestmentsService.create/contribute`.
-- PASSO 18: dashboard consumindo `/finance/*`, `/accounts`, `/installments` e `/investments/summary`.
 - Futuro (fora do plano atual):
   - resgate/venda de investimento;
   - edição da compra parcelada (valor e quantidade);
@@ -658,7 +696,7 @@ Pendências conhecidas para passos futuros:
 
 ## Observações operacionais
 
-- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`) e 16 (`24ec4a3`) commitados; o PASSO 17 aguarda commit manual do usuário.
+- PASSOS 01 (`5f4756e`), 02 (`6324d5d`), 03 (`32de508`), 04 (`33279f6`), 05 (`aab4870`), 06 (`9e9c872`), 07 (`ab50b00`), 08 (`a84d5fc`), 09 (`59218a0`), 10 (`c2a270b`), 11 (`d02f00c`), 12 (`8cac5be`), 13 (`1d56f09`), 14 (`aa6281e`), 15 (`3142bfd`), 16 (`24ec4a3`) e 17 (`30f054a`) commitados; o PASSO 18 aguarda commit manual do usuário.
 - Ainda não existe imagem de produção.
 - Fluxo após clonar/subir: `docker compose up --build`, depois `db:deploy` e `db:seed` dentro do container `backend`.
 - Nenhum segredo foi recebido ou configurado.
@@ -871,3 +909,20 @@ Pendências conhecidas para passos futuros:
   - permissão negada em 320 e voz desligada.
 - Containers: 315 + 278 + 107 (uma falha intermitente em `undo.int-spec` na primeira rodada; ver erros conhecidos).
 - `pnpm quality` passou por completo; resta só o aviso de bundle acima de 500 kB.
+
+## Evidências do PASSO 18
+
+- Backend:
+  - 324 testes unitários; os de períodos cobrem bissexto, viradas de mês e ano, início da semana e fuso, e os de insights cobrem limiares, divisão por zero e casas da moeda;
+  - 286 de integração, entre eles o painel igual a `/finance/summary`, `/accounts`, `/investments/summary` e às contas a vencer/vencidas, com moedas separadas.
+- Frontend: 119 testes.
+- Mutações detectadas:
+  - transferências fora do patrimônio;
+  - período anterior trocado pelo atual;
+  - limiar de participação removido.
+- Chrome real em 320, 375, 768 (claro) e 1280 (escuro e claro):
+  - sem rolagem horizontal; gráficos desenhados;
+  - nada focável escondido;
+  - períodos e personalizado enviados corretamente.
+- Containers: 324 + 286 + 119.
+- `pnpm quality` passou. A primeira tentativa estourou o tempo de início dos workers do frontend (disco USB a frio, problema conhecido); a segunda passou inteira.

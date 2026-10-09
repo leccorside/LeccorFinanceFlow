@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AiModule } from '../ai/ai.module.js';
+import { DashboardModule } from '../dashboard/dashboard.module.js';
 import { FinanceModule } from '../finance/finance.module.js';
 import { GoogleModule } from '../google/google.module.js';
 import { ProfileModule } from '../profile/profile.module.js';
@@ -13,7 +14,14 @@ import { ToolRegistry } from './tools/tool-registry.js';
 
 /** The conversational assistant: conversations, intent routing, model ↔ tool loop. */
 @Module({
-  imports: [AiModule, FinanceModule, SpreadsheetsModule, ProfileModule, GoogleModule],
+  imports: [
+    AiModule,
+    FinanceModule,
+    SpreadsheetsModule,
+    ProfileModule,
+    GoogleModule,
+    DashboardModule,
+  ],
   controllers: [AssistantController],
   providers: [
     ToolRegistry,

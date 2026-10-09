@@ -7,6 +7,7 @@ import { App } from './app/App';
 import { I18nProvider } from './i18n/I18nProvider';
 import './styles/index.css';
 import './styles/assistant.css';
+import './styles/dashboard.css';
 
 const queryClient = new QueryClient();
 

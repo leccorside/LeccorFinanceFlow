@@ -135,8 +135,20 @@ describe('undo of create, update and delete', () => {
       .send({ amount: '20' })
       .expect(200);
 
-    // 1st undo: the edit.
-    expect(await undo(actor)).toMatchObject({
+    // 1st undo: the edit. (Rare intermittent failure seen under load: the message carries
+    // the outcome and the entity's history, to tell an ordering tie from anything else.)
+    const first = await undo(actor);
+    const rowsBefore = await db.client.actionHistory.findMany({
+      where: { entityId: created.id },
+      select: {
+        id: true,
+        action: true,
+        createdAt: true,
+        batchId: true,
+        revertedAt: true,
+      },
+    });
+    expect(first, JSON.stringify({ first, rowsBefore })).toMatchObject({
       status: 'ok',
       data: {
         undone: [

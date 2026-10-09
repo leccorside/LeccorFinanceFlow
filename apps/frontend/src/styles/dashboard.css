@@ -1,0 +1,478 @@
+/* Financial dashboard (PASSO 18). Colors come only from the theme tokens. */
+
+.dashboard {
+  display: grid;
+  /* minmax(0, 1fr): a chart's SVG must never widen the page (it shrinks with it). */
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  align-self: start;
+  width: min(1180px, 100%);
+}
+
+.app-main:has(> .dashboard) {
+  place-items: start center;
+}
+
+.dashboard-header {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 24px;
+  align-items: end;
+  justify-content: space-between;
+}
+
+.dashboard-header h1 {
+  max-width: none;
+  margin: 0 0 4px;
+  font-size: clamp(1.7rem, 4.5vw, 2.4rem);
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+}
+
+.dashboard-range {
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: var(--surface);
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.dashboard-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* Period selector: a single row that scrolls on narrow screens. */
+.segmented {
+  display: flex;
+  gap: 4px;
+  max-width: 100%;
+  padding: 4px;
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-sunken);
+  scrollbar-width: none;
+}
+
+.segmented button {
+  min-height: 40px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: transparent;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition:
+    background 0.2s,
+    color 0.2s,
+    box-shadow 0.2s;
+}
+
+.segmented button:hover {
+  color: var(--text);
+}
+
+.segmented button[aria-pressed='true'] {
+  color: var(--accent-contrast);
+  background: var(--accent-gradient);
+  box-shadow: var(--glow);
+}
+
+.field--inline {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.field--inline select {
+  width: auto;
+  min-width: 96px;
+}
+
+.custom-period {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: end;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+}
+
+.custom-period .field {
+  min-width: min(100%, 170px);
+}
+
+.custom-period .field input {
+  width: 100%;
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--surface-sunken);
+}
+
+.custom-period .form-status {
+  flex-basis: 100%;
+}
+
+.dashboard-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 20px;
+  transition: opacity 0.2s;
+}
+
+.dashboard-body.is-refreshing {
+  opacity: 0.6;
+}
+
+/* Cards */
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+  margin: 0;
+}
+
+.stat-card {
+  position: relative;
+  display: grid;
+  gap: 6px;
+  padding: 16px 18px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+}
+
+.stat-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: var(--accent-gradient);
+  content: '';
+  opacity: 0.8;
+}
+
+.stat-card--positive::before {
+  background: var(--success);
+}
+
+.stat-card--attention {
+  border-color: var(--danger-border);
+}
+
+.stat-card--attention::before {
+  background: var(--danger);
+}
+
+.stat-card dt {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.stat-card dd {
+  display: grid;
+  gap: 4px;
+  margin: 0;
+}
+
+.stat-value {
+  color: var(--text);
+  font-size: clamp(1.3rem, 3vw, 1.6rem);
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.stat-detail {
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+/* Insights */
+.insights {
+  display: grid;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 20px;
+  background:
+    linear-gradient(
+      135deg,
+      color-mix(in srgb, var(--accent) 8%, transparent),
+      color-mix(in srgb, var(--accent-2) 10%, transparent)
+    ),
+    var(--surface);
+}
+
+.insights h2,
+.chart-card h2,
+.bills h2,
+.dashboard-empty h2 {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.insights-spark {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: var(--accent-gradient);
+  box-shadow: var(--glow);
+}
+
+.insights ul {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 300px), 1fr));
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.insight {
+  display: grid;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: 14px;
+  background: var(--surface-sunken);
+}
+
+.insight--positive {
+  border-left-color: var(--success);
+}
+
+.insight--attention {
+  border-left-color: var(--danger);
+}
+
+.insight p {
+  max-width: none;
+  color: var(--text);
+  font-size: 0.95rem;
+  line-height: 1.5;
+}
+
+.insight small,
+.insights-disclaimer {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+
+/* Charts */
+.chart-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 420px), 1fr));
+  gap: 16px;
+}
+
+.chart-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  min-width: 0;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+  backdrop-filter: blur(14px);
+}
+
+@media (min-width: 900px) {
+  .chart-card--wide {
+    grid-column: 1 / -1;
+  }
+}
+
+.chart-summary,
+.chart-empty {
+  max-width: none;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.chart-canvas {
+  min-width: 0;
+}
+
+.chart-table summary {
+  width: fit-content;
+  min-height: 32px;
+  color: var(--accent);
+  font-size: 0.85rem;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.table-scroll {
+  max-height: 280px;
+  margin-top: 8px;
+  overflow: auto;
+}
+
+.chart-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chart-table th,
+.chart-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: right;
+  white-space: nowrap;
+}
+
+.chart-table th[scope='row'],
+.chart-table thead th:first-child {
+  text-align: left;
+}
+
+.donut-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+}
+
+@media (min-width: 560px) {
+  .donut-layout {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+}
+
+.donut-legend {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 0.85rem;
+}
+
+.donut-legend li {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.legend-name {
+  overflow: hidden;
+  color: var(--text-soft);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.legend-value {
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Bills */
+.bills-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}
+
+.bills {
+  display: grid;
+  gap: 10px;
+  align-content: start;
+  padding: 18px;
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--surface);
+}
+
+.bills ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.bills li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-sunken);
+}
+
+.bill-name {
+  overflow: hidden;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bill-amount {
+  grid-row: span 2;
+  align-self: center;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+
+.bill-date {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.bill-date--overdue {
+  color: var(--danger);
+}
+
+/* States */
+.dashboard-skeleton {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr));
+  gap: 12px;
+}
+
+.dashboard-skeleton .skeleton {
+  height: 92px;
+}
+
+.dashboard-empty {
+  display: grid;
+  justify-items: start;
+  gap: 10px;
+  padding: clamp(20px, 5vw, 40px);
+  border: 1px dashed var(--border-strong);
+  border-radius: 24px;
+  background: var(--surface);
+}
