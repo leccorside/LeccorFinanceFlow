@@ -83,6 +83,28 @@ Somente Google Gemini (mudança pedida pelo usuário em 13/10/2026, depois do PA
   - `pnpm quality` verde.
 - `redact` e `security:scan` continuam mascarando e acusando chaves `sk-…`: segredo de outro serviço colado num erro ou no repositório não deve vazar.
 
+Primeiro uso real com Google e Gemini (13/10/2026): dois bugs que só apareceram contra as APIs reais
+
+- **Gemini 3: `thoughtSignature` obrigatória**
+  - Sintoma: toda resposta depois de uma ferramenta falhava com 400 "Function call is missing a thought_signature", e o usuário via "Não consegui processar esse pedido".
+  - Correção:
+    - `ToolCall.signature` (opcional) guarda o token que vem em cada `functionCall`;
+    - o adaptador o reenvia no turno seguinte; ele é persistido com a conversa e nunca exposto ao frontend;
+    - chamadas antigas, sem assinatura, recebem o valor documentado `skip_thought_signature_validator`.
+  - Validado contra a API real: sem assinatura 400; com assinatura ou com o valor documentado, 200.
+  - Teste em `providers.spec.ts`.
+- **Planilha: formatação condicional com vírgula recusada**
+  - Sintoma: o Google recusou o comando 338 de 343 no locale pt-BR com 400 `Invalid ConditionValue.userEnteredValue: =AND(...,...)`.
+  - Causa: fórmulas de formatação condicional seguem o separador do locale (`;` em pt-BR/es-ES); as fórmulas de células aceitam a forma canônica com vírgula.
+  - Correção: as duas regras com `AND(` viraram produto de comparações, sem separador: `=(A)*(B)*(C)`.
+  - A montagem completa (abas, fórmulas, validações, proteções, cores e gráfico) foi aceita pelo Google real e a planilha ficou ACTIVE.
+  - Teste que proíbe `,`/`;` nessas fórmulas nos 3 idiomas, com mutação detectada.
+- **Login Google e consentimento do Drive reais funcionaram.** O 403 `access_denied` era só a conta fora dos "usuários de teste" do cliente OAuth.
+- **Lições de operação**:
+  - `docker compose up -d <serviço>` sem `--build` reaproveita a imagem antiga (o dev rodou 3 dias com código velho);
+  - 503 "high demand" e 429 de cota no Gemini são externos, e o fallback entre modelos cobre isso no chat;
+  - a chave do usuário é Nível 1 (pré-pagamento): o plano Google AI Pro da conta não vale para a API.
+
 Modelos Gemini 3.x (13/10/2026, após conferir <https://ai.google.dev/gemini-api/docs/models>):
 
 - A família 2.5 ficou restrita a contas que já a usavam, e chaves novas não a acessam. Padrões trocados:

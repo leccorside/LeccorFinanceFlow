@@ -5,7 +5,12 @@ import {
   type ChatRequest,
   isRecoverable,
 } from '../ai.types.js';
-import { GEMINI_URL, GeminiClient, geminiSchema } from './gemini.client.js';
+import {
+  GEMINI_URL,
+  GeminiClient,
+  geminiSchema,
+  SKIP_THOUGHT_SIGNATURE,
+} from './gemini.client.js';
 import type { Fetch } from './http.js';
 
 const KEY = 'sk-test-SECRET-key-123';
@@ -114,6 +119,61 @@ describe('GeminiClient', () => {
       call.body.tools as { functionDeclarations: { parameters: object }[] }[]
     )[0]?.functionDeclarations[0];
     expect(declaration?.parameters).not.toHaveProperty('additionalProperties');
+  });
+
+  it('keeps the Gemini 3 thought signature of each call and sends it back', async () => {
+    // Without it the follow-up request is refused: "Function call is missing a
+    // thought_signature" (seen against the real API with gemini-3.5-flash).
+    const answered = await new GeminiClient(
+      fakeFetch(200, {
+        candidates: [
+          {
+            content: {
+              parts: [
+                {
+                  functionCall: { name: 'get_summary', args: { from: '2026-03-01' } },
+                  thoughtSignature: 'sig-abc',
+                },
+              ],
+            },
+          },
+        ],
+      }).fetchImpl,
+    ).chat(KEY, conversation, signal());
+    expect(answered.toolCalls).toEqual([
+      expect.objectContaining({ name: 'get_summary', signature: 'sig-abc' }),
+    ]);
+
+    const { fetchImpl, calls } = fakeFetch(200, {
+      candidates: [{ content: { parts: [{ text: 'ok' }] } }],
+    });
+    await new GeminiClient(fetchImpl).chat(
+      KEY,
+      {
+        ...conversation,
+        messages: [
+          { role: 'user', content: 'Quanto gastei?' },
+          { role: 'assistant', content: null, toolCalls: answered.toolCalls },
+          { role: 'tool', toolCallId: 'x', name: 'get_summary', content: '{}' },
+          { role: 'user', content: 'E no mês passado?' },
+          // A call stored before signatures were kept (old conversation).
+          {
+            role: 'assistant',
+            content: null,
+            toolCalls: [{ id: 'old', name: 'get_summary', arguments: {} }],
+          },
+          { role: 'tool', toolCallId: 'old', name: 'get_summary', content: '{}' },
+        ],
+      },
+      signal(),
+    );
+    const contents = (calls[0] as Captured).body.contents as {
+      parts: Record<string, unknown>[];
+    }[];
+    expect(contents[1]?.parts[0]).toMatchObject({ thoughtSignature: 'sig-abc' });
+    expect(contents[4]?.parts[0]).toMatchObject({
+      thoughtSignature: SKIP_THOUGHT_SIGNATURE,
+    });
   });
 
   it('returns function calls with synthetic ids and classifies safety blocks', async () => {

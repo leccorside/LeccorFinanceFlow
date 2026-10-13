@@ -347,6 +347,31 @@ describe('buildSetupPlan — re-run (idempotency)', () => {
 });
 
 describe('localization', () => {
+  it.each(['pt-BR', 'en-US', 'es-ES'] as const)(
+    'writes conditional-format formulas without argument separators (%s)',
+    (locale) => {
+      // Google validates these in the spreadsheet locale: "," is refused in pt-BR/es-ES
+      // (";" there) and ";" in en-US. Seen against the real API: 400 on
+      // "=AND($I2=\"Pendente\",$G2<>\"\",$G2<TODAY())".
+      const plan = buildSetupPlan(fresh, { ...options, locale });
+      const formulas = ofType(plan.requests, 'addConditionalFormatRule').map(
+        (item) =>
+          (
+            item as {
+              rule: {
+                booleanRule: { condition: { values: { userEnteredValue: string }[] } };
+              };
+            }
+          ).rule.booleanRule.condition.values[0]?.userEnteredValue ?? '',
+      );
+      expect(formulas.length).toBeGreaterThan(0);
+      for (const formula of formulas) {
+        // Strip quoted texts (a translated label could contain a comma).
+        expect(formula.replace(/"[^"]*"/g, '""')).not.toMatch(/[,;]/);
+      }
+    },
+  );
+
   it.each([
     ['en-US', 'Transactions', 'Income', 'Type'],
     ['es-ES', 'Movimientos', 'Ingreso', 'Tipo'],

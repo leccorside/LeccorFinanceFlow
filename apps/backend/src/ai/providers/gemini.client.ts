@@ -18,7 +18,15 @@ export const GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/mode
 interface GeminiPart {
   text?: string;
   functionCall?: { id?: string; name?: string; args?: unknown };
+  thoughtSignature?: string;
 }
+
+/**
+ * Gemini 3 refuses a function call sent back without its thought signature. Calls stored
+ * before signatures were kept (or produced by another model) get Google's documented
+ * placeholder, which skips the check instead of failing the whole conversation.
+ */
+export const SKIP_THOUGHT_SIGNATURE = 'skip_thought_signature_validator';
 
 interface GeminiResponse {
   candidates?: {
@@ -81,6 +89,7 @@ export class GeminiClient implements AiProviderClient {
             ...(message.content ? [{ text: message.content }] : []),
             ...(message.toolCalls ?? []).map((call) => ({
               functionCall: { name: call.name, args: call.arguments },
+              thoughtSignature: call.signature ?? SKIP_THOUGHT_SIGNATURE,
             })),
           ],
         };
@@ -142,6 +151,7 @@ export class GeminiClient implements AiProviderClient {
           id: call.id ?? `gemini-${index}`,
           name: call.name,
           arguments: argumentsObject(call.args),
+          ...(part.thoughtSignature ? { signature: part.thoughtSignature } : {}),
         };
       });
     return {

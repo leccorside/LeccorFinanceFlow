@@ -20,6 +20,12 @@ export interface ToolCall {
   name: string;
   /** Parsed JSON arguments; always an object. */
   arguments: Record<string, unknown>;
+  /**
+   * Opaque provider token that must travel back with the call on the next turn (Gemini 3
+   * "thought signature": without it the follow-up request is refused with 400). Stored with
+   * the conversation like the rest of the call; never shown to anyone.
+   */
+  signature?: string;
 }
 
 export type ChatMessage =

@@ -733,7 +733,10 @@ function conditionalFormats(
     ),
     rule(
       [range('transactions', 'status'), range('transactions', 'due_on')],
-      `=AND($${letter('status')}2=${text(pending as string)},$${letter('due_on')}2<>"",$${letter('due_on')}2<TODAY())`,
+      // No argument separator: conditional-format formulas follow the spreadsheet locale
+      // ("," in en-US, ";" in pt-BR/es-ES) and Google refuses the other one. A product of
+      // comparisons is an AND that reads the same in every locale.
+      `=($${letter('status')}2=${text(pending as string)})*($${letter('due_on')}2<>"")*($${letter('due_on')}2<TODAY())`,
       {
         backgroundColor: rgb('#FEE2E2'),
         textFormat: { foregroundColor: rgb('#991B1B'), bold: true },
@@ -753,7 +756,7 @@ function conditionalFormats(
       red,
     ),
     rule([range('monthly_summary', 'balance')], '=E2<0', red),
-    rule([range('budget', 'remaining')], '=AND(E2<>"",E2<0)', red),
+    rule([range('budget', 'remaining')], '=(E2<>"")*(E2<0)', red),
   );
   return requests;
 }
