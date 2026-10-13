@@ -83,6 +83,24 @@ Somente Google Gemini (mudança pedida pelo usuário em 13/10/2026, depois do PA
   - `pnpm quality` verde.
 - `redact` e `security:scan` continuam mascarando e acusando chaves `sk-…`: segredo de outro serviço colado num erro ou no repositório não deve vazar.
 
+Modelos Gemini 3.x (13/10/2026, após conferir <https://ai.google.dev/gemini-api/docs/models>):
+
+- A família 2.5 ficou restrita a contas que já a usavam, e chaves novas não a acessam. Padrões trocados:
+  - chat (pré-preenchimento): `DEFAULT_GEMINI_CHAT_MODEL = gemini-3.8-flash`;
+  - transcrição: `gemini-3.8-flash`;
+  - fala: `gemini-3.8-flash-tts`.
+- Fallback sugerido no chat: `gemini-3.5-flash-lite`.
+- O TTS 3.x pode devolver WAV em vez de PCM cru. O `GeminiVoiceClient` agora:
+  - repassa WAV intacto (`isWav`: `RIFF…WAVE`);
+  - só embrulha PCM, com a taxa de `rate=` do `mimeType` (`pcmRateOf`, padrão 24 kHz).
+  - Teste em `voice.spec.ts`.
+- O Google recomenda a nova "Interactions API", mas o `generateContent` usado aqui segue com suporte total, sem data de desligamento. Migrar é pendência opcional.
+- **Erro de preenchimento corrigido**:
+  - no `.env` e no `.env.example`, os nomes de modelo foram para `STT_PROVIDER`/`TTS_PROVIDER`, que só aceitam `gemini`, e o backend não subiria;
+  - os nomes foram movidos para `STT_MODEL`/`TTS_MODEL`;
+  - o `.env` foi validado com o `loadEnv` real, sem imprimir segredos.
+- Ainda não testado contra a API real. Confirmação: botão Testar na tela de IA e um teste de voz.
+
 Validação final e preparação de entrega no PASSO 22:
 
 - Produção:

@@ -84,6 +84,12 @@ const voiceProviders = csv
   .pipe(z.array(z.enum(['gemini'])))
   .refine((names) => new Set(names).size === names.length, 'must not repeat a provider');
 
+/**
+ * Pre-filled chat model. Gemini 2.5 is restricted to accounts that already used it, so new
+ * keys need a 3.x model (stable, recommended for new projects in the Gemini docs, 2026-10).
+ */
+export const DEFAULT_GEMINI_CHAT_MODEL = 'gemini-3.8-flash';
+
 const positiveInt = (fallback: number, max: number) =>
   z.coerce.number().int().min(1).max(max).default(fallback);
 
@@ -145,7 +151,7 @@ const envSchema = z
     AI_REQUEST_TIMEOUT_MS: positiveInt(30_000, 300_000),
     /** Optional server-side Gemini key, used only when a configuration has no stored key. */
     GEMINI_API_KEY: optionalNonEmpty,
-    /** Suggested model for new configurations in the admin screen. */
+    /** Suggested model for new configurations in the admin screen (default below). */
     GEMINI_DEFAULT_CHAT_MODEL: optionalNonEmpty,
     /** Speech-to-text / text-to-speech: "gemini" turns it on; empty = off. */
     STT_PROVIDER: voiceProviders,
@@ -231,10 +237,9 @@ const envSchema = z
           'GEMINI',
           string | undefined
         >,
-        defaultModels: { GEMINI: GEMINI_DEFAULT_CHAT_MODEL } as Record<
-          'GEMINI',
-          string | undefined
-        >,
+        defaultModels: {
+          GEMINI: GEMINI_DEFAULT_CHAT_MODEL ?? DEFAULT_GEMINI_CHAT_MODEL,
+        } as Record<'GEMINI', string>,
       },
       /** FRONTEND_URL origin + CORS_ALLOWED_ORIGINS, deduplicated. */
       ALLOWED_ORIGINS: [

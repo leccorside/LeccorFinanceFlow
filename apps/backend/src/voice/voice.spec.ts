@@ -1,7 +1,7 @@
 import { AiProviderError } from '../ai/ai.types.js';
 import type { Fetch } from '../ai/providers/http.js';
 import { acceptedType, matchesSignature, pcmToWav } from './audio.js';
-import { GeminiVoiceClient } from './providers/gemini-voice.client.js';
+import { GeminiVoiceClient, isWav, pcmRateOf } from './providers/gemini-voice.client.js';
 import { MAX_SPEECH_CHARS, speakable } from './voice.service.js';
 
 const signal = () => AbortSignal.timeout(5000);
@@ -147,6 +147,41 @@ describe('Gemini voice client', () => {
     expect(failure).toBeInstanceOf(AiProviderError);
     expect((failure as AiProviderError).kind).toBe('rate_limited');
     expect((failure as Error).message).not.toContain('secret');
+  });
+
+  it('passes WAV through untouched and wraps raw PCM at the rate Gemini reports', async () => {
+    const speak = async (inlineData: { data: string; mimeType?: string }) =>
+      new GeminiVoiceClient(async () =>
+        json({ candidates: [{ content: { parts: [{ inlineData }] } }] }),
+      ).synthesize(
+        'gm',
+        { text: 'Olá', gender: 'FEMALE', locale: 'pt-BR', model: 'tts' },
+        signal(),
+      );
+
+    // Newer TTS models (3.x) may already answer WAV: never a second header.
+    const wav = pcmToWav(Buffer.alloc(200, 3), 24_000);
+    const passed = await speak({ data: wav.toString('base64'), mimeType: 'audio/wav' });
+    expect(passed.audio.equals(wav)).toBe(true);
+    expect(isWav(passed.audio)).toBe(true);
+
+    // Raw PCM is wrapped once, with the sample rate from the mimeType.
+    const pcm = await speak({
+      data: Buffer.alloc(100, 2).toString('base64'),
+      mimeType: 'audio/L16;codec=pcm;rate=16000',
+    });
+    expect(pcm.audio.length).toBe(144);
+    expect(pcm.audio.readUInt32LE(24)).toBe(16_000);
+    expect(pcmRateOf(undefined)).toBe(24_000);
+    expect(pcmRateOf('audio/L16;rate=abc')).toBe(24_000);
+    expect(pcmRateOf('audio/L16; rate=48000')).toBe(48_000);
+  });
+
+  it('defaults to Gemini 3.x models (2.5 is restricted for new keys)', () => {
+    expect(new GeminiVoiceClient().defaultModels).toEqual({
+      transcription: 'gemini-3.8-flash',
+      speech: 'gemini-3.8-flash-tts',
+    });
   });
 
   it('treats answers without text or audio as malformed', async () => {

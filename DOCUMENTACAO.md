@@ -809,7 +809,7 @@ Implementado em `apps/backend/src/ai` e `apps/backend/src/admin`. A IA ainda nã
 
 **Somente Google Gemini** (desde 13/10/2026; OpenAI e Anthropic foram removidos). O adaptador HTTP, sem SDK, usa `generateContent` com `functionDeclarations`; a chave vai no header `x-goog-api-key`, nunca na URL, e o schema das ferramentas é limpo de `additionalProperties`. O contrato comum continua: outro provedor no futuro seria um novo valor do enum e um novo cliente, não um redesenho.
 
-**Fallback entre modelos do Gemini**: cada finalidade pode ter **vários modelos** do Gemini, em ordem de prioridade (por exemplo `gemini-2.5-flash` → `gemini-2.5-flash-lite`), cada um com sua chave ou a do servidor. A unicidade é provedor + finalidade + modelo: o mesmo modelo duas vezes na mesma finalidade é recusado (`409 ai_configuration_exists`).
+**Fallback entre modelos do Gemini**: cada finalidade pode ter **vários modelos** do Gemini, em ordem de prioridade (por exemplo `gemini-3.8-flash` → `gemini-3.5-flash-lite`), cada um com sua chave ou a do servidor. A unicidade é provedor + finalidade + modelo: o mesmo modelo duas vezes na mesma finalidade é recusado (`409 ai_configuration_exists`).
 
 **Classificação de falhas** (`AiProviderError.kind`), sem corpo de resposta nem chave nas mensagens:
 
@@ -840,7 +840,7 @@ Implementado em `apps/backend/src/ai` e `apps/backend/src/admin`. A IA ainda nã
 - nunca voltam ao cliente, nem mascaradas: a API mostra apenas `keySource` (`stored`, `environment` ou `missing`) e `keyVersion`;
 - são decifradas só no momento da chamada;
 - sem `DATA_ENCRYPTION_KEY_*`, salvar uma chave responde `503 encryption_unavailable`;
-- `GEMINI_API_KEY` do servidor é a reserva para configurações sem chave guardada; `GEMINI_DEFAULT_CHAT_MODEL` só preenche o formulário. Variáveis antigas (`OPENAI_*`, `ANTHROPIC_*`) são ignoradas;
+- `GEMINI_API_KEY` do servidor é a reserva para configurações sem chave guardada; `GEMINI_DEFAULT_CHAT_MODEL` só preenche o formulário (padrão `gemini-3.8-flash`). A família Gemini 2.5 tem acesso restrito a contas que já a usavam, então chaves novas precisam de modelos 3.x. Variáveis antigas (`OPENAI_*`, `ANTHROPIC_*`) são ignoradas;
 - `credentials:rotate` também recriptografa as chaves de IA.
 
 **Rotas admin** (`@Roles('ADMIN')`: sem sessão `401`, usuário comum `403`; escritas com CSRF; DTOs estritos):
@@ -969,9 +969,9 @@ Voz **só com o Gemini**. `STT_PROVIDER=gemini` e `TTS_PROVIDER=gemini` ligam tr
 - **Chaves**: `STT_API_KEY`/`TTS_API_KEY` e `STT_MODEL`/`TTS_MODEL` são opcionais; sem eles valem `GEMINI_API_KEY` e os modelos padrão. As chaves cifradas da administração de IA não são usadas pela voz.
 - **Sem fallback na voz**: se o Gemini não responder, `503 voice_unavailable` com a tentativa, e a interface volta para o texto. Requisição inválida ou conteúdo bloqueado não são repetidos.
 
-| Provedor | Transcrição (padrão)                                                                            | Fala (padrão)                                                 | Feminina / masculina |
-| -------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------- |
-| Gemini   | `gemini-2.5-flash` (áudio inline; o prompt manda transcrever e nunca seguir instruções faladas) | `gemini-2.5-flash-preview-tts` (PCM 24 kHz embrulhado em WAV) | `Kore` / `Charon`    |
+| Provedor | Transcrição (padrão)                                                                            | Fala (padrão)                                                                                                      | Feminina / masculina |
+| -------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ | -------------------- |
+| Gemini   | `gemini-3.8-flash` (áudio inline; o prompt manda transcrever e nunca seguir instruções faladas) | `gemini-3.8-flash-tts` (WAV repassado como veio; PCM cru é embrulhado em WAV com a taxa de `rate=`, padrão 24 kHz) | `Kore` / `Charon`    |
 
 Os formatos seguem a documentação das APIs e não foram exercitados contra os serviços reais (não há chaves no ambiente).
 

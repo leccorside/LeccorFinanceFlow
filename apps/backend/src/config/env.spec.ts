@@ -44,7 +44,7 @@ describe('loadEnv', () => {
       AI: {
         timeoutMs: 30_000,
         environmentKeys: { GEMINI: undefined },
-        defaultModels: { GEMINI: undefined },
+        defaultModels: { GEMINI: 'gemini-3.8-flash' },
       },
       VOICE: {
         transcription: [],
@@ -63,12 +63,12 @@ describe('loadEnv', () => {
       DATABASE_URL: validDatabaseUrl,
       AI_REQUEST_TIMEOUT_MS: '5000',
       GEMINI_API_KEY: ' gm-1 ',
-      GEMINI_DEFAULT_CHAT_MODEL: 'gemini-2.5-flash',
+      GEMINI_DEFAULT_CHAT_MODEL: 'gemini-3.5-flash-lite',
     });
     expect(env.AI).toEqual({
       timeoutMs: 5000,
       environmentKeys: { GEMINI: 'gm-1' },
-      defaultModels: { GEMINI: 'gemini-2.5-flash' },
+      defaultModels: { GEMINI: 'gemini-3.5-flash-lite' },
     });
     expect(
       loadEnv({ DATABASE_URL: validDatabaseUrl, GEMINI_API_KEY: '' }).AI.environmentKeys,
@@ -324,12 +324,12 @@ describe('security settings', () => {
       GEMINI_API_KEY: 'gm-ai',
       STT_PROVIDER: ' Gemini ',
       STT_API_KEY: 'gm-stt',
-      STT_MODEL: 'gemini-2.5-flash',
+      STT_MODEL: 'gemini-3.5-flash-lite',
       TTS_PROVIDER: 'gemini',
       MAX_AUDIO_SIZE_MB: '2',
     });
     expect(env.VOICE.transcription).toEqual([
-      { provider: 'gemini', apiKey: 'gm-stt', model: 'gemini-2.5-flash' },
+      { provider: 'gemini', apiKey: 'gm-stt', model: 'gemini-3.5-flash-lite' },
     ]);
     expect(env.VOICE.speech).toEqual([
       { provider: 'gemini', apiKey: 'gm-ai', model: undefined },
