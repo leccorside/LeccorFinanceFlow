@@ -97,6 +97,9 @@ const SNAPSHOT_FIELDS = [
   'developerMetadata(metadataKey,metadataValue)',
   'sheets(properties(sheetId,title,index,gridProperties(rowCount))',
   'developerMetadata(metadataKey,metadataValue,location(locationType,dimensionRange(startIndex)))',
+  // Column-located metadata is NOT in sheets[].developerMetadata (only sheet-located is):
+  // the real API returns it per column, under data[].columnMetadata[].
+  'data(columnMetadata(developerMetadata(metadataKey,metadataValue,location(locationType,dimensionRange(startIndex)))))',
   'protectedRanges(description)',
   'conditionalFormats(booleanRule(condition(type)))',
   'charts(chartId))',
@@ -120,6 +123,7 @@ interface RawSpreadsheet {
       gridProperties?: { rowCount?: number };
     };
     developerMetadata?: RawMetadata[];
+    data?: { columnMetadata?: { developerMetadata?: RawMetadata[] }[] }[];
     protectedRanges?: { description?: string }[];
     conditionalFormats?: unknown[];
     charts?: { chartId?: number }[];
@@ -246,6 +250,46 @@ function tabKeyOf(metadata: RawMetadata[] | undefined): string | null {
   return entry?.metadataValue ?? null;
 }
 
+/**
+ * Our column markers ("lff.column"). The real API returns them per column, under
+ * data[].columnMetadata[j] (j = column index); sheets[].developerMetadata is read too, for
+ * the sheet-level shape. JSON omits zero values (protobuf), so a missing startIndex inside
+ * columnMetadata means its position.
+ */
+function columnsOf(sheet: NonNullable<RawSpreadsheet['sheets']>[number]): {
+  key: string;
+  index: number;
+}[] {
+  const isColumnMarker = (item: RawMetadata) =>
+    item.metadataKey === 'lff.column' &&
+    item.location?.locationType === 'COLUMN' &&
+    typeof item.metadataValue === 'string';
+  const perColumn = (sheet.data ?? []).flatMap((block) =>
+    (block.columnMetadata ?? []).flatMap((column, position) =>
+      (column.developerMetadata ?? []).filter(isColumnMarker).map((item) => ({
+        key: item.metadataValue as string,
+        index: item.location?.dimensionRange?.startIndex ?? position,
+      })),
+    ),
+  );
+  const sheetLevel = (sheet.developerMetadata ?? [])
+    .filter(
+      (item) =>
+        isColumnMarker(item) &&
+        typeof item.location?.dimensionRange?.startIndex === 'number',
+    )
+    .map((item) => ({
+      key: item.metadataValue as string,
+      index: item.location?.dimensionRange?.startIndex as number,
+    }));
+  // One entry per key (the same marker could come from both places).
+  const byKey = new Map<string, number>();
+  for (const column of [...perColumn, ...sheetLevel]) {
+    if (!byKey.has(column.key)) byKey.set(column.key, column.index);
+  }
+  return [...byKey].map(([key, index]) => ({ key, index }));
+}
+
 export function toSnapshot(raw: RawSpreadsheet): SpreadsheetSnapshot {
   return {
     spreadsheetId: raw.spreadsheetId,
@@ -261,18 +305,7 @@ export function toSnapshot(raw: RawSpreadsheet): SpreadsheetSnapshot {
       index: sheet.properties?.index ?? 0,
       tabKey: tabKeyOf(sheet.developerMetadata),
       rowCount: sheet.properties?.gridProperties?.rowCount ?? 0,
-      columns: (sheet.developerMetadata ?? [])
-        .filter(
-          (item) =>
-            item.metadataKey === 'lff.column' &&
-            item.location?.locationType === 'COLUMN' &&
-            typeof item.metadataValue === 'string' &&
-            typeof item.location.dimensionRange?.startIndex === 'number',
-        )
-        .map((item) => ({
-          key: item.metadataValue as string,
-          index: item.location?.dimensionRange?.startIndex as number,
-        })),
+      columns: columnsOf(sheet),
       protectedRangeDescriptions: (sheet.protectedRanges ?? [])
         .map((range) => range.description)
         .filter((description): description is string => typeof description === 'string'),

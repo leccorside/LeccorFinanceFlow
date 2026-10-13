@@ -65,6 +65,64 @@ describe('HttpGoogleWorkspaceClient', () => {
     });
   });
 
+  it('reads column markers where the real API puts them: data[].columnMetadata[]', async () => {
+    // Shape observed against the real Sheets API (2026-10-13). Before this, every column
+    // looked missing and the sync failed with spreadsheet_structure_invalid.
+    const marker = (key: string, start?: number) => ({
+      developerMetadata: [
+        {
+          metadataKey: 'lff.column',
+          metadataValue: key,
+          location: {
+            locationType: 'COLUMN',
+            // protobuf JSON omits zeros: column A may come without startIndex.
+            dimensionRange:
+              start === undefined ? {} : { startIndex: start, endIndex: start + 1 },
+          },
+        },
+      ],
+    });
+    const { client, calls } = fake(200, {
+      spreadsheetId: 'file-1',
+      sheets: [
+        {
+          properties: { sheetId: 1001, title: 'Movimentações', index: 1 },
+          developerMetadata: [
+            {
+              metadataKey: 'lff.tab',
+              metadataValue: 'transactions',
+              location: { locationType: 'SHEET' },
+            },
+          ],
+          data: [
+            {
+              columnMetadata: [
+                marker('type'),
+                marker('description', 1),
+                {},
+                marker('amount', 3),
+              ],
+            },
+          ],
+        },
+      ],
+    });
+
+    const snapshot = await client.getSpreadsheet('tok', 'file-1');
+
+    expect(decodeURIComponent(calls[0]?.url ?? '')).toContain(
+      'data(columnMetadata(developerMetadata(',
+    );
+    expect(snapshot.sheets[0]).toMatchObject({
+      tabKey: 'transactions',
+      columns: [
+        { key: 'type', index: 0 },
+        { key: 'description', index: 1 },
+        { key: 'amount', index: 3 },
+      ],
+    });
+  });
+
   it('maps the spreadsheet into a snapshot (tab metadata only at sheet level)', async () => {
     const { client, calls } = fake(200, {
       spreadsheetId: 'file-1',

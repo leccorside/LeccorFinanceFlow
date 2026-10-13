@@ -119,6 +119,15 @@ Primeiro uso real com Google e Gemini (13/10/2026): dois bugs que só apareceram
   - Correção: as duas regras com `AND(` viraram produto de comparações, sem separador: `=(A)*(B)*(C)`.
   - A montagem completa (abas, fórmulas, validações, proteções, cores e gráfico) foi aceita pelo Google real e a planilha ficou ACTIVE.
   - Teste que proíbe `,`/`;` nessas fórmulas nos 3 idiomas, com mutação detectada.
+- **Sincronização: marcadores de coluna lidos do lugar errado**
+  - Sintoma: toda sincronização falhava com `spreadsheet_structure_invalid` ("perdeu abas ou colunas"), e o chat mostrava "planilha pendente" depois de cada alteração.
+  - Causa: o Sheets real devolve os marcadores `lff.column` (developer metadata de COLUNA) em `sheets[].data[].columnMetadata[].developerMetadata`. Em `sheets[].developerMetadata` só vêm os marcadores de aba. O código pedia e lia só o segundo; o teste do cliente reproduzia o formato errado.
+  - Correção:
+    - `SNAPSHOT_FIELDS` pede `data(columnMetadata(developerMetadata(...)))`;
+    - `columnsOf()` lê os dois lugares e usa a posição da coluna quando o JSON omite `startIndex` 0 (protobuf omite zeros).
+  - Teste com o formato real observado.
+  - Validado contra o Google real: leitura, `values:batchGet` e `batchUpdate` com status `SYNCED`.
+  - A sincronização imediata já existia (`ToolExecutor` sincroniza depois de cada escrita, confirmação e desfazer); só falhava por esse bug.
 - **Login Google e consentimento do Drive reais funcionaram.** O 403 `access_denied` era só a conta fora dos "usuários de teste" do cliente OAuth.
 - **Lições de operação**:
   - `docker compose up -d <serviço>` sem `--build` reaproveita a imagem antiga (o dev rodou 3 dias com código velho);
