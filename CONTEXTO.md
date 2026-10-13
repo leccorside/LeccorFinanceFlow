@@ -83,6 +83,26 @@ Somente Google Gemini (mudança pedida pelo usuário em 13/10/2026, depois do PA
   - `pnpm quality` verde.
 - `redact` e `security:scan` continuam mascarando e acusando chaves `sk-…`: segredo de outro serviço colado num erro ou no repositório não deve vazar.
 
+Categorias pelo assistente (13/10/2026, pedido do usuário depois de o assistente responder que "não há função para excluir ou editar categorias"):
+
+- Novas ferramentas:
+  - **`update_category`**: renomeia, arquiva/reativa, muda cor e ícone. Risco `write`, sem confirmação, como `update_account`.
+  - **`delete_category`**: risco `destructive`, sempre pede confirmação.
+    - O `prepare` recusa **antes** de pedir confirmação: categoria padrão (`category_read_only`) e categoria em uso (`category_in_use`, com as contagens e a sugestão de arquivar).
+    - O resumo traz nome e `irreversible: false`, porque o desfazer restaura a categoria com o mesmo id.
+- `CategoriesService`:
+  - `update`/`delete` recebem o contexto da conversa (o histórico guarda o `conversationId`);
+  - `usage()` público com as contagens de subcategorias, lançamentos, recorrências e parcelamentos.
+- O resolvedor `categoryId` aceita `includeArchived`, para achar categorias arquivadas pelo nome ("reative a categoria X").
+- Rótulos "Editar categoria"/"Excluir categoria" nos 3 idiomas.
+- Teste de integração completo em `tools.int-spec.ts`:
+  - renomear, arquivar e reativar pelo nome;
+  - categoria padrão recusada;
+  - categoria em uso recusada sem criar confirmação;
+  - exclusão só depois do "confirmar";
+  - desfazer.
+- Lição: o nome "Assinaturas" já é categoria do sistema; um teste que criava categoria com esse nome falhou corretamente com `category_name_taken`.
+
 Primeiro uso real com Google e Gemini (13/10/2026): dois bugs que só apareceram contra as APIs reais
 
 - **Gemini 3: `thoughtSignature` obrigatória**

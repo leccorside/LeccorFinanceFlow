@@ -68,9 +68,13 @@ export async function categoryId(
   ctx: ToolContext,
   id: string | null | undefined,
   name: string | undefined,
+  options: { includeArchived?: boolean } = {},
 ): Promise<string | null | undefined> {
   if (name === undefined) return id;
-  const all = await categories.list(ctx.user, { includeArchived: false });
+  // Archived categories are found only when asked (e.g. to reactivate one).
+  const all = await categories.list(ctx.user, {
+    includeArchived: options.includeArchived ?? false,
+  });
   const [parentName, childName] = name.includes('>')
     ? name.split('>').map((part) => part.trim())
     : [undefined, name];

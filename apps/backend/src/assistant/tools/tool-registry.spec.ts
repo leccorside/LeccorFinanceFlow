@@ -47,6 +47,8 @@ describe('ToolRegistry', () => {
         'delete_account',
         'list_categories',
         'create_category',
+        'update_category',
+        'delete_category',
         'get_financial_summary',
         'get_expenses_by_period',
         'get_income_by_period',
@@ -100,6 +102,7 @@ describe('ToolRegistry', () => {
     const destructive = tools.filter((tool) => tool.risk === 'destructive');
     expect(destructive.map((tool) => tool.name).sort()).toEqual([
       'delete_account',
+      'delete_category',
       'delete_conversation_history',
       'delete_financial_data',
       'delete_installment_purchase',

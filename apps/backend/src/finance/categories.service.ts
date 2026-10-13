@@ -171,6 +171,7 @@ export class CategoriesService {
     user: User,
     id: string,
     input: UpdateCategoryInput,
+    context: { conversationId?: string } = {},
   ): Promise<CategoryResponse> {
     const { locale } = await userSettings(this.prisma, user.id);
     const current = await this.findEditable(user, id);
@@ -190,6 +191,7 @@ export class CategoriesService {
           entityType: 'CATEGORY',
           entityId: id,
           action: 'UPDATE',
+          conversationId: context.conversationId ?? null,
           ...diff,
         });
       }
@@ -198,10 +200,17 @@ export class CategoriesService {
     return toResponse(row, locale);
   }
 
-  /** Only unused own categories can be deleted; otherwise archive them. */
-  async delete(user: User, id: string): Promise<void> {
-    const current = await this.findEditable(user, id);
-    const [children, transactions, recurrences, installments] = await Promise.all([
+  /** What still points at a category: it can be deleted only when everything is zero. */
+  async usage(
+    user: User,
+    id: string,
+  ): Promise<{
+    subcategories: number;
+    transactions: number;
+    recurrences: number;
+    installments: number;
+  }> {
+    const [subcategories, transactions, recurrences, installments] = await Promise.all([
       this.prisma.category.count({ where: { parentId: id } }),
       this.prisma.transaction.count({ where: { ...ownedBy(user), categoryId: id } }),
       this.prisma.recurringTransaction.count({
@@ -209,6 +218,22 @@ export class CategoriesService {
       }),
       this.prisma.installment.count({ where: { ...ownedBy(user), categoryId: id } }),
     ]);
+    return { subcategories, transactions, recurrences, installments };
+  }
+
+  /** Only unused own categories can be deleted; otherwise archive them. */
+  async delete(
+    user: User,
+    id: string,
+    context: { conversationId?: string } = {},
+  ): Promise<void> {
+    const current = await this.findEditable(user, id);
+    const {
+      subcategories: children,
+      transactions,
+      recurrences,
+      installments,
+    } = await this.usage(user, id);
     if (children + transactions + recurrences + installments > 0) {
       throw new ApiException(
         HttpStatus.CONFLICT,
@@ -227,6 +252,7 @@ export class CategoriesService {
         entityType: 'CATEGORY',
         entityId: id,
         action: 'DELETE',
+        conversationId: context.conversationId ?? null,
         before: snapshotOf(current),
       });
     });

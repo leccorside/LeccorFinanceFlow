@@ -13,6 +13,7 @@ import {
   contributionSchema,
   createAccountSchema,
   createCategorySchema,
+  updateCategorySchema,
   createInstallmentSchema,
   createInvestmentSchema,
   createRecurringSchema,
@@ -515,6 +516,56 @@ export function financeTools(deps: FinanceToolDeps): ToolSpec[] {
         ),
     }),
     defineTool({
+      name: 'update_category',
+      version: 1,
+      description:
+        'Renomeia, arquiva ou reativa uma categoria própria (ou muda cor/ícone). Categorias padrão do sistema não podem ser alteradas. Arquivar tira a categoria das escolhas sem apagar nada.',
+      input: z
+        .strictObject({
+          categoryId: id.optional(),
+          /** Name as the user says it; "Pai > Filha" for a subcategory. */
+          categoryName: text(100).optional(),
+          name: text(100).optional(),
+          isArchived: z.boolean().optional(),
+          color: z
+            .string()
+            .regex(/^#[0-9A-Fa-f]{6}$/)
+            .nullable()
+            .optional(),
+          icon: z
+            .string()
+            .regex(/^[a-z0-9-]{0,50}$/)
+            .nullable()
+            .optional(),
+        })
+        .refine(onlyOne('categoryId', 'categoryName'), BOTH)
+        .refine(
+          (value) => value.categoryId || value.categoryName,
+          'category is required',
+        ),
+      roles: USER,
+      risk: 'write',
+      run: async (ctx, input) => {
+        // Archived ones are found too: "reative a categoria X" must work.
+        const target = (await categoryId(
+          categories,
+          ctx,
+          input.categoryId,
+          input.categoryName,
+          { includeArchived: true },
+        )) as string;
+        const { categoryId: _id, categoryName: _name, ...fields } = input;
+        void _id;
+        void _name;
+        return categories.update(
+          ctx.user,
+          target,
+          updateCategorySchema.parse(defined(fields)),
+          ctxOf(ctx),
+        );
+      },
+    }),
+    defineTool({
       name: 'create_installment_purchase',
       version: 1,
       description:
@@ -828,6 +879,68 @@ export function financeTools(deps: FinanceToolDeps): ToolSpec[] {
       run: async (ctx, input) => {
         const target = await accounts.get(ctx.user, input.accountId as string);
         await accounts.delete(ctx.user, target.id, ctxOf(ctx));
+        return { deleted: { id: target.id, name: target.name } };
+      },
+    }),
+    defineTool({
+      name: 'delete_category',
+      version: 1,
+      description:
+        'Exclui uma categoria própria sem uso (sem lançamentos, recorrências, parcelamentos ou subcategorias). Em uso, sugira arquivar com update_category. Categorias padrão não podem ser excluídas. Sempre exige confirmação.',
+      input: z
+        .strictObject({
+          categoryId: id.optional(),
+          categoryName: text(100).optional(),
+        })
+        .refine(onlyOne('categoryId', 'categoryName'), BOTH)
+        .refine(
+          (value) => value.categoryId || value.categoryName,
+          'category is required',
+        ),
+      roles: USER,
+      risk: 'destructive',
+      prepare: async (ctx, input) => {
+        const targetId = (await categoryId(
+          categories,
+          ctx,
+          input.categoryId,
+          input.categoryName,
+          { includeArchived: true },
+        )) as string;
+        const target = (await categories.list(ctx.user, { includeArchived: true })).find(
+          (item) => item.id === targetId,
+        );
+        if (!target) throw new ResourceNotFoundException();
+        if (target.isSystem) {
+          throw ruleViolation(
+            'category_read_only',
+            'Categorias padrão não podem ser excluídas. Posso criar uma categoria sua no lugar.',
+            { name: target.name },
+          );
+        }
+        // Refuse before asking: confirming a deletion that cannot happen helps nobody.
+        const usage = await categories.usage(ctx.user, target.id);
+        if (Object.values(usage).some((count) => count > 0)) {
+          throw ruleViolation(
+            'category_in_use',
+            'A categoria está em uso. Posso arquivá-la: ela sai das escolhas e nada é apagado.',
+            { name: target.name, ...usage },
+          );
+        }
+        return {
+          kind: 'ready',
+          input: { categoryId: target.id },
+          // Names are unique per user, so the name identifies it; undo can restore it.
+          summary: { id: target.id, name: target.name, irreversible: false },
+          state: { id: target.id, name: target.name, isArchived: target.isArchived },
+        };
+      },
+      run: async (ctx, input) => {
+        const target = (await categories.list(ctx.user, { includeArchived: true })).find(
+          (item) => item.id === input.categoryId,
+        );
+        if (!target) throw new ResourceNotFoundException();
+        await categories.delete(ctx.user, target.id, ctxOf(ctx));
         return { deleted: { id: target.id, name: target.name } };
       },
     }),

@@ -69,7 +69,7 @@ const run = (
 /** Data of an ok outcome (fails the test otherwise, showing the outcome). */
 async function ok<T = Json>(promise: Promise<ToolOutcome>): Promise<T> {
   const outcome = await promise;
-  expect(outcome).toMatchObject({ status: 'ok' });
+  expect(outcome, JSON.stringify(outcome)).toMatchObject({ status: 'ok' });
   return (outcome as { data: T }).data;
 }
 
@@ -778,6 +778,88 @@ describe('destructive actions and confirmations', () => {
       status: 'error',
       error: 'account_in_use',
     });
+  });
+
+  it('categories: rename, archive and reactivate by name; delete only unused ones, after confirmation; undo', async () => {
+    const actor = await newUser();
+    const created = await ok<{ id: string }>(
+      run(actor, 'create_category', { name: 'Categoria 99', kind: 'EXPENSE' }),
+    );
+
+    // Rename by the name the user says (case-insensitive).
+    expect(
+      await ok(
+        run(actor, 'update_category', { categoryName: 'categoria 99', name: 'Pets' }),
+      ),
+    ).toMatchObject({ id: created.id, name: 'Pets', isArchived: false });
+    // Archive, then find the archived one by name to reactivate it.
+    expect(
+      await ok(run(actor, 'update_category', { categoryName: 'Pets', isArchived: true })),
+    ).toMatchObject({ isArchived: true });
+    expect(
+      await ok(
+        run(actor, 'update_category', { categoryName: 'pets', isArchived: false }),
+      ),
+    ).toMatchObject({ isArchived: false });
+
+    // System categories are never changed nor deleted.
+    expect(
+      await run(actor, 'update_category', {
+        categoryName: 'Alimentação',
+        name: 'Comida',
+      }),
+    ).toMatchObject({ status: 'error', error: 'category_read_only' });
+    expect(
+      await run(actor, 'delete_category', { categoryName: 'Alimentação' }),
+    ).toMatchObject({ status: 'error', error: 'category_read_only' });
+
+    // In use: refused before any confirmation, with the usage and the archive suggestion.
+    await ok(
+      run(actor, 'create_transaction', {
+        type: 'EXPENSE',
+        description: 'Ração',
+        amount: '50',
+        categoryName: 'Pets',
+      }),
+    );
+    const before = await db.client.assistantConfirmation.count({
+      where: { ownerId: actor.id },
+    });
+    expect(await run(actor, 'delete_category', { categoryName: 'Pets' })).toMatchObject({
+      status: 'error',
+      error: 'category_in_use',
+    });
+    expect(
+      await db.client.assistantConfirmation.count({ where: { ownerId: actor.id } }),
+    ).toBe(before);
+
+    // Unused: asks first; nothing is deleted until the user confirms.
+    const spare = await ok<{ id: string }>(
+      run(actor, 'create_category', { name: 'Pescaria', kind: 'EXPENSE' }),
+    );
+    const asked = await run(actor, 'delete_category', { categoryName: 'pescaria' });
+    expect(asked).toMatchObject({
+      status: 'confirmation_required',
+      confirmation: { summary: { name: 'Pescaria', irreversible: false } },
+    });
+    expect(await db.client.category.count({ where: { id: spare.id } })).toBe(1);
+    expect(
+      (
+        await confirm(
+          actor,
+          (asked as { confirmation: { id: string } }).confirmation.id,
+        ).expect(200)
+      ).body,
+    ).toMatchObject({ status: 'ok', data: { deleted: { name: 'Pescaria' } } });
+    expect(await db.client.category.count({ where: { id: spare.id } })).toBe(0);
+
+    // "Desfazer" brings it back with the same id.
+    expect((await http(actor, 'post', '/assistant/undo').expect(200)).body).toMatchObject(
+      {
+        status: 'ok',
+      },
+    );
+    expect(await db.client.category.count({ where: { id: spare.id } })).toBe(1);
   });
 });
 
