@@ -1,12 +1,7 @@
 import { AiProviderError } from '../ai/ai.types.js';
 import type { Fetch } from '../ai/providers/http.js';
-import { acceptedType, extensionOf, matchesSignature, pcmToWav } from './audio.js';
+import { acceptedType, matchesSignature, pcmToWav } from './audio.js';
 import { GeminiVoiceClient } from './providers/gemini-voice.client.js';
-import {
-  OPENAI_SPEECH_URL,
-  OPENAI_TRANSCRIPTIONS_URL,
-  OpenAiVoiceClient,
-} from './providers/openai-voice.client.js';
 import { MAX_SPEECH_CHARS, speakable } from './voice.service.js';
 
 const signal = () => AbortSignal.timeout(5000);
@@ -55,8 +50,6 @@ describe('audio checks', () => {
     expect(matchesSignature(ogg, 'audio/webm')).toBe(false);
     expect(matchesSignature(Buffer.from('<html>'), 'audio/mpeg')).toBe(false);
     expect(matchesSignature(Buffer.alloc(0), 'audio/wav')).toBe(false);
-    expect(extensionOf('audio/mp4')).toBe('m4a');
-    expect(extensionOf('audio/mpeg')).toBe('mp3');
   });
 
   it('wraps PCM into a playable WAV header', () => {
@@ -80,79 +73,6 @@ describe('speakable text', () => {
     const text = speakable(long);
     expect(text.length).toBeLessThanOrEqual(MAX_SPEECH_CHARS);
     expect(text.endsWith('.')).toBe(true);
-  });
-});
-
-describe('OpenAI voice client', () => {
-  it('sends the audio as multipart with model and language, and returns the text', async () => {
-    const { calls, fetchImpl } = recordingFetch(() => json({ text: '  oi  ' }));
-    const client = new OpenAiVoiceClient(fetchImpl);
-
-    const text = await client.transcribe(
-      'sk-1',
-      { audio: Buffer.from('OggS'), mimeType: 'audio/ogg', language: 'pt', model: 'm' },
-      signal(),
-    );
-
-    expect(text).toBe('oi');
-    expect(calls[0]?.url).toBe(OPENAI_TRANSCRIPTIONS_URL);
-    expect(calls[0]?.init.headers).toEqual({ authorization: 'Bearer sk-1' });
-    const form = calls[0]?.init.body as FormData;
-    expect(form.get('model')).toBe('m');
-    expect(form.get('language')).toBe('pt');
-    expect((form.get('file') as File).name).toBe('audio.ogg');
-    expect((form.get('file') as File).type).toBe('audio/ogg');
-  });
-
-  it('maps the semantic voice and returns MP3 bytes', async () => {
-    const { calls, fetchImpl } = recordingFetch(
-      () => new Response(Buffer.from('ID3audio'), { status: 200 }),
-    );
-    const client = new OpenAiVoiceClient(fetchImpl);
-
-    const female = await client.synthesize(
-      'sk-1',
-      { text: 'Olá', gender: 'FEMALE', locale: 'pt-BR', model: 'tts' },
-      signal(),
-    );
-    await client.synthesize(
-      'sk-1',
-      { text: 'Olá', gender: 'MALE', locale: 'pt-BR', model: 'tts' },
-      signal(),
-    );
-
-    expect(female).toEqual({ audio: Buffer.from('ID3audio'), mimeType: 'audio/mpeg' });
-    expect(calls[0]?.url).toBe(OPENAI_SPEECH_URL);
-    expect(JSON.parse(calls[0]?.init.body as string)).toEqual({
-      model: 'tts',
-      voice: 'nova',
-      input: 'Olá',
-      response_format: 'mp3',
-    });
-    expect(JSON.parse(calls[1]?.init.body as string).voice).toBe('onyx');
-  });
-
-  it('classifies failures without reading the error body', async () => {
-    const client = new OpenAiVoiceClient(async () => json({ error: 'secret echo' }, 429));
-    const failure = await client
-      .transcribe(
-        'k',
-        { audio: Buffer.from('x'), mimeType: 'audio/webm', language: 'pt', model: 'm' },
-        signal(),
-      )
-      .catch((error: unknown) => error);
-    expect(failure).toBeInstanceOf(AiProviderError);
-    expect((failure as AiProviderError).kind).toBe('rate_limited');
-    expect((failure as Error).message).not.toContain('secret');
-
-    const empty = new OpenAiVoiceClient(async () => json({ nope: true }));
-    await expect(
-      empty.transcribe(
-        'k',
-        { audio: Buffer.from('x'), mimeType: 'audio/webm', language: 'pt', model: 'm' },
-        signal(),
-      ),
-    ).rejects.toMatchObject({ kind: 'invalid_response' });
   });
 });
 
@@ -211,6 +131,22 @@ describe('Gemini voice client', () => {
       responseModalities: ['AUDIO'],
       speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Charon' } } },
     });
+  });
+
+  it('classifies failures without reading the error body', async () => {
+    const client = new GeminiVoiceClient(async () =>
+      json({ error: { message: 'secret echo' } }, 429),
+    );
+    const failure = await client
+      .transcribe(
+        'gm',
+        { audio: Buffer.from('x'), mimeType: 'audio/webm', language: 'pt', model: 'm' },
+        signal(),
+      )
+      .catch((error: unknown) => error);
+    expect(failure).toBeInstanceOf(AiProviderError);
+    expect((failure as AiProviderError).kind).toBe('rate_limited');
+    expect((failure as Error).message).not.toContain('secret');
   });
 
   it('treats answers without text or audio as malformed', async () => {

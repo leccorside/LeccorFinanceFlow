@@ -5,10 +5,8 @@ import {
   type ChatRequest,
   isRecoverable,
 } from '../ai.types.js';
-import { ANTHROPIC_URL, ANTHROPIC_VERSION, AnthropicClient } from './anthropic.client.js';
 import { GEMINI_URL, GeminiClient, geminiSchema } from './gemini.client.js';
 import type { Fetch } from './http.js';
-import { OPENAI_URL, OpenAiClient } from './openai.client.js';
 
 const KEY = 'sk-test-SECRET-key-123';
 
@@ -68,99 +66,6 @@ const conversation: ChatRequest = {
     },
   ],
 };
-
-describe('OpenAiClient', () => {
-  it('maps messages, tools and tool results; the key goes only in the header', async () => {
-    const { fetchImpl, calls } = fakeFetch(200, {
-      choices: [
-        {
-          finish_reason: 'tool_calls',
-          message: {
-            content: null,
-            tool_calls: [
-              {
-                id: 'call-2',
-                type: 'function',
-                function: { name: 'get_summary', arguments: '{"from":"2026-04-01"}' },
-              },
-            ],
-          },
-        },
-      ],
-      usage: { prompt_tokens: 10, completion_tokens: 5 },
-    });
-    const result = await new OpenAiClient(fetchImpl).chat(KEY, conversation, signal());
-
-    expect(result).toEqual({
-      text: null,
-      toolCalls: [
-        { id: 'call-2', name: 'get_summary', arguments: { from: '2026-04-01' } },
-      ],
-      finishReason: 'tool_calls',
-      usage: { inputTokens: 10, outputTokens: 5 },
-    });
-    const call = calls[0] as Captured;
-    expect(call.url).toBe(OPENAI_URL);
-    expect(call.headers.authorization).toBe(`Bearer ${KEY}`);
-    expect(JSON.stringify(call.body)).not.toContain(KEY);
-    expect(call.body).toMatchObject({
-      model: 'model-x',
-      max_completion_tokens: 200,
-      temperature: 0,
-      tools: [{ type: 'function', function: { name: 'get_summary' } }],
-      messages: [
-        { role: 'system', content: 'Você é um assistente financeiro.' },
-        { role: 'user', content: 'Quanto gastei?' },
-        {
-          role: 'assistant',
-          tool_calls: [
-            {
-              id: 'call-1',
-              function: { name: 'get_summary', arguments: '{"from":"2026-03-01"}' },
-            },
-          ],
-        },
-        { role: 'tool', tool_call_id: 'call-1', content: '{"expenses":"87.45"}' },
-      ],
-    });
-  });
-
-  it('classifies refusals, content filters and malformed answers', async () => {
-    const run = (body: unknown) =>
-      new OpenAiClient(fakeFetch(200, body).fetchImpl).chat(KEY, conversation, signal());
-    await expect(
-      run({ choices: [{ finish_reason: 'content_filter', message: { content: '' } }] }),
-    ).rejects.toMatchObject({ kind: 'content_blocked' });
-    await expect(
-      run({ choices: [{ message: { content: null, refusal: 'no' } }] }),
-    ).rejects.toMatchObject({ kind: 'content_blocked' });
-    await expect(run({ choices: [] })).rejects.toMatchObject({
-      kind: 'invalid_response',
-    });
-    await expect(
-      run({
-        choices: [
-          {
-            message: {
-              tool_calls: [{ id: 'x', function: { name: 'f', arguments: '{not json' } }],
-            },
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({ kind: 'invalid_response' });
-    await expect(
-      run({
-        choices: [
-          {
-            message: {
-              tool_calls: [{ id: 'x', function: { name: 'f', arguments: '[1]' } }],
-            },
-          },
-        ],
-      }),
-    ).rejects.toMatchObject({ kind: 'invalid_response' });
-  });
-});
 
 describe('GeminiClient', () => {
   it('maps contents, function declarations and function responses', async () => {
@@ -254,83 +159,9 @@ describe('GeminiClient', () => {
   });
 });
 
-describe('AnthropicClient', () => {
-  it('maps system, tool_use and tool_result blocks with the API version header', async () => {
-    const { fetchImpl, calls } = fakeFetch(200, {
-      stop_reason: 'tool_use',
-      content: [
-        { type: 'text', text: 'Vou consultar.' },
-        { type: 'tool_use', id: 'toolu_1', name: 'get_summary', input: { from: 'y' } },
-      ],
-      usage: { input_tokens: 4, output_tokens: 2 },
-    });
-    const result = await new AnthropicClient(fetchImpl).chat(KEY, conversation, signal());
-    expect(result).toEqual({
-      text: 'Vou consultar.',
-      toolCalls: [{ id: 'toolu_1', name: 'get_summary', arguments: { from: 'y' } }],
-      finishReason: 'tool_calls',
-      usage: { inputTokens: 4, outputTokens: 2 },
-    });
-    const call = calls[0] as Captured;
-    expect(call.url).toBe(ANTHROPIC_URL);
-    expect(call.headers['x-api-key']).toBe(KEY);
-    expect(call.headers['anthropic-version']).toBe(ANTHROPIC_VERSION);
-    expect(call.body).toMatchObject({
-      model: 'model-x',
-      max_tokens: 200,
-      system: 'Você é um assistente financeiro.',
-      tools: [{ name: 'get_summary', input_schema: { type: 'object' } }],
-      messages: [
-        { role: 'user', content: [{ type: 'text', text: 'Quanto gastei?' }] },
-        {
-          role: 'assistant',
-          content: [
-            {
-              type: 'tool_use',
-              id: 'call-1',
-              name: 'get_summary',
-              input: { from: '2026-03-01' },
-            },
-          ],
-        },
-        {
-          role: 'user',
-          content: [
-            {
-              type: 'tool_result',
-              tool_use_id: 'call-1',
-              content: '{"expenses":"87.45"}',
-            },
-          ],
-        },
-      ],
-    });
-  });
-
-  it('always sends max_tokens and classifies refusals', async () => {
-    const { fetchImpl, calls } = fakeFetch(200, {
-      stop_reason: 'end_turn',
-      content: [{ type: 'text', text: 'ok' }],
-    });
-    await new AnthropicClient(fetchImpl).chat(
-      KEY,
-      { model: 'm', messages: [{ role: 'user', content: 'oi' }] },
-      signal(),
-    );
-    expect(calls[0]?.body.max_tokens).toBe(1024);
-    await expect(
-      new AnthropicClient(
-        fakeFetch(200, { stop_reason: 'refusal', content: [] }).fetchImpl,
-      ).chat(KEY, conversation, signal()),
-    ).rejects.toMatchObject({ kind: 'content_blocked' });
-  });
-});
-
-describe('error classification (every adapter)', () => {
+describe('error classification', () => {
   const clients: [string, (fetchImpl: Fetch) => AiProviderClient][] = [
-    ['openai', (fetchImpl) => new OpenAiClient(fetchImpl)],
     ['gemini', (fetchImpl) => new GeminiClient(fetchImpl)],
-    ['anthropic', (fetchImpl) => new AnthropicClient(fetchImpl)],
   ];
   const matrix: [number, AiErrorKind, boolean][] = [
     [400, 'invalid_request', false],
@@ -399,7 +230,7 @@ describe('error classification (every adapter)', () => {
         );
       });
     await expect(
-      new OpenAiClient(hanging).chat(KEY, conversation, AbortSignal.timeout(20)),
+      new GeminiClient(hanging).chat(KEY, conversation, AbortSignal.timeout(20)),
     ).rejects.toMatchObject({ kind: 'timeout' });
   });
 });

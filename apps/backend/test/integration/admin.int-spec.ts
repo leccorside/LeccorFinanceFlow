@@ -80,10 +80,9 @@ beforeAll(async () => {
   await seedDatabase(db.client);
   testEnv(db.url, {
     ADMIN_EMAILS: ROOT_EMAIL,
-    STT_PROVIDER: 'openai',
-    TTS_PROVIDER: 'openai',
+    STT_PROVIDER: 'gemini',
+    TTS_PROVIDER: 'gemini',
     STT_API_KEY: STT_SECRET,
-    OPENAI_API_KEY: 'sk-env-openai',
     GEMINI_API_KEY: 'gm-env-key',
   });
   google = new FakeGoogle();
@@ -96,13 +95,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await app?.close();
   await db?.drop();
-  for (const name of [
-    'STT_PROVIDER',
-    'TTS_PROVIDER',
-    'STT_API_KEY',
-    'OPENAI_API_KEY',
-    'GEMINI_API_KEY',
-  ]) {
+  for (const name of ['STT_PROVIDER', 'TTS_PROVIDER', 'STT_API_KEY', 'GEMINI_API_KEY']) {
     delete process.env[name];
   }
 });
@@ -307,12 +300,12 @@ describe('settings', () => {
     await settings(root, {}).expect(400);
     await settings(root, {
       'usage.prices': [
-        { kind: 'AI_CHAT', provider: 'openai', model: 'x', input: '-1', output: '1' },
+        { kind: 'AI_CHAT', provider: 'GEMINI', model: 'x', input: '-1', output: '1' },
       ],
     }).expect(400);
     await settings(root, {
       'usage.prices': [
-        { kind: 'AI_CHAT', provider: 'openai', model: 'x', input: '1e3', output: '1' },
+        { kind: 'AI_CHAT', provider: 'GEMINI', model: 'x', input: '1e3', output: '1' },
       ],
     }).expect(400);
 
@@ -357,16 +350,13 @@ describe('settings', () => {
       .send(Buffer.concat([Buffer.from('OggS'), Buffer.alloc(64)]))
       .expect(503);
     expect(stt.body.code).toBe('voice_disabled');
-    expect(voice.openai.transcriptions).toHaveLength(0);
+    expect(voice.gemini.transcriptions).toHaveLength(0);
   });
 });
 
 describe('overview and usage', () => {
   it('counts the platform and estimates consumption from the configured prices', async () => {
     await db.client.aIProvider.updateMany({ data: { isActive: true } });
-    const openai = await db.client.aIProvider.findFirstOrThrow({
-      where: { type: 'OPENAI' },
-    });
     const gemini = await db.client.aIProvider.findFirstOrThrow({
       where: { type: 'GEMINI' },
     });
@@ -374,15 +364,16 @@ describe('overview and usage', () => {
     await db.client.aIConfiguration.createMany({
       data: [
         { providerId: gemini.id, purpose: 'CHAT', model: 'gemini-test', priority: 1 },
-        { providerId: openai.id, purpose: 'CHAT', model: 'gpt-test', priority: 2 },
+        { providerId: gemini.id, purpose: 'CHAT', model: 'gemini-backup', priority: 2 },
       ],
     });
     await db.client.usageEvent.deleteMany();
     const ana = await newUser();
     await connectGoogle(app, ana);
 
-    // Gemini is down: one failed attempt, then OpenAI answers (1 + 1 tokens in the fake).
-    ai.GEMINI.behavior = 'unavailable';
+    // The first model is down: one failed attempt, then the backup model answers
+    // (1 + 1 tokens in the fake).
+    ai.GEMINI.behaviorOf['gemini-test'] = 'unavailable';
     await call(ana, 'post', '/assistant/messages', { message: 'oi' }).expect(200);
     await call(ana, 'post', '/assistant/messages', { message: 'tudo bem?' }).expect(200);
     // Voice: one transcription of 68 bytes.
@@ -395,8 +386,8 @@ describe('overview and usage', () => {
       'usage.prices': [
         {
           kind: 'AI_CHAT',
-          provider: 'OPENAI',
-          model: 'gpt-test',
+          provider: 'GEMINI',
+          model: 'gemini-backup',
           input: '2.50',
           output: '10',
         },
@@ -417,18 +408,16 @@ describe('overview and usage', () => {
     expect(Number(overview.google.connected)).toBeGreaterThanOrEqual(1);
     expect(Number(overview.assistant.messagesInWindow)).toBeGreaterThanOrEqual(2);
 
-    const row = (provider: string, kind = 'AI_CHAT') =>
-      overview.usage.rows.find(
-        (item) => item.provider === provider && item.kind === kind,
-      );
-    expect(row('GEMINI')).toMatchObject({
-      model: 'gemini-test',
+    const row = (model: string, kind = 'AI_CHAT') =>
+      overview.usage.rows.find((item) => item.model === model && item.kind === kind);
+    expect(row('gemini-test')).toMatchObject({
+      provider: 'GEMINI',
       requests: 2,
       failures: 2,
       estimatedCostUsd: null,
     });
-    expect(row('OPENAI')).toMatchObject({
-      model: 'gpt-test',
+    expect(row('gemini-backup')).toMatchObject({
+      provider: 'GEMINI',
       requests: 2,
       failures: 0,
       inputUnits: 2,
@@ -436,13 +425,16 @@ describe('overview and usage', () => {
       // 2 tokens × 2.50/M + 2 tokens × 10/M
       estimatedCostUsd: '0.000025',
     });
-    expect(row('openai', 'VOICE_TRANSCRIPTION')).toMatchObject({
+    expect(
+      overview.usage.rows.find((item) => item.kind === 'VOICE_TRANSCRIPTION'),
+    ).toMatchObject({
+      provider: 'gemini',
       requests: 1,
       inputUnits: 68,
     });
     expect(overview.usage.unpriced).toBe(2);
     expect(overview.voice.transcription.providers).toEqual([
-      { provider: 'openai', keyConfigured: true, model: null },
+      { provider: 'gemini', keyConfigured: true, model: null },
     ]);
   });
 
@@ -452,7 +444,7 @@ describe('overview and usage', () => {
       estimateCost(
         {
           kind: 'AI_CHAT',
-          provider: 'openai',
+          provider: 'gemini',
           model: 'm',
           inputUnits: 1_250_000,
           outputUnits: 300_000,
@@ -460,7 +452,7 @@ describe('overview and usage', () => {
         [
           {
             kind: 'AI_CHAT',
-            provider: 'OPENAI',
+            provider: 'GEMINI',
             model: 'm',
             input: '2.50',
             output: '10',
@@ -472,7 +464,7 @@ describe('overview and usage', () => {
       estimateCost(
         {
           kind: 'VOICE_SPEECH',
-          provider: 'openai',
+          provider: 'gemini',
           model: 't',
           inputUnits: 2_000_000,
           outputUnits: 999,
@@ -480,7 +472,7 @@ describe('overview and usage', () => {
         [
           {
             kind: 'VOICE_SPEECH',
-            provider: 'openai',
+            provider: 'gemini',
             model: 't',
             input: '15',
             output: '99',
@@ -499,16 +491,16 @@ describe('overview and usage', () => {
 
 describe('secrets', () => {
   it('never returns an API key in any admin response', async () => {
-    const openai = await db.client.aIProvider.findFirstOrThrow({
-      where: { type: 'OPENAI' },
+    const gemini = await db.client.aIProvider.findFirstOrThrow({
+      where: { type: 'GEMINI' },
     });
     const created = await call(
       root,
       'post',
-      `/admin/ai-providers/${openai.id}/configurations`,
+      `/admin/ai-providers/${gemini.id}/configurations`,
       {
         purpose: 'ANALYSIS',
-        model: 'gpt-secret-test',
+        model: 'gemini-secret-test',
         apiKey: AI_SECRET,
       },
     );
@@ -523,11 +515,10 @@ describe('secrets', () => {
       expect(body).not.toContain(AI_SECRET);
       expect(body).not.toContain(AI_SECRET.slice(0, 12));
       expect(body).not.toContain(STT_SECRET);
-      expect(body).not.toContain('sk-env-openai');
       expect(body).not.toContain('gm-env-key');
     }
     const stored = await db.client.aIConfiguration.findFirstOrThrow({
-      where: { model: 'gpt-secret-test' },
+      where: { model: 'gemini-secret-test' },
     });
     expect(stored.apiKeyEncrypted).not.toContain(AI_SECRET);
   });

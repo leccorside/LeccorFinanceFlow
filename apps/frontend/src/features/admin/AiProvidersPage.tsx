@@ -129,11 +129,7 @@ function ProviderCard({ provider }: { provider: AiProvider }) {
           </thead>
           <tbody>
             {provider.configurations.map((configuration) => (
-              <ConfigurationRow
-                key={configuration.id}
-                provider={provider}
-                configuration={configuration}
-              />
+              <ConfigurationRow key={configuration.id} configuration={configuration} />
             ))}
           </tbody>
         </table>
@@ -143,18 +139,13 @@ function ProviderCard({ provider }: { provider: AiProvider }) {
   );
 }
 
-function ConfigurationRow({
-  provider,
-  configuration,
-}: {
-  provider: AiProvider;
-  configuration: AiConfiguration;
-}) {
+function ConfigurationRow({ configuration }: { configuration: AiConfiguration }) {
   const { t } = useI18n();
   const refresh = useRefresh();
   const [newKey, setNewKey] = useState('');
   const [result, setResult] = useState<ProbeResult | null>(null);
-  const label = `${provider.displayName} · ${t(`admin.ai.purpose.${configuration.purpose}`)}`;
+  // The model names the row: several Gemini models can serve the same purpose.
+  const label = `${configuration.model} · ${t(`admin.ai.purpose.${configuration.purpose}`)}`;
 
   const update = useMutation({
     mutationFn: (input: { isActive?: boolean; apiKey?: string | null }) =>
@@ -268,8 +259,8 @@ function ConfigurationRow({
 function AddConfiguration({ provider }: { provider: AiProvider }) {
   const { t } = useI18n();
   const refresh = useRefresh();
-  const used = new Set(provider.configurations.map((item) => item.purpose));
-  const available = provider.capabilities.filter((purpose) => !used.has(purpose));
+  // Several models per purpose are allowed: the extra ones are the fallback order.
+  const available = provider.capabilities;
   const [purpose, setPurpose] = useState<AiPurpose | ''>('');
   const [model, setModel] = useState(provider.defaultModel ?? '');
   const [apiKey, setApiKey] = useState('');
@@ -287,9 +278,6 @@ function AddConfiguration({ provider }: { provider: AiProvider }) {
     onSettled: refresh,
   });
 
-  if (available.length === 0) {
-    return <p className="hint">{t('admin.ai.add.allUsed')}</p>;
-  }
   const prefix = `add-${provider.type}`;
   return (
     <form
@@ -355,7 +343,7 @@ function AddConfiguration({ provider }: { provider: AiProvider }) {
   );
 }
 
-/** Fallback order per purpose, across providers: first is used, the others on failure. */
+/** Fallback order per purpose, across the configured Gemini models: first is used, the others on failure. */
 function PriorityOrder({ providers }: { providers: AiProvider[] }) {
   const { t } = useI18n();
   const refresh = useRefresh();
@@ -398,7 +386,7 @@ function PriorityOrder({ providers }: { providers: AiProvider[] }) {
                     <button
                       type="button"
                       disabled={index === 0 || reorder.isPending}
-                      aria-label={t('admin.ai.order.up', { name: item.providerName })}
+                      aria-label={t('admin.ai.order.up', { name: item.model })}
                       onClick={() => move(index, -1)}
                     >
                       ↑
@@ -406,7 +394,7 @@ function PriorityOrder({ providers }: { providers: AiProvider[] }) {
                     <button
                       type="button"
                       disabled={index === items.length - 1 || reorder.isPending}
-                      aria-label={t('admin.ai.order.down', { name: item.providerName })}
+                      aria-label={t('admin.ai.order.down', { name: item.model })}
                       onClick={() => move(index, 1)}
                     >
                       ↓

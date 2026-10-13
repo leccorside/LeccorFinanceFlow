@@ -31,8 +31,7 @@ PostgreSQL (Prisma)
 
 Serviços externos chamados diretamente pelo backend:
   Google OAuth + Drive + Sheets
-  OpenAI | Gemini | Claude
-  STT | TTS
+  Google Gemini (chat, transcrição e fala)
 ```
 
 Não haverá RabbitMQ, Kafka, Redis Queue, Bull/BullMQ, worker assíncrono ou armazenamento de logs técnicos.
@@ -223,7 +222,7 @@ Interfaces previstas:
 - `IntentService`: produz uma intenção estruturada.
 - `FinancialAnalysisService`: monta análises apenas com dados consultados.
 
-Ordem configurável inicial: OpenAI, Gemini e Claude. O fallback ocorre somente em indisponibilidade, timeout, limite transitório ou erro classificado como recuperável. Requisição inválida, violação de schema, falta de autorização ou erro de regra de negócio não aciona outro provedor. A resposta registra internamente apenas o provedor efetivamente utilizado no dado funcional da conversa, sem criar log técnico.
+Desde 13/10/2026 o único provedor é o **Google Gemini** (decisão do usuário; OpenAI e Anthropic removidos). Cada finalidade pode ter vários modelos do Gemini em ordem de prioridade. O fallback entre esses modelos ocorre somente em indisponibilidade, timeout, limite transitório ou erro classificado como recuperável. Requisição inválida, violação de schema, falta de autorização ou erro de regra de negócio não aciona outro modelo. A resposta registra internamente apenas o provedor efetivamente utilizado no dado funcional da conversa, sem criar log técnico.
 
 ## 9. Google Sheets e sincronização
 

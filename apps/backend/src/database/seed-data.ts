@@ -25,23 +25,14 @@ export interface SeedAiProvider {
 }
 
 /**
- * The three supported AI providers. Created inactive and without configurations: an
- * administrator activates them, picks models and priorities and stores the keys.
+ * The only supported AI provider (Gemini-only since 2026-10-13). Created inactive and without
+ * configurations: an administrator activates it, adds one or more models per purpose (the
+ * fallback order) and stores the key.
  */
 export const DEFAULT_AI_PROVIDERS: readonly SeedAiProvider[] = [
   {
-    type: 'OPENAI',
-    displayName: 'OpenAI',
-    capabilities: ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'],
-  },
-  {
     type: 'GEMINI',
     displayName: 'Google Gemini',
-    capabilities: ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'],
-  },
-  {
-    type: 'ANTHROPIC',
-    displayName: 'Anthropic Claude',
     capabilities: ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'],
   },
 ];

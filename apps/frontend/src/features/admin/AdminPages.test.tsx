@@ -40,8 +40,8 @@ const overview: AdminOverview = {
     rows: [
       {
         kind: 'AI_CHAT',
-        provider: 'OPENAI',
-        model: 'gpt-test',
+        provider: 'GEMINI',
+        model: 'gemini-test',
         requests: 800,
         failures: 0,
         inputUnits: 1_250_000,
@@ -65,7 +65,7 @@ const overview: AdminOverview = {
   voice: {
     transcription: {
       enabled: true,
-      providers: [{ provider: 'openai', keyConfigured: true, model: null }],
+      providers: [{ provider: 'gemini', keyConfigured: true, model: null }],
     },
     speech: { enabled: false, providers: [] },
   },
@@ -126,7 +126,7 @@ describe('AdminOverviewPage', () => {
 
     const table = screen.getByRole('table');
     const rows = within(table).getAllByRole('row');
-    expect(within(rows[1] as HTMLElement).getByText('gpt-test')).toBeInTheDocument();
+    expect(within(rows[1] as HTMLElement).getByText('gemini-test')).toBeInTheDocument();
     expect(within(rows[1] as HTMLElement).getByText('1.250.000')).toBeInTheDocument();
     expect(within(rows[2] as HTMLElement).getByText('sem preço')).toBeInTheDocument();
 
@@ -331,7 +331,9 @@ describe('AdminSettingsPage', () => {
     }));
     renderWithProviders(<AdminSettingsPage />);
     fireEvent.click(await screen.findByRole('button', { name: 'Adicionar preço' }));
-    fireEvent.change(screen.getByLabelText('Modelo'), { target: { value: 'gpt-test' } });
+    fireEvent.change(screen.getByLabelText('Modelo'), {
+      target: { value: 'gemini-test' },
+    });
     fireEvent.change(screen.getByLabelText('Entrada'), { target: { value: '2,50' } });
     fireEvent.click(screen.getByRole('button', { name: 'Salvar' }));
     expect(screen.getByRole('alert')).toHaveTextContent('Confira os preços');
@@ -347,15 +349,15 @@ describe('AdminSettingsPage', () => {
         'usage.prices': [
           {
             kind: 'AI_CHAT',
-            provider: 'OPENAI',
-            model: 'gpt-test',
+            provider: 'GEMINI',
+            model: 'gemini-test',
             input: '2.50',
             output: '10',
           },
         ],
       }),
     );
-    fireEvent.click(screen.getByRole('button', { name: 'Remover preço de gpt-test' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Remover preço de gemini-test' }));
     expect(screen.queryByLabelText('Modelo')).toBeNull();
   });
 });

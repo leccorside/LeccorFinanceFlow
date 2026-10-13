@@ -144,9 +144,9 @@ const ptBR = {
   'sheets.error.load': 'Não foi possível carregar suas planilhas.',
 
   'nav.admin': 'Administração',
-  'admin.ai.title': 'Provedores de IA',
+  'admin.ai.title': 'IA (Google Gemini)',
   'admin.ai.subtitle':
-    'Modelos, prioridade e chaves de API. As chaves ficam cifradas no servidor e nunca são exibidas.',
+    'Modelos do Gemini por finalidade, ordem de uso e chave de API. A chave fica cifrada no servidor e nunca é exibida.',
   'admin.ai.forbidden': 'Esta área é só para administradores.',
   'admin.ai.error.load': 'Não foi possível carregar os provedores de IA.',
   'admin.ai.active': 'Ativo',
@@ -187,21 +187,20 @@ const ptBR = {
   'admin.ai.reason.credential_unreadable': 'a chave guardada não pôde ser lida',
   'admin.ai.reason.unknown': 'erro desconhecido',
   'admin.ai.delete': 'Excluir',
-  'admin.ai.add.title': 'Nova configuração',
+  'admin.ai.add.title': 'Novo modelo',
   'admin.ai.add.apiKey': 'Chave de API (opcional)',
   'admin.ai.add.apiKeyHint':
     'Fica cifrada no servidor. Depois de salva, não aparece mais em lugar nenhum.',
   'admin.ai.add.submit': 'Adicionar',
-  'admin.ai.add.allUsed': 'Este provedor já tem configuração para todas as finalidades.',
   'admin.ai.order.title': 'Ordem de uso por finalidade',
   'admin.ai.order.hint':
-    'O primeiro da lista é usado. Os seguintes só entram se ele estiver indisponível; erros da própria solicitação não trocam de provedor.',
+    'O primeiro modelo da lista é usado. Os seguintes só entram se ele estiver indisponível; erros da própria solicitação não trocam de modelo.',
   'admin.ai.order.up': 'Subir {name}',
   'admin.ai.order.down': 'Descer {name}',
   'admin.ai.order.empty': 'Sem configurações.',
   'admin.ai.error.ai_priority_taken': 'Já existe uma configuração com essa prioridade.',
   'admin.ai.error.ai_configuration_exists':
-    'Esse provedor já tem uma configuração para essa finalidade.',
+    'Esse modelo já está configurado para essa finalidade.',
   'admin.ai.error.ai_configuration_conflict':
     'A configuração mudou ao mesmo tempo. Recarregue a página.',
   'admin.ai.error.encryption_unavailable':
@@ -540,7 +539,7 @@ const ptBR = {
   'admin.nav': 'Administração',
   'admin.tab.overview': 'Visão geral',
   'admin.tab.users': 'Usuários',
-  'admin.tab.ai': 'Provedores de IA',
+  'admin.tab.ai': 'IA',
   'admin.tab.settings': 'Configurações',
   'admin.loadError': 'Não foi possível carregar.',
   'admin.retry': 'Tentar de novo',
@@ -557,8 +556,8 @@ const ptBR = {
   'admin.stat.assistantDetail': '{conversations} conversas no total',
   'admin.stat.assistantPaused': 'Assistente em pausa',
   'admin.stat.reports': 'Relatórios gerados',
-  'admin.stat.ai': 'Provedores de IA ativos',
-  'admin.stat.aiDetail': '{configurations} configurações ativas',
+  'admin.stat.ai': 'IA (Gemini) ativa',
+  'admin.stat.aiDetail': '{configurations} modelos ativos',
   'admin.stat.cost': 'Consumo estimado',
   'admin.stat.costDetail': '{unpriced} modelo(s) sem preço configurado',
   'admin.usage.title': 'Consumo por provedor e modelo',
@@ -587,7 +586,7 @@ const ptBR = {
   'admin.voice.noKey': 'sem chave',
   'admin.voice.defaultModel': 'modelo padrão',
   'admin.voice.env':
-    'Provedores, chaves e modelos de voz vêm das variáveis STT_*/TTS_* do servidor; aqui você só liga ou desliga.',
+    'A voz usa o Gemini; chave e modelos vêm das variáveis STT_*/TTS_* (ou GEMINI_API_KEY) do servidor. Aqui você só liga ou desliga.',
   'admin.users.title': 'Usuários e permissões',
   'admin.users.search': 'Buscar por nome ou e-mail',
   'admin.users.searchButton': 'Buscar',
@@ -862,9 +861,9 @@ const enUS: Messages = {
   'sheets.error.load': 'Could not load your spreadsheets.',
 
   'nav.admin': 'Administration',
-  'admin.ai.title': 'AI providers',
+  'admin.ai.title': 'AI (Google Gemini)',
   'admin.ai.subtitle':
-    'Models, priority and API keys. Keys are encrypted on the server and never displayed.',
+    'Gemini models per purpose, order of use and API key. The key is encrypted on the server and never displayed.',
   'admin.ai.forbidden': 'This area is for administrators only.',
   'admin.ai.error.load': 'Could not load the AI providers.',
   'admin.ai.active': 'Active',
@@ -905,22 +904,21 @@ const enUS: Messages = {
   'admin.ai.reason.credential_unreadable': 'the stored key could not be read',
   'admin.ai.reason.unknown': 'unknown error',
   'admin.ai.delete': 'Delete',
-  'admin.ai.add.title': 'New configuration',
+  'admin.ai.add.title': 'New model',
   'admin.ai.add.apiKey': 'API key (optional)',
   'admin.ai.add.apiKeyHint':
     'Encrypted on the server. Once saved, it is never shown anywhere again.',
   'admin.ai.add.submit': 'Add',
-  'admin.ai.add.allUsed': 'This provider already has a configuration for every purpose.',
   'admin.ai.order.title': 'Order of use per purpose',
   'admin.ai.order.hint':
-    'The first one is used. The next ones only step in when it is unavailable; errors in the request itself never switch providers.',
+    'The first model is used. The next ones only step in when it is unavailable; errors in the request itself never switch models.',
   'admin.ai.order.up': 'Move {name} up',
   'admin.ai.order.down': 'Move {name} down',
   'admin.ai.order.empty': 'No configurations.',
   'admin.ai.error.ai_priority_taken':
     'There is already a configuration with that priority.',
   'admin.ai.error.ai_configuration_exists':
-    'This provider already has a configuration for that purpose.',
+    'That model is already configured for that purpose.',
   'admin.ai.error.ai_configuration_conflict':
     'The configuration changed at the same time. Reload the page.',
   'admin.ai.error.encryption_unavailable':
@@ -1249,7 +1247,7 @@ const enUS: Messages = {
   'admin.nav': 'Administration',
   'admin.tab.overview': 'Overview',
   'admin.tab.users': 'Users',
-  'admin.tab.ai': 'AI providers',
+  'admin.tab.ai': 'AI',
   'admin.tab.settings': 'Settings',
   'admin.loadError': 'Could not load.',
   'admin.retry': 'Try again',
@@ -1266,8 +1264,8 @@ const enUS: Messages = {
   'admin.stat.assistantDetail': '{conversations} conversations in total',
   'admin.stat.assistantPaused': 'Assistant paused',
   'admin.stat.reports': 'Reports generated',
-  'admin.stat.ai': 'Active AI providers',
-  'admin.stat.aiDetail': '{configurations} active configurations',
+  'admin.stat.ai': 'AI (Gemini) on',
+  'admin.stat.aiDetail': '{configurations} active models',
   'admin.stat.cost': 'Estimated spend',
   'admin.stat.costDetail': '{unpriced} model(s) without a price',
   'admin.usage.title': 'Usage by provider and model',
@@ -1296,7 +1294,7 @@ const enUS: Messages = {
   'admin.voice.noKey': 'no key',
   'admin.voice.defaultModel': 'default model',
   'admin.voice.env':
-    'Voice providers, keys and models come from the server’s STT_*/TTS_* variables; here you only turn them on or off.',
+    'Voice uses Gemini; key and models come from the server’s STT_*/TTS_* variables (or GEMINI_API_KEY). Here you only turn it on or off.',
   'admin.users.title': 'Users and permissions',
   'admin.users.search': 'Search by name or e-mail',
   'admin.users.searchButton': 'Search',
@@ -1570,9 +1568,9 @@ const esES: Messages = {
   'sheets.error.load': 'No se pudieron cargar tus hojas de cálculo.',
 
   'nav.admin': 'Administración',
-  'admin.ai.title': 'Proveedores de IA',
+  'admin.ai.title': 'IA (Google Gemini)',
   'admin.ai.subtitle':
-    'Modelos, prioridad y claves de API. Las claves se guardan cifradas en el servidor y nunca se muestran.',
+    'Modelos de Gemini por finalidad, orden de uso y clave de API. La clave se guarda cifrada en el servidor y nunca se muestra.',
   'admin.ai.forbidden': 'Esta área es solo para administradores.',
   'admin.ai.error.load': 'No se pudieron cargar los proveedores de IA.',
   'admin.ai.active': 'Activo',
@@ -1613,22 +1611,20 @@ const esES: Messages = {
   'admin.ai.reason.credential_unreadable': 'no se pudo leer la clave guardada',
   'admin.ai.reason.unknown': 'error desconocido',
   'admin.ai.delete': 'Eliminar',
-  'admin.ai.add.title': 'Nueva configuración',
+  'admin.ai.add.title': 'Nuevo modelo',
   'admin.ai.add.apiKey': 'Clave de API (opcional)',
   'admin.ai.add.apiKeyHint':
     'Se guarda cifrada en el servidor. Una vez guardada, no vuelve a mostrarse.',
   'admin.ai.add.submit': 'Añadir',
-  'admin.ai.add.allUsed':
-    'Este proveedor ya tiene configuración para todas las finalidades.',
   'admin.ai.order.title': 'Orden de uso por finalidad',
   'admin.ai.order.hint':
-    'Se usa el primero. Los siguientes solo entran si no está disponible; los errores de la propia solicitud no cambian de proveedor.',
+    'Se usa el primer modelo. Los siguientes solo entran si no está disponible; los errores de la propia solicitud no cambian de modelo.',
   'admin.ai.order.up': 'Subir {name}',
   'admin.ai.order.down': 'Bajar {name}',
   'admin.ai.order.empty': 'Sin configuraciones.',
   'admin.ai.error.ai_priority_taken': 'Ya existe una configuración con esa prioridad.',
   'admin.ai.error.ai_configuration_exists':
-    'Este proveedor ya tiene una configuración para esa finalidad.',
+    'Ese modelo ya está configurado para esa finalidad.',
   'admin.ai.error.ai_configuration_conflict':
     'La configuración cambió al mismo tiempo. Recarga la página.',
   'admin.ai.error.encryption_unavailable':
@@ -1963,7 +1959,7 @@ const esES: Messages = {
   'admin.nav': 'Administración',
   'admin.tab.overview': 'Resumen',
   'admin.tab.users': 'Usuarios',
-  'admin.tab.ai': 'Proveedores de IA',
+  'admin.tab.ai': 'IA',
   'admin.tab.settings': 'Configuración',
   'admin.loadError': 'No se pudo cargar.',
   'admin.retry': 'Reintentar',
@@ -1980,8 +1976,8 @@ const esES: Messages = {
   'admin.stat.assistantDetail': '{conversations} conversaciones en total',
   'admin.stat.assistantPaused': 'Asistente en pausa',
   'admin.stat.reports': 'Informes generados',
-  'admin.stat.ai': 'Proveedores de IA activos',
-  'admin.stat.aiDetail': '{configurations} configuraciones activas',
+  'admin.stat.ai': 'IA (Gemini) activa',
+  'admin.stat.aiDetail': '{configurations} modelos activos',
   'admin.stat.cost': 'Consumo estimado',
   'admin.stat.costDetail': '{unpriced} modelo(s) sin precio',
   'admin.usage.title': 'Consumo por proveedor y modelo',
@@ -2010,7 +2006,7 @@ const esES: Messages = {
   'admin.voice.noKey': 'sin clave',
   'admin.voice.defaultModel': 'modelo por defecto',
   'admin.voice.env':
-    'Proveedores, claves y modelos de voz vienen de las variables STT_*/TTS_* del servidor; aquí solo los activas o desactivas.',
+    'La voz usa Gemini; la clave y los modelos vienen de las variables STT_*/TTS_* (o GEMINI_API_KEY) del servidor. Aquí solo la activas o desactivas.',
   'admin.users.title': 'Usuarios y permisos',
   'admin.users.search': 'Buscar por nombre o correo',
   'admin.users.searchButton': 'Buscar',

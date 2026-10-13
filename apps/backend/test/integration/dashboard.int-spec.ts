@@ -86,7 +86,7 @@ const sum = (values: string[]) =>
 beforeAll(async () => {
   db = await createDisposableDatabase();
   await seedDatabase(db.client);
-  testEnv(db.url, { OPENAI_API_KEY: 'sk-env-openai' });
+  testEnv(db.url, { GEMINI_API_KEY: 'gm-env-gemini' });
   google = new FakeGoogle();
   ai = new FakeAiClients();
   app = await createTestApp(google, [], undefined, undefined, ai);
@@ -97,7 +97,7 @@ beforeAll(async () => {
 afterAll(async () => {
   await app?.close();
   await db?.drop();
-  delete process.env.OPENAI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
 });
 
 /** A month of life: salary, food, transport, a transfer, an investment and bills. */
@@ -434,16 +434,16 @@ describe('ownership', () => {
 describe('assistant', () => {
   it('reads the same insights through get_financial_insights', async () => {
     await db.client.aIProvider.updateMany({ data: { isActive: true } });
-    const openai = await db.client.aIProvider.findFirstOrThrow({
-      where: { type: 'OPENAI' },
+    const gemini = await db.client.aIProvider.findFirstOrThrow({
+      where: { type: 'GEMINI' },
     });
     await db.client.aIConfiguration.create({
-      data: { providerId: openai.id, purpose: 'CHAT', model: 'gpt-test', priority: 1 },
+      data: { providerId: gemini.id, purpose: 'CHAT', model: 'gemini-test', priority: 1 },
     });
     const { user } = await populated();
     const call1: ToolCall = { id: 'c1', name: 'get_financial_insights', arguments: {} };
     let toolResult: Json | null = null;
-    ai.OPENAI.handler = (req: ChatRequest) => {
+    ai.GEMINI.handler = (req: ChatRequest) => {
       const tool = req.messages.find((message) => message.role === 'tool');
       if (!tool) return { toolCalls: [call1] };
       toolResult = JSON.parse((tool as { content: string }).content) as Json;

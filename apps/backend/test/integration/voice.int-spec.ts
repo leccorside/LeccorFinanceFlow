@@ -85,25 +85,24 @@ beforeAll(async () => {
   db = await createDisposableDatabase();
   await seedDatabase(db.client);
   testEnv(db.url, {
-    OPENAI_API_KEY: 'sk-env-openai',
     GEMINI_API_KEY: 'gm-env',
-    STT_PROVIDER: 'openai,gemini',
-    TTS_PROVIDER: 'gemini,openai',
-    STT_API_KEY: 'sk-stt',
-    STT_MODEL: 'whisper-test',
+    STT_PROVIDER: 'gemini',
+    TTS_PROVIDER: 'gemini',
+    STT_API_KEY: 'gm-stt',
+    STT_MODEL: 'stt-test',
     MAX_AUDIO_SIZE_MB: '1',
   });
   google = new FakeGoogle();
   ai = new FakeAiClients();
   voice = new FakeVoiceClients();
   app = await createTestApp(google, [], undefined, undefined, ai, voice);
-  // Seeded providers start inactive; the chat uses OpenAI (fake).
+  // The seeded provider starts inactive; the chat uses Gemini (fake).
   await db.client.aIProvider.updateMany({ data: { isActive: true } });
-  const openai = await db.client.aIProvider.findFirstOrThrow({
-    where: { type: 'OPENAI' },
+  const gemini = await db.client.aIProvider.findFirstOrThrow({
+    where: { type: 'GEMINI' },
   });
   await db.client.aIConfiguration.create({
-    data: { providerId: openai.id, purpose: 'CHAT', model: 'gpt-test', priority: 1 },
+    data: { providerId: gemini.id, purpose: 'CHAT', model: 'gemini-test', priority: 1 },
   });
 });
 
@@ -111,7 +110,6 @@ afterAll(async () => {
   await app?.close();
   await db?.drop();
   for (const name of [
-    'OPENAI_API_KEY',
     'GEMINI_API_KEY',
     'STT_PROVIDER',
     'TTS_PROVIDER',
@@ -144,23 +142,23 @@ describe('capabilities', () => {
 });
 
 describe('transcription', () => {
-  it('turns recorded audio into text with the first provider, key, model and language', async () => {
+  it('turns recorded audio into text with Gemini, the voice key, model and language', async () => {
     const actor = await newUser();
     await http(app, actor, 'patch', '/profile').send({ locale: 'es-ES' }).expect(200);
 
     const { body } = await upload(actor, WEBM, 'audio/webm;codecs=opus').expect(200);
 
-    expect(body).toEqual({ text: 'quanto gastei este mês?', provider: 'openai' });
-    const [sent] = voice.openai.transcriptions;
-    expect(sent?.apiKey).toBe('sk-stt');
+    expect(body).toEqual({ text: 'quanto gastei este mês?', provider: 'gemini' });
+    const [sent] = voice.gemini.transcriptions;
+    expect(sent?.apiKey).toBe('gm-stt');
     expect(sent?.request).toMatchObject({
       mimeType: 'audio/webm',
       language: 'es',
-      model: 'whisper-test',
+      model: 'stt-test',
     });
     expect(sent?.request.audio.equals(WEBM)).toBe(true);
     // Discarded: the buffer the provider saw was wiped after the request.
-    expect(voice.openai.received[0]?.every((byte) => byte === 0)).toBe(true);
+    expect(voice.gemini.received[0]?.every((byte) => byte === 0)).toBe(true);
     // Nothing of the recording becomes a conversation by itself.
     expect(await db.client.conversation.count({ where: { ownerId: actor.id } })).toBe(0);
   });
@@ -169,7 +167,7 @@ describe('transcription', () => {
     const actor = await newUser();
     await upload(actor, OGG, 'audio/ogg; codecs=opus').expect(200);
     await upload(actor, MP4, 'audio/mp4').expect(200);
-    expect(voice.openai.transcriptions.map((t) => t.request.mimeType)).toEqual([
+    expect(voice.gemini.transcriptions.map((t) => t.request.mimeType)).toEqual([
       'audio/ogg',
       'audio/mp4',
     ]);
@@ -189,7 +187,6 @@ describe('transcription', () => {
     await refused(Buffer.alloc(0), 'audio/webm', 400, 'audio_empty');
     const big = Buffer.concat([WEBM, Buffer.alloc(1024 * 1024)]);
     await refused(big, 'audio/webm', 413, 'payload_too_large');
-    expect(voice.openai.transcriptions).toHaveLength(0);
     expect(voice.gemini.transcriptions).toHaveLength(0);
   });
 
@@ -199,51 +196,31 @@ describe('transcription', () => {
       .set('Content-Type', 'audio/webm')
       .send(WEBM)
       .expect(403);
-    expect(voice.openai.transcriptions).toHaveLength(0);
+    expect(voice.gemini.transcriptions).toHaveLength(0);
   });
 
-  it('falls back to the next provider (with its own key and default model)', async () => {
+  it('reports when Gemini does not answer so the UI can fall back to text', async () => {
     const actor = await newUser();
-    voice.openai.behavior = 'unavailable';
-    voice.gemini.transcript = 'gastei 50 no mercado';
-
-    const { body } = await upload(actor, WEBM, 'audio/webm').expect(200);
-
-    expect(body).toEqual({ text: 'gastei 50 no mercado', provider: 'gemini' });
-    expect(voice.gemini.transcriptions[0]).toMatchObject({
-      apiKey: 'gm-env',
-      request: { model: 'stt-default', language: 'pt' },
-    });
-  });
-
-  it('reports unavailable providers so the UI can fall back to text', async () => {
-    const actor = await newUser();
-    voice.openai.behavior = 'timeout';
-    voice.gemini.behavior = 'rate_limited';
+    voice.gemini.behavior = 'timeout';
     const { body } = await upload(actor, WEBM, 'audio/webm').expect(503);
     expect(body).toMatchObject({
       code: 'voice_unavailable',
-      details: {
-        attempts: [
-          { provider: 'openai', outcome: 'timeout' },
-          { provider: 'gemini', outcome: 'rate_limited' },
-        ],
-      },
+      details: { attempts: [{ provider: 'gemini', outcome: 'timeout' }] },
     });
-    expect(voice.openai.received[0]?.every((byte) => byte === 0)).toBe(true);
+    expect(voice.gemini.received[0]?.every((byte) => byte === 0)).toBe(true);
   });
 
-  it('does not hide a refused request behind another provider', async () => {
+  it('does not retry a refused request', async () => {
     const actor = await newUser();
-    voice.openai.behavior = 'invalid_request';
+    voice.gemini.behavior = 'invalid_request';
     const { body } = await upload(actor, WEBM, 'audio/webm').expect(422);
     expect(body.code).toBe('voice_request_rejected');
-    expect(voice.gemini.transcriptions).toHaveLength(0);
+    expect(voice.gemini.transcriptions).toHaveLength(1);
   });
 
   it('says so when nothing was understood', async () => {
     const actor = await newUser();
-    voice.openai.transcript = '   ';
+    voice.gemini.transcript = '   ';
     const { body } = await upload(actor, WEBM, 'audio/webm').expect(422);
     expect(body.code).toBe('voice_no_speech');
   });
@@ -253,12 +230,12 @@ describe('speech', () => {
   it('reads a reply aloud with the profile voice; the voice can be changed in the conversation', async () => {
     const actor = await newUser();
     // ① Listen → transcribe
-    voice.openai.transcript = 'troque sua voz para masculina';
+    voice.gemini.transcript = 'troque sua voz para masculina';
     const heard = (await upload(actor, WEBM, 'audio/webm').expect(200)).body as {
       text: string;
     };
     // ② Execute → answer (the transcript goes to the assistant like typed text)
-    ai.OPENAI.handler = (req) =>
+    ai.GEMINI.handler = (req) =>
       toolsDone(req)
         ? { text: 'Pronto, agora falo com voz masculina.' }
         : { toolCalls: [call('change_voice_preference', { gender: 'MALE' })] };
@@ -303,11 +280,11 @@ describe('speech', () => {
         occurredOn: '2026-10-08',
       })
       .expect(201);
-    voice.openai.transcript = 'apague o gasto de 75 reais';
+    voice.gemini.transcript = 'apague o gasto de 75 reais';
     const heard = (await upload(actor, WEBM, 'audio/webm').expect(200)).body as {
       text: string;
     };
-    ai.OPENAI.handler = (req) =>
+    ai.GEMINI.handler = (req) =>
       toolsDone(req)
         ? { text: 'Confirme a exclusão no botão.' }
         : { toolCalls: [call('delete_transaction', { match: { amount: '75' } })] };
@@ -323,7 +300,7 @@ describe('speech', () => {
   it("speaks only the user's own assistant messages", async () => {
     const ana = await newUser();
     const bia = await newUser();
-    ai.OPENAI.handler = () => ({ text: 'Olá!' });
+    ai.GEMINI.handler = () => ({ text: 'Olá!' });
     const turn = (
       await http(app, ana, 'post', '/assistant/messages').send({ message: 'oi' })
     ).body as { conversationId: string; reply: { id: string } };
@@ -347,27 +324,21 @@ describe('speech', () => {
     expect(voice.gemini.speeches).toHaveLength(0);
   });
 
-  it('falls back between speech providers and reports when none answers', async () => {
+  it('reports when Gemini does not produce the speech', async () => {
     const actor = await newUser();
-    ai.OPENAI.handler = () => ({ text: 'Seu saldo está em dia.' });
+    ai.GEMINI.handler = () => ({ text: 'Seu saldo está em dia.' });
     const turn = (
       await http(app, actor, 'post', '/assistant/messages').send({ message: 'oi' })
     ).body as { reply: { id: string } };
 
     voice.gemini.behavior = 'unavailable';
-    const ok = await http(app, actor, 'post', '/voice/speech')
-      .send({ messageId: turn.reply.id })
-      .buffer(true)
-      .parse(binary)
-      .expect(200);
-    expect((ok.body as Buffer).toString()).toContain('ID3-openai-FEMALE');
-    expect(voice.openai.speeches[0]?.apiKey).toBe('sk-env-openai');
-
-    voice.openai.behavior = 'timeout';
     const { body } = await http(app, actor, 'post', '/voice/speech')
       .send({ messageId: turn.reply.id })
       .expect(503);
-    expect(body.code).toBe('voice_unavailable');
+    expect(body).toMatchObject({
+      code: 'voice_unavailable',
+      details: { attempts: [{ provider: 'gemini', outcome: 'unavailable' }] },
+    });
   });
 });
 
@@ -399,11 +370,11 @@ describe('voice not configured', () => {
       await http(off, actor, 'post', '/voice/speech')
         .send({ messageId: message.id })
         .expect(404);
-      expect(offVoice.openai.transcriptions).toHaveLength(0);
+      expect(offVoice.gemini.transcriptions).toHaveLength(0);
     } finally {
       await off.close();
-      process.env.STT_PROVIDER = 'openai,gemini';
-      process.env.TTS_PROVIDER = 'gemini,openai';
+      process.env.STT_PROVIDER = 'gemini';
+      process.env.TTS_PROVIDER = 'gemini';
     }
   });
 });

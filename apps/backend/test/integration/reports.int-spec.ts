@@ -235,7 +235,7 @@ beforeAll(async () => {
   db = await createDisposableDatabase();
   await seedDatabase(db.client);
   tempDir = mkdtempSync(join(tmpdir(), 'leccor-reports-'));
-  testEnv(db.url, { OPENAI_API_KEY: 'sk-env-openai', REPORT_TEMP_DIRECTORY: tempDir });
+  testEnv(db.url, { GEMINI_API_KEY: 'gm-env-gemini', REPORT_TEMP_DIRECTORY: tempDir });
   google = new FakeGoogle();
   ai = new FakeAiClients();
   app = await createTestApp(google, [], undefined, undefined, ai);
@@ -247,7 +247,7 @@ afterAll(async () => {
   await app?.close();
   await db?.drop();
   rmSync(tempDir, { recursive: true, force: true });
-  delete process.env.OPENAI_API_KEY;
+  delete process.env.GEMINI_API_KEY;
   delete process.env.REPORT_TEMP_DIRECTORY;
   delete process.env.MAX_REPORT_TRANSACTIONS;
 });
@@ -553,14 +553,14 @@ describe('limits and validation', () => {
 describe('assistant', () => {
   it('"Gere meu relatório financeiro de março em PDF" returns a download for the chat', async () => {
     await db.client.aIProvider.updateMany({ data: { isActive: true } });
-    const openai = await db.client.aIProvider.findFirstOrThrow({
-      where: { type: 'OPENAI' },
+    const gemini = await db.client.aIProvider.findFirstOrThrow({
+      where: { type: 'GEMINI' },
     });
     await db.client.aIConfiguration.create({
-      data: { providerId: openai.id, purpose: 'CHAT', model: 'gpt-test', priority: 1 },
+      data: { providerId: gemini.id, purpose: 'CHAT', model: 'gemini-test', priority: 1 },
     });
     const user = await populated();
-    ai.OPENAI.handler = (req: ChatRequest) =>
+    ai.GEMINI.handler = (req: ChatRequest) =>
       req.messages.some((message) => message.role === 'tool')
         ? { text: 'Pronto! Seu relatório de março está disponível para download.' }
         : {

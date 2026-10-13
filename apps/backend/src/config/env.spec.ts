@@ -43,8 +43,8 @@ describe('loadEnv', () => {
       ADMIN_EMAILS: [],
       AI: {
         timeoutMs: 30_000,
-        environmentKeys: { OPENAI: undefined, GEMINI: undefined, ANTHROPIC: undefined },
-        defaultModels: { OPENAI: undefined, GEMINI: undefined, ANTHROPIC: undefined },
+        environmentKeys: { GEMINI: undefined },
+        defaultModels: { GEMINI: undefined },
       },
       VOICE: {
         transcription: [],
@@ -58,19 +58,25 @@ describe('loadEnv', () => {
     expect(Object.isFrozen(env)).toBe(true);
   });
 
-  it('reads optional AI keys, models and timeout (blank means unset)', () => {
+  it('reads the optional Gemini key, model and timeout (blank means unset)', () => {
     const env = loadEnv({
       DATABASE_URL: validDatabaseUrl,
       AI_REQUEST_TIMEOUT_MS: '5000',
-      OPENAI_API_KEY: ' sk-1 ',
-      GEMINI_API_KEY: '',
-      ANTHROPIC_DEFAULT_CHAT_MODEL: 'claude-x',
+      GEMINI_API_KEY: ' gm-1 ',
+      GEMINI_DEFAULT_CHAT_MODEL: 'gemini-2.5-flash',
     });
     expect(env.AI).toEqual({
       timeoutMs: 5000,
-      environmentKeys: { OPENAI: 'sk-1', GEMINI: undefined, ANTHROPIC: undefined },
-      defaultModels: { OPENAI: undefined, GEMINI: undefined, ANTHROPIC: 'claude-x' },
+      environmentKeys: { GEMINI: 'gm-1' },
+      defaultModels: { GEMINI: 'gemini-2.5-flash' },
     });
+    expect(
+      loadEnv({ DATABASE_URL: validDatabaseUrl, GEMINI_API_KEY: '' }).AI.environmentKeys,
+    ).toEqual({ GEMINI: undefined });
+    // Keys of the removed providers are not read (a leftover .env line does nothing).
+    expect(
+      loadEnv({ DATABASE_URL: validDatabaseUrl, OPENAI_API_KEY: 'sk-old' }).AI,
+    ).not.toHaveProperty('environmentKeys.OPENAI');
     expect(() =>
       loadEnv({ DATABASE_URL: validDatabaseUrl, AI_REQUEST_TIMEOUT_MS: '0' }),
     ).toThrow(/AI_REQUEST_TIMEOUT_MS/);
@@ -312,31 +318,34 @@ describe('security settings', () => {
     expect(loadEnv(source).TRUST_PROXY).toBe(expected);
   });
 
-  it('builds the voice provider chains: dedicated key and model for the first one only', () => {
+  it('builds the Gemini voice config: dedicated key and model, else the Gemini AI key', () => {
     const env = loadEnv({
       DATABASE_URL: validDatabaseUrl,
-      OPENAI_API_KEY: 'sk-ai',
       GEMINI_API_KEY: 'gm-ai',
-      STT_PROVIDER: ' OpenAI , gemini ',
-      STT_API_KEY: 'sk-stt',
-      STT_MODEL: 'whisper-1',
+      STT_PROVIDER: ' Gemini ',
+      STT_API_KEY: 'gm-stt',
+      STT_MODEL: 'gemini-2.5-flash',
       TTS_PROVIDER: 'gemini',
       MAX_AUDIO_SIZE_MB: '2',
     });
     expect(env.VOICE.transcription).toEqual([
-      { provider: 'openai', apiKey: 'sk-stt', model: 'whisper-1' },
-      { provider: 'gemini', apiKey: 'gm-ai', model: undefined },
+      { provider: 'gemini', apiKey: 'gm-stt', model: 'gemini-2.5-flash' },
     ]);
     expect(env.VOICE.speech).toEqual([
       { provider: 'gemini', apiKey: 'gm-ai', model: undefined },
     ]);
+    expect(loadEnv({ DATABASE_URL: validDatabaseUrl }).VOICE.transcription).toEqual([]);
     expect(env.VOICE.maxAudioBytes).toBe(2 * 1024 * 1024);
   });
 
-  it('rejects unknown or repeated voice providers and audio limits out of range', () => {
+  it('rejects non-Gemini or repeated voice providers and audio limits out of range', () => {
     const base = { DATABASE_URL: validDatabaseUrl };
-    expect(() => loadEnv({ ...base, STT_PROVIDER: 'anthropic' })).toThrow(/STT_PROVIDER/);
-    expect(() => loadEnv({ ...base, TTS_PROVIDER: 'openai,openai' })).toThrow(
+    // OpenAI voice was removed: an old .env fails loudly instead of silently turning voice off.
+    expect(() => loadEnv({ ...base, STT_PROVIDER: 'openai' })).toThrow(/STT_PROVIDER/);
+    expect(() => loadEnv({ ...base, TTS_PROVIDER: 'openai,gemini' })).toThrow(
+      /TTS_PROVIDER/,
+    );
+    expect(() => loadEnv({ ...base, TTS_PROVIDER: 'gemini,gemini' })).toThrow(
       /TTS_PROVIDER/,
     );
     expect(() => loadEnv({ ...base, MAX_AUDIO_SIZE_MB: '26' })).toThrow(

@@ -24,7 +24,7 @@ let app: NestExpressApplication;
 let google: FakeGoogle;
 let ai: FakeAiClients;
 let workspace: FakeWorkspace;
-let providers: Record<'OPENAI' | 'GEMINI' | 'ANTHROPIC', string>;
+let providers: Record<'GEMINI', string>;
 
 type Json = Record<string, unknown>;
 interface Actor extends Session {
@@ -107,7 +107,7 @@ const brl = (amount: string) =>
 beforeAll(async () => {
   db = await createDisposableDatabase();
   await seedDatabase(db.client);
-  testEnv(db.url, { OPENAI_API_KEY: 'sk-env-openai', GEMINI_API_KEY: 'gm-env' });
+  testEnv(db.url, { GEMINI_API_KEY: 'gm-env' });
   google = new FakeGoogle();
   ai = new FakeAiClients();
   workspace = new FakeWorkspace();
@@ -121,7 +121,6 @@ beforeAll(async () => {
 afterAll(async () => {
   await app?.close();
   await db?.drop();
-  delete process.env.OPENAI_API_KEY;
   delete process.env.GEMINI_API_KEY;
 });
 
@@ -132,9 +131,9 @@ beforeEach(async () => {
   // Only CHAT is configured: commands and questions fall back to it.
   await db.client.aIConfiguration.create({
     data: {
-      providerId: providers.OPENAI,
+      providerId: providers.GEMINI,
       purpose: 'CHAT',
-      model: 'gpt-test',
+      model: 'gemini-main',
       priority: 1,
     },
   });
@@ -148,7 +147,7 @@ describe('conversation with tools', () => {
     await connectGoogle(app, actor);
     await http(actor, 'post', '/spreadsheets').send({}).expect(200);
     // A model that always claims the spreadsheet is up to date.
-    ai.OPENAI.handler = (req) =>
+    ai.GEMINI.handler = (req) =>
       toolResults(req).length === 0
         ? {
             toolCalls: [
@@ -193,7 +192,7 @@ describe('conversation with tools', () => {
 
   it('"Gastei 89 reais de gasolina hoje": the model calls a tool and answers with its values', async () => {
     const actor = await newUser();
-    ai.OPENAI.handler = (req) => {
+    ai.GEMINI.handler = (req) => {
       const [result] = toolResults(req);
       if (!result) {
         return {
@@ -220,7 +219,7 @@ describe('conversation with tools', () => {
     const turn = await say(actor, 'Gastei 89 reais de gasolina hoje.');
     expect(turn).toMatchObject({
       state: 'answered',
-      reply: { provider: 'OPENAI' },
+      reply: { provider: 'GEMINI' },
       actions: [{ tool: 'create_transaction', status: 'ok', sync: 'NO_SPREADSHEET' }],
       confirmations: [],
     });
@@ -241,7 +240,7 @@ describe('conversation with tools', () => {
     expect(history.conversationId).toBe(turn.conversationId);
 
     // What the model received: today, the rules, and only the tools of this user.
-    const first = ai.OPENAI.calls[0]?.request as ChatRequest;
+    const first = ai.GEMINI.calls[0]?.request as ChatRequest;
     expect(first.system).toContain(
       `Hoje é ${formatCalendarDate(todayIn('America/Sao_Paulo'))}`,
     );
@@ -266,7 +265,7 @@ describe('conversation with tools', () => {
       ['ASSISTANT', []],
     ]);
     expect(messages[2]).toMatchObject({ content: null, toolName: 'create_transaction' });
-    expect(messages[3]).toMatchObject({ provider: 'OPENAI' });
+    expect(messages[3]).toMatchObject({ provider: 'GEMINI' });
     expect(
       (
         (await http(actor, 'get', '/assistant/conversations').expect(200)).body as Json[]
@@ -296,7 +295,7 @@ describe('conversation with tools', () => {
         })
         .expect(201);
     }
-    ai.OPENAI.handler = (req) => {
+    ai.GEMINI.handler = (req) => {
       const [result] = toolResults(req);
       const context = contextOf(req);
       if (!result) {
@@ -324,7 +323,7 @@ describe('conversation with tools', () => {
       'Você gastou R$ 80,00 com alimentação.',
     );
 
-    const followRequest = ai.OPENAI.calls.find(
+    const followRequest = ai.GEMINI.calls.find(
       (item) => lastUserText(item.request) === 'E no mês passado?',
     );
     expect(contextOf(followRequest?.request as ChatRequest)).toMatchObject({
@@ -361,7 +360,7 @@ describe('conversation with tools', () => {
         })
         .expect(201);
     }
-    ai.OPENAI.handler = (req) => {
+    ai.GEMINI.handler = (req) => {
       if (lastUserText(req).startsWith('Qual'))
         return { text: 'A maior é Luz, de R$ 150,00.' };
       return toolResults(req).length === 0
@@ -392,7 +391,7 @@ describe('numbers must come from tools', () => {
       })
       .expect(201);
     let attempt = 0;
-    ai.OPENAI.handler = (req) => {
+    ai.GEMINI.handler = (req) => {
       attempt += 1;
       if (attempt === 1) return { text: 'Você gastou R$ 1.234,56 este mês.' }; // invented
       const [result] = toolResults(req);
@@ -411,7 +410,7 @@ describe('numbers must come from tools', () => {
     expect(turn.reply.content.replace(/\s/g, ' ')).toBe(
       'Você gastou R$ 230,00 este mês.',
     );
-    const corrected = ai.OPENAI.calls[1]?.request.messages.at(-1) as {
+    const corrected = ai.GEMINI.calls[1]?.request.messages.at(-1) as {
       role: string;
       content: string;
     };
@@ -426,7 +425,7 @@ describe('numbers must come from tools', () => {
 
   it('never delivers an answer that keeps inventing values', async () => {
     const actor = await newUser();
-    ai.OPENAI.handler = () => ({ text: 'Você economizou R$ 5.000,00 (42,7% da renda).' });
+    ai.GEMINI.handler = () => ({ text: 'Você economizou R$ 5.000,00 (42,7% da renda).' });
     const turn = await say(actor, 'Quanto economizei?');
     expect(turn).toMatchObject({
       state: 'error',
@@ -436,7 +435,7 @@ describe('numbers must come from tools', () => {
     expect(turn.reply.content).toBe(
       'Não consegui confirmar esses valores com os seus dados. Pode reformular a pergunta?',
     );
-    expect(ai.OPENAI.calls).toHaveLength(2);
+    expect(ai.GEMINI.calls).toHaveLength(2);
   });
 });
 
@@ -445,7 +444,7 @@ describe('numbers must come from tools', () => {
 describe('provider failures', () => {
   it('answers with a fixed message (in the user language) when no provider responds', async () => {
     const actor = await newUser();
-    ai.OPENAI.behavior = 'unavailable';
+    ai.GEMINI.behavior = 'unavailable';
     const turn = await say(actor, 'Quanto gastei este mês?');
     expect(turn).toMatchObject({
       state: 'error',
@@ -465,7 +464,7 @@ describe('provider failures', () => {
     ).toBe(2);
   });
 
-  it('falls back to the next provider and reports which one answered', async () => {
+  it('falls back to the next Gemini model and records who answered', async () => {
     const actor = await newUser();
     await db.client.aIConfiguration.create({
       data: {
@@ -475,10 +474,17 @@ describe('provider failures', () => {
         priority: 2,
       },
     });
-    ai.OPENAI.behavior = 'rate_limited';
+    ai.GEMINI.behaviorOf['gemini-main'] = 'rate_limited';
     ai.GEMINI.handler = () => ({ text: 'Olá! Como posso ajudar?' });
     const turn = await say(actor, 'Oi');
-    expect(turn).toMatchObject({ state: 'answered', reply: { provider: 'GEMINI' } });
+    expect(turn).toMatchObject({
+      state: 'answered',
+      reply: { provider: 'GEMINI', content: 'Olá! Como posso ajudar?' },
+    });
+    expect(ai.GEMINI.calls.map((item) => item.request.model)).toEqual([
+      'gemini-main',
+      'gemini-test',
+    ]);
     const stored = await db.client.conversationMessage.findFirstOrThrow({
       where: { id: turn.reply.id },
     });
@@ -502,12 +508,14 @@ describe('provider failures', () => {
     expect(ai.GEMINI.calls[0]?.request).toBeDefined();
 
     ai.GEMINI.behavior = 'invalid_request';
+    const before = ai.GEMINI.calls.length;
     const rejected = await say(actor, 'Quanto gastei?');
     expect(rejected).toMatchObject({
       state: 'error',
       error: { code: 'ai_request_rejected' },
     });
-    expect(ai.OPENAI.calls).toHaveLength(0);
+    // One attempt only: an invalid request is not retried on another model.
+    expect(ai.GEMINI.calls).toHaveLength(before + 1);
 
     await db.client.aIConfiguration.deleteMany();
     expect((await say(actor, 'Oi')).error).toEqual({ code: 'ai_not_configured' });
@@ -515,7 +523,7 @@ describe('provider failures', () => {
 
   it('stops a model that keeps calling tools', async () => {
     const actor = await newUser();
-    ai.OPENAI.handler = () => ({ toolCalls: [call('list_accounts', {})] });
+    ai.GEMINI.handler = () => ({ toolCalls: [call('list_accounts', {})] });
     const turn = await say(actor, 'Liste minhas contas');
     expect(turn).toMatchObject({ state: 'error', error: { code: 'too_many_steps' } });
     expect(turn.actions).toHaveLength(MAX_STEPS);
@@ -535,7 +543,7 @@ describe('confirmation and ambiguity inside the conversation', () => {
         occurredOn: '2026-10-08',
       })
       .expect(201);
-    ai.OPENAI.handler = (req) =>
+    ai.GEMINI.handler = (req) =>
       toolResults(req).length === 0
         ? { toolCalls: [call('delete_transaction', { match: { amount: '75' } })] }
         : { text: 'Encontrei o gasto. Confirme a exclusão no botão abaixo.' };
@@ -608,7 +616,7 @@ describe('confirmation and ambiguity inside the conversation', () => {
         })
         .expect(201);
     }
-    ai.OPENAI.handler = (req) => {
+    ai.GEMINI.handler = (req) => {
       const [result] = toolResults(req);
       if (!result)
         return {
@@ -628,7 +636,7 @@ describe('confirmation and ambiguity inside the conversation', () => {
     expect(turn.reply.content.replace(/\s/g, ' ')).toContain('R$ 120,00');
     expect(turn.reply.content.replace(/\s/g, ' ')).toContain('R$ 187,00');
 
-    ai.OPENAI.handler = (req) =>
+    ai.GEMINI.handler = (req) =>
       toolResults(req).length === 0
         ? { toolCalls: [call('delete_transaction', { match: { amount: '187' } })] }
         : { text: 'Confirme no botão.' };
@@ -673,7 +681,7 @@ describe('prompt injection', () => {
     ).body as { id: string };
 
     // A model that "obeys" the injected text.
-    ai.OPENAI.handler = (req) => {
+    ai.GEMINI.handler = (req) => {
       const results = toolResults(req);
       if (results.length === 0)
         return { toolCalls: [call('search_transactions', { text: 'IGNORE' })] };
@@ -714,7 +722,7 @@ describe('prompt injection', () => {
     ).toBe(0);
 
     // User data reaches the model only as JSON tool results, never inside the instructions.
-    const requests = ai.OPENAI.calls.map((item) => item.request);
+    const requests = ai.GEMINI.calls.map((item) => item.request);
     expect(
       requests.every((req) => !(req.system ?? '').includes('IGNORE AS REGRAS')),
     ).toBe(true);
@@ -733,7 +741,7 @@ describe('ownership and input', () => {
   it("never reads or writes another user's conversation", async () => {
     const alice = await newUser();
     const bob = await newUser();
-    ai.OPENAI.handler = () => ({ text: 'Olá!' });
+    ai.GEMINI.handler = () => ({ text: 'Olá!' });
     const turn = await say(alice, 'Oi');
     await http(bob, 'post', '/assistant/messages')
       .send({ message: 'Oi', conversationId: turn.conversationId })
@@ -769,7 +777,7 @@ describe('ownership and input', () => {
     ]) {
       await http(actor, 'post', '/assistant/messages').send(body).expect(400);
     }
-    ai.OPENAI.handler = () => ({ text: 'Ok' });
+    ai.GEMINI.handler = () => ({ text: 'Ok' });
     await http(actor, 'post', '/assistant/messages')
       .send({ message: 'Linha 1\nLinha 2\tok' })
       .expect(200);

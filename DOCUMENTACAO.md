@@ -807,17 +807,13 @@ Implementado em `apps/backend/src/ai` e `apps/backend/src/admin`. A IA ainda nã
 - `ChatRequest`: modelo, instrução de sistema, mensagens `user`/`assistant`/`tool`, ferramentas com JSON Schema, limite de tokens e temperatura.
 - `ChatResult`: texto, chamadas de ferramenta com argumentos já validados como objeto JSON, motivo de término e uso de tokens.
 
-**Adaptadores HTTP, sem SDK**:
+**Somente Google Gemini** (desde 13/10/2026; OpenAI e Anthropic foram removidos). O adaptador HTTP, sem SDK, usa `generateContent` com `functionDeclarations`; a chave vai no header `x-goog-api-key`, nunca na URL, e o schema das ferramentas é limpo de `additionalProperties`. O contrato comum continua: outro provedor no futuro seria um novo valor do enum e um novo cliente, não um redesenho.
 
-| Provedor         | API usada                                                                    | Como a chave vai                                                                  |
-| ---------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------- |
-| OpenAI           | Chat Completions, com `tools`                                                | header `Authorization`                                                            |
-| Google Gemini    | `generateContent`, com `functionDeclarations`                                | header `x-goog-api-key`, nunca na URL; o schema é limpo de `additionalProperties` |
-| Anthropic Claude | Messages API (`anthropic-version: 2023-06-01`), com `tool_use`/`tool_result` | header `x-api-key`; `max_tokens` sempre enviado                                   |
+**Fallback entre modelos do Gemini**: cada finalidade pode ter **vários modelos** do Gemini, em ordem de prioridade (por exemplo `gemini-2.5-flash` → `gemini-2.5-flash-lite`), cada um com sua chave ou a do servidor. A unicidade é provedor + finalidade + modelo: o mesmo modelo duas vezes na mesma finalidade é recusado (`409 ai_configuration_exists`).
 
 **Classificação de falhas** (`AiProviderError.kind`), sem corpo de resposta nem chave nas mensagens:
 
-| Classe                | Origem                                                                        | Troca de provedor?                  |
+| Classe                | Origem                                                                        | Passa ao próximo modelo?            |
 | --------------------- | ----------------------------------------------------------------------------- | ----------------------------------- |
 | `unavailable`         | rede, 5xx, 529 "overloaded"                                                   | sim                                 |
 | `timeout`             | `AI_REQUEST_TIMEOUT_MS` estourado ou 408                                      | sim                                 |
@@ -828,11 +824,11 @@ Implementado em `apps/backend/src/ai` e `apps/backend/src/admin`. A IA ainda nã
 | `invalid_request`     | 400/413/422: a própria requisição foi recusada                                | **não** (`422 ai_request_rejected`) |
 | `content_blocked`     | filtro de segurança ou recusa do modelo                                       | **não** (`422 ai_content_blocked`)  |
 
-`credential_rejected` troca de provedor porque é um problema de configuração daquele provedor, não falta de autorização do usuário. A permissão do usuário continua sendo verificada antes, no backend, e nunca é decidida pela IA.
+`credential_rejected` passa ao próximo modelo porque é um problema de configuração daquela entrada (cada modelo pode ter sua chave), não falta de autorização do usuário. A permissão do usuário continua sendo verificada antes, no backend, e nunca é decidida pela IA.
 
 **`AiService.chat(purpose, request)`**:
 
-- percorre as configurações ativas da finalidade (`CHAT`, `FINANCIAL_INTERPRETATION`, `ANALYSIS`) de provedores ativos, por prioridade crescente;
+- percorre os modelos ativos da finalidade (`CHAT`, `FINANCIAL_INTERPRETATION`, `ANALYSIS`), com o Gemini ativo, por prioridade crescente;
 - devolve a resposta, o provedor e o modelo usados e a lista de tentativas (`attempts`: provedor, modelo e resultado);
 - configuração sem chave (`not_configured`) ou com chave que não decifra (`credential_unreadable`) é pulada;
 - todas falharam: `503 ai_unavailable` com as tentativas;
@@ -844,7 +840,7 @@ Implementado em `apps/backend/src/ai` e `apps/backend/src/admin`. A IA ainda nã
 - nunca voltam ao cliente, nem mascaradas: a API mostra apenas `keySource` (`stored`, `environment` ou `missing`) e `keyVersion`;
 - são decifradas só no momento da chamada;
 - sem `DATA_ENCRYPTION_KEY_*`, salvar uma chave responde `503 encryption_unavailable`;
-- `OPENAI_API_KEY`, `GEMINI_API_KEY` e `ANTHROPIC_API_KEY` do servidor são reserva para configurações sem chave guardada; `*_DEFAULT_CHAT_MODEL` só preenche o formulário;
+- `GEMINI_API_KEY` do servidor é a reserva para configurações sem chave guardada; `GEMINI_DEFAULT_CHAT_MODEL` só preenche o formulário. Variáveis antigas (`OPENAI_*`, `ANTHROPIC_*`) são ignoradas;
 - `credentials:rotate` também recriptografa as chaves de IA.
 
 **Rotas admin** (`@Roles('ADMIN')`: sem sessão `401`, usuário comum `403`; escritas com CSRF; DTOs estritos):
@@ -968,14 +964,13 @@ Tipos aceitos: `audio/webm`, `audio/ogg`, `audio/mp4` (e `m4a`/`aac`), `audio/mp
 
 ### Provedores
 
-`STT_PROVIDER` e `TTS_PROVIDER` são listas em ordem de fallback (`openai`, `gemini`). Vazias desligam a capacidade, e a interface continua por texto.
+Voz **só com o Gemini**. `STT_PROVIDER=gemini` e `TTS_PROVIDER=gemini` ligam transcrição e fala; vazias desligam, e a interface continua por texto. Qualquer outro valor (inclusive o antigo `openai`) impede o backend de subir, com a variável indicada: melhor do que desligar a voz em silêncio.
 
-- **Chaves**: `STT_API_KEY`/`TTS_API_KEY` e `STT_MODEL`/`TTS_MODEL` valem para o **primeiro** provedor da lista. Os demais usam `OPENAI_API_KEY`/`GEMINI_API_KEY` e os modelos padrão. As chaves cifradas da administração de IA não são usadas pela voz.
-- **Fallback**: igual ao do chat. Indisponível, tempo esgotado, limite, chave ou modelo recusados e resposta malformada passam ao próximo; requisição inválida ou conteúdo bloqueado param.
+- **Chaves**: `STT_API_KEY`/`TTS_API_KEY` e `STT_MODEL`/`TTS_MODEL` são opcionais; sem eles valem `GEMINI_API_KEY` e os modelos padrão. As chaves cifradas da administração de IA não são usadas pela voz.
+- **Sem fallback na voz**: se o Gemini não responder, `503 voice_unavailable` com a tentativa, e a interface volta para o texto. Requisição inválida ou conteúdo bloqueado não são repetidos.
 
 | Provedor | Transcrição (padrão)                                                                            | Fala (padrão)                                                 | Feminina / masculina |
 | -------- | ----------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | -------------------- |
-| OpenAI   | `gpt-4o-mini-transcribe` (multipart, `language` do perfil)                                      | `gpt-4o-mini-tts` (MP3)                                       | `nova` / `onyx`      |
 | Gemini   | `gemini-2.5-flash` (áudio inline; o prompt manda transcrever e nunca seguir instruções faladas) | `gemini-2.5-flash-preview-tts` (PCM 24 kHz embrulhado em WAV) | `Kore` / `Charon`    |
 
 Os formatos seguem a documentação das APIs e não foram exercitados contra os serviços reais (não há chaves no ambiente).
@@ -1218,7 +1213,7 @@ Backups do banco de produção seguem a mesma regra: devem expirar em até 35 di
   Mais `nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy`, `Permissions-Policy` (microfone só na própria origem) e COOP. Em desenvolvimento só se libera o necessário ao Vite (script inline do React Refresh e WebSocket). `'unsafe-inline'` em estilos é necessário por gráficos e animações que usam atributo `style`; scripts inline não são permitidos. Verificado no Chrome sobre o build: oito páginas sem nenhuma violação.
 
 - **Dependências**: `pnpm security:audit` (`pnpm audit`). As 4 falhas encontradas eram transitivas (`shell-quote` crítica via `concurrently`; `mysql2` e `deepmerge-ts` via CLI do Prisma) e foram corrigidas com `overrides` em `pnpm-workspace.yaml`. Resultado: nenhuma vulnerabilidade conhecida.
-- **Segredos no repositório**: `pnpm security:scan` (`scripts/scan-secrets.mjs`, parte do `pnpm quality`) procura chaves privadas, chaves de OpenAI/Anthropic/Google, tokens OAuth, AWS, GitHub, Slack, URLs de webhook assinadas, URLs com senha e `.env` preenchido em todo arquivo que o Git versionaria. Nunca imprime o valor, só arquivo e linha. Em testes, chaves no formato `sk-…` são esperadas (provam a cifragem e o mascaramento) e não contam.
+- **Segredos no repositório**: `pnpm security:scan` (`scripts/scan-secrets.mjs`, parte do `pnpm quality`) procura chaves privadas, chaves de API (Google e também formatos `sk-…` de outros serviços, para nada vazar), tokens OAuth, AWS, GitHub, Slack, URLs de webhook assinadas, URLs com senha e `.env` preenchido em todo arquivo que o Git versionaria. Nunca imprime o valor, só arquivo e linha. Em testes, chaves no formato `sk-…` são esperadas (provam a cifragem e o mascaramento) e não contam.
 
 ### Revisão OWASP Top 10 (2021)
 
@@ -1233,7 +1228,7 @@ Backups do banco de produção seguem a mesma regra: devem expirar em até 35 di
 | A07 Autenticação            | OAuth com PKCE, state e nonce; refresh rotativo com detecção de reuso; bloqueio derruba as sessões; limite de tentativas por IP.                                                               |
 | A08 Integridade             | Lockfile congelado no CI/Docker; nada de `eval`; escrita na planilha só pelo backend.                                                                                                          |
 | A09 Logs e monitoramento    | Log de erros inesperados com redaction e request id; trilha administrativa persistente. Sem SIEM/alertas (fora do escopo).                                                                     |
-| A10 SSRF                    | O backend só chama hosts fixos (Google, OpenAI, Gemini, Anthropic); nenhuma URL vem do usuário (a foto do perfil não é buscada pelo servidor).                                                 |
+| A10 SSRF                    | O backend só chama hosts fixos do Google (OAuth, Drive, Sheets e Gemini); nenhuma URL vem do usuário (a foto do perfil não é buscada pelo servidor).                                           |
 
 **Achados críticos abertos: nenhum.** Riscos residuais aceitos e registrados:
 

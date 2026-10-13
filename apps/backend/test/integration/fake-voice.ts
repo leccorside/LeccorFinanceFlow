@@ -51,11 +51,9 @@ export class FakeVoiceClient implements VoiceProviderClient {
 }
 
 export class FakeVoiceClients implements VoiceClients {
-  openai = new FakeVoiceClient('openai');
   gemini = new FakeVoiceClient('gemini');
 
   reset(): void {
-    this.openai.reset();
     this.gemini.reset();
   }
 }

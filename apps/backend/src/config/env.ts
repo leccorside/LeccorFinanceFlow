@@ -75,10 +75,13 @@ const emailList = csv
   .transform((emails) => emails.map((email) => email.toLowerCase()))
   .pipe(z.array(z.email()));
 
-/** Ordered voice providers (fallback order); unknown names are a configuration error. */
+/**
+ * Voice providers (only "gemini" since the Gemini-only change); empty = voice off. Unknown
+ * names — including the removed "openai" — are a configuration error, not silently ignored.
+ */
 const voiceProviders = csv
   .transform((names) => names.map((name) => name.toLowerCase()))
-  .pipe(z.array(z.enum(['openai', 'gemini'])))
+  .pipe(z.array(z.enum(['gemini'])))
   .refine((names) => new Set(names).size === names.length, 'must not repeat a provider');
 
 const positiveInt = (fallback: number, max: number) =>
@@ -138,25 +141,21 @@ const envSchema = z
     TRUST_PROXY: trustProxy,
     /** Users whose verified Google e-mail is listed receive the ADMIN role on login. */
     ADMIN_EMAILS: emailList,
-    /** Per AI provider request; the next provider is tried after a timeout. */
+    /** Per AI request; the next configured Gemini model is tried after a timeout. */
     AI_REQUEST_TIMEOUT_MS: positiveInt(30_000, 300_000),
-    /** Optional server-side keys, used only when a configuration has no stored key. */
-    OPENAI_API_KEY: optionalNonEmpty,
+    /** Optional server-side Gemini key, used only when a configuration has no stored key. */
     GEMINI_API_KEY: optionalNonEmpty,
-    ANTHROPIC_API_KEY: optionalNonEmpty,
-    /** Suggested models for new configurations in the admin screen. */
-    OPENAI_DEFAULT_CHAT_MODEL: optionalNonEmpty,
+    /** Suggested model for new configurations in the admin screen. */
     GEMINI_DEFAULT_CHAT_MODEL: optionalNonEmpty,
-    ANTHROPIC_DEFAULT_CHAT_MODEL: optionalNonEmpty,
-    /** Speech-to-text / text-to-speech providers in fallback order (openai, gemini); empty = off. */
+    /** Speech-to-text / text-to-speech: "gemini" turns it on; empty = off. */
     STT_PROVIDER: voiceProviders,
     TTS_PROVIDER: voiceProviders,
-    /** Key and model of the FIRST listed provider; the others use OPENAI_/GEMINI_API_KEY and defaults. */
+    /** Dedicated voice key and models; without a key, GEMINI_API_KEY is used. */
     STT_API_KEY: optionalNonEmpty,
     TTS_API_KEY: optionalNonEmpty,
     STT_MODEL: optionalNonEmpty,
     TTS_MODEL: optionalNonEmpty,
-    /** Uploaded audio limits (OpenAI accepts up to 25 MB). */
+    /** Uploaded audio limits (sent inline to Gemini; keep it small). */
     MAX_AUDIO_SIZE_MB: positiveInt(10, 25),
     MAX_AUDIO_DURATION_SECONDS: positiveInt(120, 600),
     /** Generated files live here until they expire (never served directly). */
@@ -202,12 +201,8 @@ const envSchema = z
       GOOGLE_CONNECTION_REDIRECT_URI,
       CORS_ALLOWED_ORIGINS,
       AI_REQUEST_TIMEOUT_MS,
-      OPENAI_API_KEY,
       GEMINI_API_KEY,
-      ANTHROPIC_API_KEY,
-      OPENAI_DEFAULT_CHAT_MODEL,
       GEMINI_DEFAULT_CHAT_MODEL,
-      ANTHROPIC_DEFAULT_CHAT_MODEL,
       STT_PROVIDER,
       TTS_PROVIDER,
       STT_API_KEY,
@@ -221,11 +216,9 @@ const envSchema = z
       ...env,
       VOICE: {
         transcription: voiceChain(STT_PROVIDER, STT_API_KEY, STT_MODEL, {
-          openai: OPENAI_API_KEY,
           gemini: GEMINI_API_KEY,
         }),
         speech: voiceChain(TTS_PROVIDER, TTS_API_KEY, TTS_MODEL, {
-          openai: OPENAI_API_KEY,
           gemini: GEMINI_API_KEY,
         }),
         maxAudioBytes: MAX_AUDIO_SIZE_MB * 1024 * 1024,
@@ -234,16 +227,14 @@ const envSchema = z
       },
       AI: {
         timeoutMs: AI_REQUEST_TIMEOUT_MS,
-        environmentKeys: {
-          OPENAI: OPENAI_API_KEY,
-          GEMINI: GEMINI_API_KEY,
-          ANTHROPIC: ANTHROPIC_API_KEY,
-        } as Record<'OPENAI' | 'GEMINI' | 'ANTHROPIC', string | undefined>,
-        defaultModels: {
-          OPENAI: OPENAI_DEFAULT_CHAT_MODEL,
-          GEMINI: GEMINI_DEFAULT_CHAT_MODEL,
-          ANTHROPIC: ANTHROPIC_DEFAULT_CHAT_MODEL,
-        } as Record<'OPENAI' | 'GEMINI' | 'ANTHROPIC', string | undefined>,
+        environmentKeys: { GEMINI: GEMINI_API_KEY } as Record<
+          'GEMINI',
+          string | undefined
+        >,
+        defaultModels: { GEMINI: GEMINI_DEFAULT_CHAT_MODEL } as Record<
+          'GEMINI',
+          string | undefined
+        >,
       },
       /** FRONTEND_URL origin + CORS_ALLOWED_ORIGINS, deduplicated. */
       ALLOWED_ORIGINS: [
@@ -265,7 +256,7 @@ const envSchema = z
     }),
   );
 
-export type VoiceProviderName = 'openai' | 'gemini';
+export type VoiceProviderName = 'gemini';
 
 export interface VoiceProviderConfig {
   provider: VoiceProviderName;

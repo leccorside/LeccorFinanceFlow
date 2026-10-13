@@ -129,13 +129,15 @@ export class AiProvidersService {
     }
     if (
       await this.prisma.aIConfiguration.count({
-        where: { providerId, purpose: input.purpose },
+        where: { providerId, purpose: input.purpose, model: input.model },
       })
     ) {
+      // Several models per purpose are allowed (fallback between Gemini models); the same
+      // model twice in one purpose is not.
       throw new ApiException(
         HttpStatus.CONFLICT,
         'ai_configuration_exists',
-        'Esse provedor já tem uma configuração para essa finalidade.',
+        'Esse modelo já está configurado para essa finalidade.',
       );
     }
     const next =

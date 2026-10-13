@@ -351,8 +351,8 @@ describe('retention sweep', () => {
         db.client.usageEvent.create({
           data: {
             kind: 'AI_CHAT',
-            provider: 'openai',
-            model: 'gpt-test',
+            provider: 'gemini',
+            model: 'gemini-test',
             outcome: 'ok',
             createdAt,
           },

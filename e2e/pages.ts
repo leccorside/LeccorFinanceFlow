@@ -10,7 +10,7 @@ export const SIGNED_IN_PAGES = [
   { path: '/privacy', ready: { heading: 'Privacidade e dados' } },
   { path: '/admin', ready: { heading: 'Visão geral da plataforma' } },
   { path: '/admin/users', ready: { heading: 'Usuários e permissões' } },
-  { path: '/admin/ai', ready: { heading: 'Provedores de IA' } },
+  { path: '/admin/ai', ready: { heading: 'IA (Google Gemini)' } },
   { path: '/admin/settings', ready: { heading: 'Configurações globais' } },
 ] as const;
 

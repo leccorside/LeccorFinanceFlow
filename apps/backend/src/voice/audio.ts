@@ -58,14 +58,6 @@ export function matchesSignature(audio: Buffer, mimeType: string): boolean {
   }
 }
 
-/** File extension providers use to recognize the format. */
-export function extensionOf(mimeType: string): string {
-  const container = TYPES[mimeType];
-  if (container === 'mp4') return 'm4a';
-  if (container === 'mpeg') return 'mp3';
-  return container ?? 'bin';
-}
-
 /** Wraps 16-bit little-endian mono PCM in a WAV header so browsers can play it. */
 export function pcmToWav(pcm: Buffer, sampleRate: number): Buffer {
   const header = Buffer.alloc(44);

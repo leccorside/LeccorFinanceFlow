@@ -236,7 +236,7 @@ describe('voice in the chat', () => {
     expect(orb()).toHaveAttribute('data-state', 'transcribing');
 
     await act(async () =>
-      finishTranscription({ text: 'quanto gastei este mês?', provider: 'openai' }),
+      finishTranscription({ text: 'quanto gastei este mês?', provider: 'gemini' }),
     );
 
     // Executing: the transcript is a normal message (same rules, confirmations included).
@@ -367,7 +367,7 @@ describe('voice in the chat', () => {
       maxAudioSeconds: 1,
       audioTypes: ['audio/webm'],
     });
-    vi.mocked(transcribe).mockResolvedValue({ text: 'oi', provider: 'openai' });
+    vi.mocked(transcribe).mockResolvedValue({ text: 'oi', provider: 'gemini' });
     vi.mocked(sendMessage).mockResolvedValue(turn('Olá!'));
     renderWithProviders(<AssistantPage firstName={null} />);
 

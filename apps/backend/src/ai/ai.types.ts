@@ -1,8 +1,8 @@
 import type { AIProviderType } from '../generated/prisma/enums.js';
 
 /**
- * Provider-neutral chat contract. Every adapter (OpenAI, Gemini, Anthropic) translates to and
- * from these shapes, so the assistant (PASSO 13/14) never depends on a vendor format.
+ * Provider-neutral chat contract. The Gemini adapter translates to and from these shapes, so
+ * the assistant (PASSO 13/14) never depends on a vendor format.
  */
 
 /** JSON Schema object describing a tool's arguments. */
@@ -107,6 +107,6 @@ export function kindOfStatus(status: number): AiErrorKind {
   if (status === 404) return 'model_not_found';
   if (status === 408) return 'timeout';
   if (status === 429) return 'rate_limited';
-  if (status >= 500) return 'unavailable'; // includes Anthropic's 529 "overloaded"
+  if (status >= 500) return 'unavailable';
   return 'invalid_request'; // 400, 413, 422…: our request was refused as such
 }

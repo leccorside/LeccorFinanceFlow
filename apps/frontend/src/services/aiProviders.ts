@@ -1,6 +1,7 @@
 import { api } from './api';
 
-export type AiProviderType = 'OPENAI' | 'GEMINI' | 'ANTHROPIC';
+/** Google Gemini is the only AI provider. */
+export type AiProviderType = 'GEMINI';
 export type AiPurpose = 'CHAT' | 'FINANCIAL_INTERPRETATION' | 'ANALYSIS';
 export const AI_PURPOSES: AiPurpose[] = ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'];
 

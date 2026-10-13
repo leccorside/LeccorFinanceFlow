@@ -11,10 +11,15 @@ import type { AIProviderType } from '../../src/generated/prisma/enums.js';
 /** What the fake answers next: success, a classified failure, or hang until the timeout. */
 export type FakeBehavior = 'ok' | 'hang' | AiErrorKind;
 
-/** Programmable provider: records every call (key included) and answers per `behavior`. */
+/**
+ * Programmable provider: records every call (key included) and answers per `behavior`, or per
+ * model through `behaviorOf` (fallback between Gemini models).
+ */
 export class FakeAiClient implements AiProviderClient {
   calls: { apiKey: string; request: ChatRequest }[] = [];
   behavior: FakeBehavior = 'ok';
+  /** Model → behavior; models not listed use `behavior`. */
+  behaviorOf: Record<string, FakeBehavior> = {};
   /** Scripted "model": decides tool calls and answers from the request (used when ok). */
   handler: ((request: ChatRequest) => Partial<ChatResult>) | null = null;
 
@@ -27,13 +32,14 @@ export class FakeAiClient implements AiProviderClient {
   ): Promise<ChatResult> {
     // A copy, like a real adapter that serializes the request at call time.
     this.calls.push({ apiKey, request: structuredClone(request) });
-    if (this.behavior === 'hang') {
+    const behavior = this.behaviorOf[request.model] ?? this.behavior;
+    if (behavior === 'hang') {
       // Like a real adapter whose fetch is aborted by the timeout signal.
       await new Promise((_resolve, reject) => {
         signal.addEventListener('abort', () => reject(new AiProviderError('timeout')));
       });
     }
-    if (this.behavior !== 'ok') throw new AiProviderError(this.behavior as AiErrorKind);
+    if (behavior !== 'ok') throw new AiProviderError(behavior as AiErrorKind);
     if (this.handler) {
       const scripted = this.handler(request);
       const toolCalls = scripted.toolCalls ?? [];
@@ -54,15 +60,12 @@ export class FakeAiClient implements AiProviderClient {
 }
 
 export class FakeAiClients implements AiProviderClients {
-  OPENAI = new FakeAiClient('OPENAI');
   GEMINI = new FakeAiClient('GEMINI');
-  ANTHROPIC = new FakeAiClient('ANTHROPIC');
 
   reset(): void {
-    for (const client of [this.OPENAI, this.GEMINI, this.ANTHROPIC]) {
-      client.calls = [];
-      client.behavior = 'ok';
-      client.handler = null;
-    }
+    this.GEMINI.calls = [];
+    this.GEMINI.behavior = 'ok';
+    this.GEMINI.behaviorOf = {};
+    this.GEMINI.handler = null;
   }
 }

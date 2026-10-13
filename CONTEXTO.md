@@ -60,6 +60,29 @@ Proteção da API implementada no PASSO 05:
 - readiness define 503 via `@Res({ passthrough: true })`, mantendo o corpo próprio do healthcheck;
 - testes: `security.spec.ts`, `env.spec.ts` ampliado, `test/integration/support.ts` (fake do Google, `createTestApp`, `loginAs`), `policy-probe.module.ts` (rotas só de teste) e `policy.int-spec.ts`.
 
+Somente Google Gemini (mudança pedida pelo usuário em 13/10/2026, depois do PASSO 22):
+
+- Removidos os clientes `OpenAiClient`, `AnthropicClient` e `OpenAiVoiceClient` (e `extensionOf`, que só o multipart da OpenAI usava), as variáveis `OPENAI_*`/`ANTHROPIC_*` e os provedores do seed.
+- Migration `20261013120000_gemini_only` (`down.sql`):
+  - apaga os provedores OpenAI/Anthropic e suas configurações e chaves;
+  - limpa a marca de provedor dessas respostas antigas;
+  - enum `AIProviderType` = `GEMINI`;
+  - unicidade `(provider_id, purpose, model)` no lugar de `(provider_id, purpose)`.
+- **Fallback entre modelos do Gemini**: vários modelos por finalidade, com prioridade e chave própria (ou `GEMINI_API_KEY`). Só o mesmo modelo duas vezes na finalidade é recusado. A tela de IA oferece todas as finalidades sempre, e os rótulos de linha e da ordem usam o nome do modelo (antes o provedor, que ficaria repetido).
+- **Voz só Gemini, sem fallback**: `STT_PROVIDER`/`TTS_PROVIDER` aceitam só `gemini`; o antigo `openai` derruba a subida com a variável indicada, em vez de desligar a voz em silêncio.
+- Testes:
+  - `FakeAiClient.behaviorOf` (falha por modelo);
+  - `ai.int-spec` reescrito para modelos;
+  - voz sem testes de fallback entre provedores;
+  - página de IA com dois modelos;
+  - unitários 309 (saíram os testes dos adaptadores removidos), integração 323, frontend 142.
+- Validação:
+  - migration aplicada no banco de dev com dados;
+  - **upgrade** da stack de produção que ainda tinha OpenAI/Gemini/Anthropic no banco: o `migrate` aplicou `gemini_only` sozinho, o seed passou a criar 1 provedor e o enum ficou `{GEMINI}`;
+  - E2E 25/25 na stack atualizada;
+  - `pnpm quality` verde.
+- `redact` e `security:scan` continuam mascarando e acusando chaves `sk-…`: segredo de outro serviço colado num erro ou no repositório não deve vazar.
+
 Validação final e preparação de entrega no PASSO 22:
 
 - Produção:
@@ -202,7 +225,7 @@ Voz implementada no PASSO 17:
 - Backend `src/voice`:
   - `voice.service.ts` (`capabilities`, `transcribe`, `speak`, `withProviders`, `speakable`), `voice.controller.ts`, `voice.module.ts`, `voice.types.ts` (`VOICE_CLIENTS`);
   - `audio.ts` (`acceptedType`, `matchesSignature`, `extensionOf`, `pcmToWav`);
-  - `providers/openai-voice.client.ts` e `providers/gemini-voice.client.ts`.
+  - `providers/openai-voice.client.ts` e `providers/gemini-voice.client.ts`. (o cliente da OpenAI foi removido em 13/10/2026: só Gemini)
 - Infraestrutura alterada:
   - `config/env.ts`: `VOICE` com `transcription`/`speech` (cadeias `VoiceProviderConfig`), `maxAudioBytes`, `maxAudioSeconds` e `timeoutMs` (usa `AI_REQUEST_TIMEOUT_MS`); `VOICE_RATE_LIMIT_MAX_REQUESTS`;
   - `configure-app.ts`: parser `raw` para `audio/*` com limite `maxAudioBytes`;
@@ -335,7 +358,7 @@ Ferramentas do assistente implementadas no PASSO 13 (`src/assistant`):
 Camada de IA implementada no PASSO 12 (`src/ai`, `src/admin`, frontend `features/admin`):
 
 - `ai.types.ts`: `ChatRequest`/`ChatResult`/`ToolCall`/`ToolDefinition`, `AiProviderClient` (`chat(apiKey, request, signal)`), `AI_PROVIDER_CLIENTS` (token, sobrescrito nos testes), `AiErrorKind` + `isRecoverable` + `kindOfStatus`.
-- `providers/`: adaptadores `OpenAiClient`, `GeminiClient` e `AnthropicClient` (fetch injetável) e `http.ts` (`postJson`, `argumentsObject`, `resultObject`).
+- `providers/`: adaptadores `OpenAiClient`, `GeminiClient` e `AnthropicClient` (fetch injetável) e `http.ts` (`postJson`, `argumentsObject`, `resultObject`). OpenAI e Anthropic removidos em 13/10/2026 (só Gemini).
 - `AiService.chat(purpose, request)`: devolve `{ result, provider, model, configurationId, attempts }`. Também `probe(configurationId)` e `apiKeyContext(id)`.
 - `AiProvidersService` e `AiProvidersController` (`/admin/...`, `@Roles('ADMIN')` na classe). A visão de configuração é uma lista explícita de campos, que nunca inclui `apiKeyEncrypted`.
 - Seed: `DEFAULT_AI_PROVIDERS` (cria se faltar, sem mexer em ativação e nome). `env.AI`: `timeoutMs`, `environmentKeys` e `defaultModels`.
@@ -743,7 +766,7 @@ Os 22 passos de `PASSOS.md` estão concluídos. O produto está pronto para vali
 
 Próximas ações, fora do roteiro e só com autorização do usuário:
 
-1. Com credenciais de teste: login e consentimento Google reais, `pnpm test:google` estendido à sincronização, smoke de IA (OpenAI, Gemini, Anthropic) e de voz. São os críticos ainda "NÃO ATENDIDO" em `RASTREABILIDADE.md`.
+1. Com credenciais de teste: login e consentimento Google reais, `pnpm test:google` estendido à sincronização, smoke de IA e de voz com o Gemini. São os críticos ainda "NÃO ATENDIDO" em `RASTREABILIDADE.md`.
 2. Tela de conflitos da planilha (a API existe).
 3. Imagem do backend menor (evitar o CLI do Prisma como peer dependency).
 
@@ -781,7 +804,7 @@ Pendências ligadas ao PASSO 18:
 
 Pendências ligadas ao PASSO 17:
 
-- Smoke real de voz com chaves de teste (OpenAI e Gemini): confirmar a transcrição de `audio/webm` no Gemini, que não está na lista oficial de formatos dele, e os modelos padrão.
+- Smoke real de voz com chave de teste do Gemini: confirmar a transcrição de `audio/webm` no Gemini, que não está na lista oficial de formatos dele, e os modelos padrão.
 - ~~Rate limit da voz por usuário~~ — feito no PASSO 21.
 
 Pendências ligadas ao PASSO 16:
@@ -990,7 +1013,7 @@ Pendências conhecidas para passos futuros:
   - configuração sem chave e teste `not_configured`;
   - `/admin/ai` servido pelo Vite.
 - `pnpm quality` passou por completo.
-- Não validado contra as APIs reais da OpenAI, do Google e da Anthropic (sem chaves de teste).
+- Não validado contra as APIs reais da OpenAI, do Google e da Anthropic (sem chaves de teste). Desde 13/10/2026 o projeto usa só o Gemini.
 
 ## Evidências do PASSO 13
 

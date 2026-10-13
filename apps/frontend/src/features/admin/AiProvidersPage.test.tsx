@@ -27,39 +27,28 @@ const SECRET = 'sk-typed-by-the-admin-123';
 
 const providers = (): AiProvider[] => [
   {
-    id: 'p-openai',
-    type: 'OPENAI',
-    displayName: 'OpenAI',
+    id: 'p-gemini',
+    type: 'GEMINI',
+    displayName: 'Google Gemini',
     isActive: true,
     capabilities: ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'],
-    defaultModel: 'gpt-default',
-    hasEnvironmentKey: false,
+    defaultModel: 'gemini-default',
+    hasEnvironmentKey: true,
     configurations: [
       {
-        id: 'c-openai',
+        id: 'c-flash',
         purpose: 'CHAT',
-        model: 'gpt-x',
+        model: 'gemini-2.5-flash',
         priority: 1,
         isActive: true,
         keySource: 'stored',
         keyVersion: 'v1',
         updatedAt: '2026-10-09T10:00:00.000Z',
       },
-    ],
-  },
-  {
-    id: 'p-anthropic',
-    type: 'ANTHROPIC',
-    displayName: 'Anthropic Claude',
-    isActive: false,
-    capabilities: ['CHAT', 'FINANCIAL_INTERPRETATION', 'ANALYSIS'],
-    defaultModel: null,
-    hasEnvironmentKey: true,
-    configurations: [
       {
-        id: 'c-anthropic',
+        id: 'c-lite',
         purpose: 'CHAT',
-        model: 'claude-x',
+        model: 'gemini-2.5-flash-lite',
         priority: 2,
         isActive: true,
         keySource: 'environment',
@@ -89,19 +78,22 @@ beforeEach(() => {
 });
 
 describe('AiProvidersPage', () => {
-  it('lists providers, models, priorities and where each key comes from', async () => {
+  it('lists the Gemini models, priorities and where each key comes from', async () => {
     renderWithProviders(<AiProvidersPage />);
 
-    const openai = await screen.findByRole('region', { name: 'OpenAI' });
-    expect(openai.querySelector('.badge')).toHaveTextContent('Ativo');
-    expect(within(openai).getByText('gpt-x')).toBeInTheDocument();
-    expect(within(openai).getByText('Guardada (cifrada)')).toBeInTheDocument();
-    const anthropic = screen.getByRole('region', { name: 'Anthropic Claude' });
-    expect(anthropic.querySelector('.badge')).toHaveTextContent('Inativo');
-    expect(within(anthropic).getByText('Do servidor')).toBeInTheDocument();
+    const gemini = await screen.findByRole('region', { name: 'Google Gemini' });
+    expect(gemini.querySelector('.badge')).toHaveTextContent('Ativo');
+    expect(within(gemini).getByText('gemini-2.5-flash')).toBeInTheDocument();
+    expect(within(gemini).getByText('gemini-2.5-flash-lite')).toBeInTheDocument();
+    expect(within(gemini).getByText('Guardada (cifrada)')).toBeInTheDocument();
+    expect(within(gemini).getByText('Do servidor')).toBeInTheDocument();
     expect(
-      within(anthropic).getByText(/chave deste provedor no ambiente/),
+      within(gemini).getByText(/chave deste provedor no ambiente/),
     ).toBeInTheDocument();
+    // Gemini only: no other provider card.
+    expect(
+      screen.queryByRole('region', { name: /OpenAI|Anthropic/ }),
+    ).not.toBeInTheDocument();
 
     // Key fields are write-only password inputs, always empty.
     const keyInputs = document.querySelectorAll('input[type="password"]');
@@ -110,25 +102,28 @@ describe('AiProvidersPage', () => {
     keyInputs.forEach((input) => expect(input).toHaveAttribute('autocomplete', 'off'));
   });
 
-  it('adds a configuration with a key and forgets the key right after sending it', async () => {
+  it('adds another model to a purpose that already has one (fallback), forgetting the key', async () => {
     renderWithProviders(<AiProvidersPage />);
-    const form = await screen.findByRole('form', { name: 'Nova configuração — OpenAI' });
+    const form = await screen.findByRole('form', { name: 'Novo modelo — Google Gemini' });
 
-    expect(within(form).getByLabelText('Modelo')).toHaveValue('gpt-default');
-    fireEvent.change(within(form).getByLabelText('Finalidade'), {
-      target: { value: 'ANALYSIS' },
-    });
+    expect(within(form).getByLabelText('Modelo')).toHaveValue('gemini-default');
+    // CHAT already has two models and is still offered.
+    expect(
+      within(within(form).getByLabelText('Finalidade')).getByRole('option', {
+        name: 'Conversa',
+      }),
+    ).toBeInTheDocument();
     fireEvent.change(within(form).getByLabelText('Modelo'), {
-      target: { value: 'gpt-y' },
+      target: { value: 'gemini-2.5-pro' },
     });
     const key = within(form).getByLabelText('Chave de API (opcional)');
     fireEvent.change(key, { target: { value: SECRET } });
     fireEvent.click(within(form).getByRole('button', { name: 'Adicionar' }));
 
     await waitFor(() =>
-      expect(createAiConfiguration).toHaveBeenCalledWith('p-openai', {
-        purpose: 'ANALYSIS',
-        model: 'gpt-y',
+      expect(createAiConfiguration).toHaveBeenCalledWith('p-gemini', {
+        purpose: 'CHAT',
+        model: 'gemini-2.5-pro',
         apiKey: SECRET,
       }),
     );
@@ -138,19 +133,21 @@ describe('AiProvidersPage', () => {
 
   it('replaces and removes a stored key', async () => {
     renderWithProviders(<AiProvidersPage />);
-    const input = await screen.findByLabelText('Nova chave — OpenAI · Conversa');
+    const input = await screen.findByLabelText(
+      'Nova chave — gemini-2.5-flash · Conversa',
+    );
     fireEvent.change(input, { target: { value: SECRET } });
     fireEvent.click(
       screen.getAllByRole('button', { name: 'Salvar chave' })[0] as HTMLElement,
     );
     await waitFor(() =>
-      expect(updateAiConfiguration).toHaveBeenCalledWith('c-openai', { apiKey: SECRET }),
+      expect(updateAiConfiguration).toHaveBeenCalledWith('c-flash', { apiKey: SECRET }),
     );
     await waitFor(() => expect(input).toHaveValue(''));
 
     fireEvent.click(screen.getByRole('button', { name: 'Remover chave' }));
     await waitFor(() =>
-      expect(updateAiConfiguration).toHaveBeenCalledWith('c-openai', { apiKey: null }),
+      expect(updateAiConfiguration).toHaveBeenCalledWith('c-flash', { apiKey: null }),
     );
   });
 
@@ -158,22 +155,22 @@ describe('AiProvidersPage', () => {
     vi.mocked(testAiConfiguration)
       .mockResolvedValueOnce({
         ok: true,
-        provider: 'OPENAI',
-        model: 'gpt-x',
+        provider: 'GEMINI',
+        model: 'gemini-2.5-flash',
         latencyMs: 120,
         error: null,
       })
       .mockResolvedValueOnce({
         ok: false,
-        provider: 'OPENAI',
-        model: 'gpt-x',
+        provider: 'GEMINI',
+        model: 'gemini-2.5-flash',
         latencyMs: 80,
         error: 'credential_rejected',
       });
     renderWithProviders(<AiProvidersPage />);
 
     const button = await screen.findByRole('button', {
-      name: 'Testar — OpenAI · Conversa',
+      name: 'Testar — gemini-2.5-flash · Conversa',
     });
     fireEvent.click(button);
     expect(await screen.findByText('Respondeu em 120 ms.')).toBeInTheDocument();
@@ -181,7 +178,7 @@ describe('AiProvidersPage', () => {
     expect(await screen.findByText('Falhou: a chave foi recusada.')).toBeInTheDocument();
   });
 
-  it('changes the fallback order of a purpose', async () => {
+  it('changes the fallback order between Gemini models', async () => {
     renderWithProviders(<AiProvidersPage />);
     const order = await screen.findByRole('region', {
       name: 'Ordem de uso por finalidade',
@@ -192,16 +189,17 @@ describe('AiProvidersPage', () => {
         .getAllByRole('listitem')
         .map((item) => item.textContent),
     ).toEqual([
-      expect.stringContaining('OpenAI'),
-      expect.stringContaining('Anthropic Claude'),
+      expect.stringContaining('gemini-2.5-flash'),
+      expect.stringContaining('gemini-2.5-flash-lite'),
     ]);
-    expect(within(chat).getByRole('button', { name: 'Subir OpenAI' })).toBeDisabled();
-    fireEvent.click(within(chat).getByRole('button', { name: 'Descer OpenAI' }));
+    expect(
+      within(chat).getByRole('button', { name: 'Subir gemini-2.5-flash' }),
+    ).toBeDisabled();
+    fireEvent.click(
+      within(chat).getByRole('button', { name: 'Descer gemini-2.5-flash' }),
+    );
     await waitFor(() =>
-      expect(reorderAiConfigurations).toHaveBeenCalledWith('CHAT', [
-        'c-anthropic',
-        'c-openai',
-      ]),
+      expect(reorderAiConfigurations).toHaveBeenCalledWith('CHAT', ['c-lite', 'c-flash']),
     );
   });
 
@@ -210,7 +208,7 @@ describe('AiProvidersPage', () => {
       apiError(409, 'ai_priority_taken'),
     );
     renderWithProviders(<AiProvidersPage />);
-    const form = await screen.findByRole('form', { name: 'Nova configuração — OpenAI' });
+    const form = await screen.findByRole('form', { name: 'Novo modelo — Google Gemini' });
     fireEvent.click(within(form).getByRole('button', { name: 'Adicionar' }));
     expect(await within(form).findByRole('alert')).toHaveTextContent(
       'Já existe uma configuração com essa prioridade.',
@@ -230,13 +228,13 @@ describe('AiProvidersPage', () => {
       regional: { locale: 'en-US' },
     });
     expect(
-      await screen.findByRole('heading', { name: 'AI providers' }),
+      await screen.findByRole('heading', { name: 'AI (Google Gemini)' }),
     ).toBeInTheDocument();
     expect((await screen.findAllByText('Stored (encrypted)')).length).toBeGreaterThan(0);
     english.unmount();
     renderWithProviders(<AiProvidersPage />, { regional: { locale: 'es-ES' } });
     expect(
-      await screen.findByRole('heading', { name: 'Proveedores de IA' }),
+      await screen.findByRole('heading', { name: 'IA (Google Gemini)' }),
     ).toBeInTheDocument();
   });
 });

@@ -137,10 +137,10 @@ enum ConversationMessageRole {
   TOOL
 }
 
+/// Only Google Gemini since the Gemini-only change (2026-10-13). The provider abstraction stays,
+/// so another provider would be a new enum value + client, not a redesign.
 enum AIProviderType {
-  OPENAI
   GEMINI
-  ANTHROPIC
 }
 
 enum AIPurpose {
@@ -734,7 +734,8 @@ model AIConfiguration {
 
   provider AIProvider @relation(fields: [providerId], references: [id], onDelete: Cascade)
 
-  @@unique([providerId, purpose])
+  /// Several models of the same provider per purpose: fallback between Gemini models.
+  @@unique([providerId, purpose, model])
   @@unique([purpose, priority])
   @@map("ai_configurations")
 }

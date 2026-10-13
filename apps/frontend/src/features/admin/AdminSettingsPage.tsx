@@ -157,7 +157,7 @@ function SettingsForm({ initial }: { initial: SettingValues }) {
           onClick={() =>
             setPrices([
               ...prices,
-              { kind: 'AI_CHAT', provider: 'OPENAI', model: '', input: '0', output: '0' },
+              { kind: 'AI_CHAT', provider: 'GEMINI', model: '', input: '0', output: '0' },
             ])
           }
         >

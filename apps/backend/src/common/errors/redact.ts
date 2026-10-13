@@ -15,7 +15,8 @@ const RULES: [RegExp, string][] = [
   [/\blff_[a-z_]+=[^;\s]+/gi, 'lff_[cookie]=[redacted]'],
   // JSON Web Tokens (ID tokens, Google responses).
   [/\beyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g, '[jwt]'],
-  // Provider API keys: OpenAI/Anthropic (sk-…), Google (AIza…), Google OAuth tokens (ya29.…).
+  // API keys: Google (AIza…) and OAuth tokens (ya29.…); sk-… (OpenAI/Anthropic format) stays
+  // masked even though the app no longer uses them: a pasted foreign key must not leak.
   [/\bsk-[A-Za-z0-9_-]{8,}/g, '[api-key]'],
   [/\bAIza[0-9A-Za-z_-]{20,}/g, '[api-key]'],
   [/\bya29\.[0-9A-Za-z._-]+/g, '[oauth-token]'],
